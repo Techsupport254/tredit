@@ -1,0 +1,49 @@
+@import "tailwindcss";
+@import "@fortawesome/fontawesome-free/css/all.min.css";
+
+/* 🔹 Base Styles */
+html,
+body {
+  font-family: 'Nunito', sans-serif;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  @apply overscroll-none;
+}
+
+/* 🔹 Thinner Scrollbar */
+::-webkit-scrollbar {
+  width: 1px;
+  height: 1px;
+  transition: opacity 0.3s ease-in-out;
+  opacity: 0;
+}
+
+/* 🔹 Scrollbar Thumb */
+::-webkit-scrollbar-thumb {
+  background-color: #3b82f6;
+  border-radius: 8px;
+  transition: background-color 0.3s ease-in-out;
+}
+
+/* 🔹 Hover Effect (Darker) */
+::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
+}
+
+/* 🔹 Track (Transparent) */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 🔹 Show Scrollbar when Scrolling */
+.scrolling ::-webkit-scrollbar {
+  opacity: 1;
+}
+
+/* 🔹 Hide Scrollbars for Mobile */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    display: none;
+  }
+}
