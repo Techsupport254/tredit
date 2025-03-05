@@ -1,20 +1,20 @@
 export const sidebarData = [
-	// 🔹 Dashboard
+	// 🔹 Dashboard (Common)
 	{
 		category: "Dashboard",
-		path: "/",
-		roles: ["Vendor"],
+		path: "/dashboard",
+		roles: ["Vendor", "Freelancer"],
 		icon: "fas fa-tachometer-alt",
-		description: "Overview of your sales, performance, and statistics.",
+		description: "Business overview and key metrics",
 	},
 
-	// 🔹 Products Management
+	// 🔹 Products (Vendor Only)
 	{
 		category: "Products",
 		roles: ["Vendor"],
-		icon: "fas fa-box",
+		icon: "fas fa-box-open",
 		pages: [
-			{ name: "All Products", path: "/products", icon: "fas fa-boxes" },
+			{ name: "Product Catalog", path: "/products", icon: "fas fa-boxes" },
 			{
 				name: "Add Product",
 				path: "/products/add",
@@ -23,166 +23,174 @@ export const sidebarData = [
 			{
 				name: "Inventory",
 				path: "/products/inventory",
-				icon: "fas fa-warehouse",
+				icon: "fas fa-clipboard-list",
 			},
 		],
 	},
 
-	// 🔹 Orders Management
+	// 🔹 Services (Freelancer Only)
 	{
-		category: "Orders",
-		roles: ["Vendor"],
-		icon: "fas fa-shopping-cart",
+		category: "Services",
+		roles: ["Freelancer"],
+		icon: "fas fa-handshake",
 		pages: [
-			{ name: "All Orders", path: "/orders", icon: "fas fa-receipt" },
+			{ name: "Service Listings", path: "/services", icon: "fas fa-briefcase" },
 			{
-				name: "Pending Orders",
-				path: "/orders/pending",
-				icon: "fas fa-hourglass-half",
+				name: "New Service",
+				path: "/services/create",
+				icon: "fas fa-plus-circle",
 			},
 			{
-				name: "Completed Orders",
-				path: "/orders/completed",
-				icon: "fas fa-check-circle",
+				name: "Active Contracts",
+				path: "/services/contracts",
+				icon: "fas fa-file-contract",
 			},
-		],
-	},
-
-	// 🔹 Uploads Management
-	{
-		category: "Uploads",
-		roles: ["Vendor"],
-		icon: "fas fa-cloud-upload-alt",
-		pages: [
 			{
-				name: "Uploads Overview",
-				path: "/uploads",
+				name: "Deliverables",
+				path: "/services/deliverables",
 				icon: "fas fa-cloud-upload-alt",
 			},
-			{ name: "New Upload", path: "/uploads/new", icon: "fas fa-upload" },
-			{
-				name: "Manage Uploads",
-				path: "/uploads/manage",
-				icon: "fas fa-folder-open",
-			},
 		],
 	},
 
-	// 🔹 Payments & Earnings
+	// 🔹 Transactions (Common)
 	{
-		category: "Payments",
-		roles: ["Vendor"],
-		icon: "fas fa-credit-card",
+		category: "Transactions",
+		roles: ["Vendor", "Freelancer"],
+		icon: "fas fa-exchange-alt",
 		pages: [
-			{ name: "Earnings Overview", path: "/payments", icon: "fas fa-wallet" },
+			{ name: "All Transactions", path: "/transactions", icon: "fas fa-list" },
 			{
-				name: "Payout Requests",
-				path: "/payments/payouts",
-				icon: "fas fa-money-bill-wave",
+				name: "Escrow Status",
+				path: "/transactions/escrow",
+				icon: "fas fa-lock",
+			},
+			{
+				name: "Dispute Center",
+				path: "/transactions/disputes",
+				icon: "fas fa-balance-scale",
 			},
 		],
 	},
 
-	// 🔹 Analytics & Reports
+	// 🔹 Messaging & Notifications (Common)
 	{
-		category: "Analytics",
-		roles: ["Vendor"],
-		icon: "fas fa-chart-line",
+		category: "Communication",
+		roles: ["Vendor", "Freelancer"],
+		icon: "fas fa-comments",
 		pages: [
 			{
-				name: "Sales Analytics",
-				path: "/analytics/sales",
-				icon: "fas fa-chart-bar",
+				name: "Messages",
+				path: "/communication/messages",
+				icon: "fas fa-comment-dots",
+				submenu: [
+					{
+						name: "Inbox",
+						path: "/communication/messages/inbox",
+						icon: "fas fa-inbox",
+					},
+					{
+						name: "Sent",
+						path: "/communication/messages/sent",
+						icon: "fas fa-paper-plane",
+					},
+					{
+						name: "New Message",
+						path: "/communication/messages/compose",
+						icon: "fas fa-edit",
+					},
+				],
 			},
 			{
-				name: "Customer Insights",
-				path: "/analytics/customers",
-				icon: "fas fa-user-friends",
+				name: "Notifications",
+				path: "/communication/notifications",
+				icon: "fas fa-bell",
+				submenu: [
+					{
+						name: "Alerts",
+						path: "/communication/notifications/alerts",
+						icon: "fas fa-exclamation-circle",
+					},
+					{
+						name: "System Updates",
+						path: "/communication/notifications/system",
+						icon: "fas fa-server",
+					},
+				],
 			},
 		],
 	},
 
-	// 🔹 Customer Management
+	// 🔹 Finance (Common)
 	{
-		category: "Customers",
-		roles: ["Vendor"],
+		category: "Finance",
+		roles: ["Vendor", "Freelancer"],
+		icon: "fas fa-wallet",
+		pages: [
+			{ name: "Earnings", path: "/finance", icon: "fas fa-chart-pie" },
+			{
+				name: "Payouts",
+				path: "/finance/payouts",
+				icon: "fas fa-money-check-alt",
+			},
+			{ name: "Tax Records", path: "/finance/taxes", icon: "fas fa-receipt" },
+		],
+	},
+
+	// 🔹 Clients & Reviews (Common)
+	{
+		category: "Clients",
+		roles: ["Vendor", "Freelancer"],
 		icon: "fas fa-users",
 		pages: [
-			{ name: "All Customers", path: "/customers", icon: "fas fa-user" },
 			{
-				name: "Reviews & Feedback",
-				path: "/customers/reviews",
-				icon: "fas fa-star",
+				name: "Client Directory",
+				path: "/clients",
+				icon: "fas fa-address-book",
 			},
+			{ name: "Reviews", path: "/clients/reviews", icon: "fas fa-star" },
+			{ name: "Reputation", path: "/clients/reputation", icon: "fas fa-medal" },
 		],
 	},
 
-	// 🔹 Dispute Resolution
-	{
-		category: "Disputes",
-		roles: ["Vendor"],
-		icon: "fas fa-balance-scale",
-		pages: [
-			{ name: "Manage Disputes", path: "/disputes", icon: "fas fa-gavel" },
-			{
-				name: "Open Disputes",
-				path: "/disputes/open",
-				icon: "fas fa-exclamation-triangle",
-			},
-		],
-	},
-
-	// 🔹 Settings & Preferences
+	// 🔹 Platform Settings (Common)
 	{
 		category: "Settings",
-		roles: ["Vendor"],
+		roles: ["Vendor", "Freelancer"],
 		icon: "fas fa-cog",
 		pages: [
 			{
-				name: "Profile Settings",
+				category: "Profile",
+				name: "Profile",
 				path: "/settings/profile",
-				icon: "fas fa-user-circle",
-			},
-			{
-				name: "Security",
-				path: "/settings/security",
-				icon: "fas fa-shield-alt",
+				icon: "fas fa-user-cog",
+				showBadge: true,
 			},
 		],
 	},
 
-	// 🔹 Support & Help
+	// 🔹 Support (Common)
 	{
-		category: "Support",
-		roles: ["Vendor"],
-		icon: "fas fa-headset",
+		category: "Help",
+		roles: ["Vendor", "Freelancer"],
+		icon: "fas fa-question-circle",
 		pages: [
-			{ name: "Help Center", path: "/support/help", icon: "fas fa-life-ring" },
+			{ name: "Documentation", path: "/help/docs", icon: "fas fa-book-open" },
 			{
 				name: "Contact Support",
-				path: "/support/contact",
-				icon: "fas fa-envelope",
+				path: "/help/contact",
+				icon: "fas fa-headset",
 			},
+			{ name: "Escrow Guide", path: "/help/escrow", icon: "fas fa-lock" },
 		],
 	},
 
-	// 🔹 User Profile
-	{
-		category: "Profile",
-		roles: ["Vendor"],
-		icon: "fas fa-user",
-		pages: [
-			{ name: "My Profile", path: "/profile", icon: "fas fa-user-circle" },
-			{ name: "Wallet", path: "/profile/wallet", icon: "fas fa-wallet" },
-		],
-	},
-
-	// 🔹 Logout
+	// 🔹 Logout (Common)
 	{
 		category: "Logout",
 		path: "/logout",
-		roles: ["Vendor"],
+		roles: ["Vendor", "Freelancer"],
 		icon: "fas fa-sign-out-alt",
-		description: "Securely log out of your account.",
+		description: "Secure session termination",
 	},
 ];

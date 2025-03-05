@@ -1,3 +1,6 @@
+require("dotenv").config();
+const HDWalletProvider = require("@truffle/hdwallet-provider");
+
 module.exports = {
 	networks: {
 		development: {
@@ -5,10 +8,57 @@ module.exports = {
 			port: 8545,
 			network_id: "*", // Match any network
 		},
+		amoy: {
+			provider: () =>
+				new HDWalletProvider(
+					process.env.MNEMONIC,
+					process.env.POLYGON_AMOY_RPC
+				),
+			network_id: 80002,
+			confirmations: 2,
+			timeoutBlocks: 200,
+			skipDryRun: true,
+			gas: 6000000,
+			gasPrice: 10000000000, // 10 gwei
+			networkCheckTimeout: 10000,
+			timeoutBlocks: 200,
+		},
+		polygon: {
+			provider: () =>
+				new HDWalletProvider(process.env.MNEMONIC, `https://polygon-rpc.com`),
+			network_id: 137,
+			confirmations: 2,
+			timeoutBlocks: 200,
+			skipDryRun: true,
+		},
 	},
 	compilers: {
 		solc: {
-			version: "0.8.21", // Match Solidity version
+			version: "0.8.19",
+			settings: {
+				optimizer: {
+					enabled: true,
+					runs: 1000,
+					details: {
+						yul: true,
+						yulDetails: {
+							stackAllocation: true,
+							optimizerSteps: "dhfoDgvulfnTUtnIf",
+						},
+					},
+				},
+				viaIR: true,
+				metadata: {
+					bytecodeHash: "none",
+				},
+			},
 		},
+	},
+	plugins: ["truffle-plugin-verify"],
+	api_keys: {
+		polygonscan: process.env.POLYGONSCAN_API_KEY,
+	},
+	mocha: {
+		timeout: 100000,
 	},
 };

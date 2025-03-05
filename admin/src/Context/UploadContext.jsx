@@ -1,63 +1,42 @@
-import React, { createContext, useState, useEffect, useRef } from "react";
-import axios from "axios";
-import { message } from "antd";
+import React, { createContext, useContext } from "react";
+import PropTypes from "prop-types"; // Import PropTypes for validation
+// import { useState, useEffect, useRef } from "react";
+// import axios from "axios";
+// import { message } from "antd";
+// import { useAuth } from "./AuthContext";
 
 // Create Context
 export const UploadContext = createContext();
 
 export const UploadProvider = ({ children }) => {
+	// Commenting out the contents for now
+	/*
+	const { user } = useAuth();
 	const [uploads, setUploads] = useState([]);
 	const [loading, setLoading] = useState(false);
 	const [loadingMore, setLoadingMore] = useState(false);
 	const [searchQuery, setSearchQuery] = useState("");
-	const [accessToken, setAccessToken] = useState(null);
 	const [nextPageToken, setNextPageToken] = useState(null);
 	const [uploadProgress, setUploadProgress] = useState({});
 	const listRef = useRef(null);
 
-	// ✅ Load stored access token and fetch data
+	// Load token and fetch data when user changes
 	useEffect(() => {
-		const storedToken = localStorage.getItem("youtubeToken");
-		if (storedToken) {
-			setAccessToken(storedToken);
-			setTimeout(() => fetchUploads(storedToken), 2000); // Prevents premature calls
+		if (user?.accessToken) {
+			fetchUploads(user.accessToken);
 		}
-	}, []);
+	}, [user?.accessToken]);
 
-	// ✅ Refresh Access Token if Expired
-	const refreshAccessToken = async () => {
-		try {
-			console.log("Refreshing access token...");
-			const storedUser = JSON.parse(localStorage.getItem("youtubeUser"));
-			if (!storedUser || !storedUser.stsTokenManager) return null;
-
-			const refreshToken = storedUser.stsTokenManager.refreshToken;
-			const response = await axios.post(
-				`https://securetoken.googleapis.com/v1/token?key=YOUR_FIREBASE_API_KEY`,
-				{
-					grant_type: "refresh_token",
-					refresh_token: refreshToken,
-				}
-			);
-
-			if (response.data.access_token) {
-				localStorage.setItem("youtubeToken", response.data.access_token);
-				setAccessToken(response.data.access_token);
-				return response.data.access_token;
-			}
-		} catch (error) {
-			console.error("Error refreshing access token:", error);
-			return null;
-		}
-	};
-
-	// ✅ Fetch uploads from YouTube API (Safely)
+	// Fetch uploads from YouTube API (Safely)
 	const fetchUploads = async (token, pageToken = "") => {
-		if (!token) return;
+		if (!token) {
+			console.warn("No access token available");
+			return;
+		}
+
 		pageToken ? setLoadingMore(true) : setLoading(true);
 
 		try {
-			console.log("Fetching YouTube videos...");
 			const response = await axios.get(
 				"https://www.googleapis.com/youtube/v3/search",
 				{
@@ -85,7 +64,7 @@ export const UploadProvider = ({ children }) => {
 				.map((item) => item.id.videoId)
 				.join(",");
 
-			// ✅ Fetch Video Statistics
+			// Fetch Video Statistics
 			const statsResponse = await axios.get(
 				"https://www.googleapis.com/youtube/v3/videos",
 				{
@@ -103,7 +82,6 @@ export const UploadProvider = ({ children }) => {
 			setUploads((prevUploads) => [...statsResponse.data.items]);
 			setNextPageToken(response.data.nextPageToken || null);
 		} catch (error) {
-			console.error("Error fetching uploads:", error);
 			message.error(
 				"Failed to fetch YouTube videos. Check API token and permissions."
 			);
@@ -113,7 +91,7 @@ export const UploadProvider = ({ children }) => {
 		setLoadingMore(false);
 	};
 
-	// ✅ Handle Scroll to Load More Videos
+	// Handle Scroll to Load More Videos
 	const handleScroll = () => {
 		if (listRef.current) {
 			const { scrollTop, scrollHeight, clientHeight } = listRef.current;
@@ -122,14 +100,14 @@ export const UploadProvider = ({ children }) => {
 				nextPageToken &&
 				!loadingMore
 			) {
-				fetchUploads(accessToken, nextPageToken);
+				fetchUploads(user.accessToken, nextPageToken);
 			}
 		}
 	};
 
-	// ✅ Upload Video to YouTube
+	// Upload Video to YouTube
 	const uploadVideoToYouTube = async (file, title, description, onProgress) => {
-		if (!accessToken) {
+		if (!user.accessToken) {
 			message.error("Missing access token for YouTube.");
 			return null;
 		}
@@ -149,7 +127,7 @@ export const UploadProvider = ({ children }) => {
 				},
 				{
 					headers: {
-						Authorization: `Bearer ${accessToken}`,
+						Authorization: `Bearer ${user.accessToken}`,
 						"Content-Type": "application/json",
 						"X-Upload-Content-Type": file.type,
 						"X-Upload-Content-Length": file.size,
@@ -166,7 +144,7 @@ export const UploadProvider = ({ children }) => {
 			// Step 2: Upload Video with Progress
 			const uploadResponse = await axios.put(uploadUrl, file, {
 				headers: {
-					Authorization: `Bearer ${accessToken}`,
+					Authorization: `Bearer ${user.accessToken}`,
 					"Content-Type": file.type,
 				},
 				onUploadProgress: (progressEvent) => {
@@ -180,7 +158,6 @@ export const UploadProvider = ({ children }) => {
 			message.success("Video uploaded to YouTube successfully.");
 			return uploadResponse.data;
 		} catch (error) {
-			console.error("YouTube upload error:", error);
 			message.error("Upload to YouTube failed. Please try again.");
 			return null;
 		} finally {
@@ -188,7 +165,7 @@ export const UploadProvider = ({ children }) => {
 		}
 	};
 
-	// ✅ Handle Video Upload
+	// Handle Video Upload
 	const uploadVideo = async (file, title, description, platforms) => {
 		if (!file || !title.trim() || !description.trim()) {
 			message.error("Missing file, title, or description.");
@@ -215,7 +192,7 @@ export const UploadProvider = ({ children }) => {
 		}
 	};
 
-	// ✅ Unpublish Video
+	// Unpublish Video
 	const unpublishVideo = async (videoId) => {
 		try {
 			await axios.put(
@@ -224,21 +201,21 @@ export const UploadProvider = ({ children }) => {
 					id: videoId,
 					status: { privacyStatus: "private" },
 				},
-				{ headers: { Authorization: `Bearer ${accessToken}` } }
+				{ headers: { Authorization: `Bearer ${user.accessToken}` } }
 			);
 			message.success("Video unpublished successfully.");
-			fetchUploads(accessToken);
+			fetchUploads(user.accessToken);
 		} catch (error) {
 			message.error("Failed to unpublish video.");
 		}
 	};
 
-	// ✅ Delete Video
+	// Delete Video
 	const deleteVideo = async (videoId) => {
 		try {
 			await axios.delete(
 				`https://www.googleapis.com/youtube/v3/videos?id=${videoId}`,
-				{ headers: { Authorization: `Bearer ${accessToken}` } }
+				{ headers: { Authorization: `Bearer ${user.accessToken}` } }
 			);
 			message.success("Video deleted successfully.");
 			setUploads((prev) => prev.filter((video) => video.id !== videoId));
@@ -247,32 +224,18 @@ export const UploadProvider = ({ children }) => {
 		}
 	};
 
-	// ✅ Search Filter
+	// Search Filter
 	const filteredUploads = uploads.filter((upload) =>
 		upload.snippet.title.toLowerCase().includes(searchQuery.toLowerCase())
 	);
+	*/
 
-    console.log("uploads", uploads);
-    console.log("filteredUploads", filteredUploads);
-
-	return (
-		<UploadContext.Provider
-			value={{
-				uploads,
-				loading,
-				loadingMore,
-				searchQuery,
-				setSearchQuery,
-				listRef,
-				handleScroll,
-				filteredUploads,
-				uploadVideo,
-				unpublishVideo,
-				deleteVideo,
-				uploadProgress,
-			}}
-		>
-			{children}
-		</UploadContext.Provider>
-	);
+	return <UploadContext.Provider value={{}}>{children}</UploadContext.Provider>;
 };
+
+// Prop validation for UploadProvider
+UploadProvider.propTypes = {
+	children: PropTypes.node.isRequired, // Ensure children prop is validated
+};
+
+export const useUpload = () => useContext(UploadContext);

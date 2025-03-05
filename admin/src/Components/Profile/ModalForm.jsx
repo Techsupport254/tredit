@@ -1,12 +1,11 @@
-import React from "react";
-import { useAuth } from "../../Context/AuthContext";
-import { Form, Input, Select, DatePicker, message } from "antd";
+import { Form, Input, Select, DatePicker, Modal } from "antd";
 import {
 	GoogleOutlined,
 	UserOutlined,
 	PhoneOutlined,
 	CalendarOutlined,
 	EnvironmentOutlined,
+	CheckCircleFilled,
 } from "@ant-design/icons";
 import moment from "moment";
 import PropTypes from "prop-types";
@@ -33,6 +32,8 @@ const SectionHeader = styled.div`
 	margin: 1.5rem 0;
 	position: relative;
 	overflow: hidden;
+	display: flex;
+	align-items: center;
 
 	&::before {
 		content: "";
@@ -51,6 +52,14 @@ const SectionHeader = styled.div`
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
+		flex: 1;
+	}
+
+	.ant-collapse-arrow {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin-left: 8px;
 	}
 `;
 
@@ -132,113 +141,227 @@ const FormLabel = styled(Form.Item)`
 	}
 `;
 
+const ModalTitle = styled.div`
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+
+	.completion-indicator {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+
+		.check-icon {
+			font-size: 16px;
+			transition: all 0.3s ease;
+		}
+
+		&.complete {
+			color: #10b981;
+			.check-icon {
+				transform: scale(1.1);
+			}
+		}
+
+		&.incomplete {
+			color: #94a3b8;
+		}
+	}
+`;
+
 const ModalForm = ({
 	form,
 	editData,
 	handleSave,
+	isVisible,
+	onCancel,
+	savingChanges,
 }) => {
+	const checkFormCompletion = () => {
+		const requiredFields = ["name", "email", "location", "dob", "gender"];
+		const values = form.getFieldsValue();
+		return requiredFields.every((field) => {
+			const value = values[field];
+			return value !== undefined && value !== null && value !== "";
+		});
+	};
+
+	const renderModalTitle = () => {
+		const isComplete = checkFormCompletion();
+		return (
+			<ModalTitle>
+				<span className="text-lg font-semibold">Edit Profile</span>
+				<div
+					className={`completion-indicator ${
+						isComplete ? "complete" : "incomplete"
+					}`}
+				>
+					{isComplete ? (
+						<>
+							<span>All set!</span>
+							<CheckCircleFilled className="check-icon" />
+						</>
+					) : (
+						<>
+							<span>Required fields pending</span>
+							<div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+						</>
+					)}
+				</div>
+			</ModalTitle>
+		);
+	};
+
 	return (
-		<FormContainer
-			initial={{ opacity: 0, y: -10 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.2 }}
+		<Modal
+			title={renderModalTitle()}
+			open={isVisible}
+			onCancel={onCancel}
+			onOk={() => form.submit()}
+			okText="Save Changes"
+			confirmLoading={savingChanges}
+			width={600}
+			className="profile-edit-modal"
 		>
-			<Form
-				form={form}
-				layout="vertical"
-				onFinish={handleSave}
-				initialValues={{
-					...editData,
-					dob: editData.dob ? moment(editData.dob, "YYYY-MM-DD") : null,
-				}}
+			<FormContainer
+				initial={{ opacity: 0, y: -10 }}
+				animate={{ opacity: 1, y: 0 }}
+				transition={{ duration: 0.2 }}
 			>
-				<SectionHeader>
-					<h3>
-						<UserOutlined /> Personal Information
-					</h3>
-				</SectionHeader>
-
-				<FormLabel label="Full Name" name="name" rules={[{ required: true }]}>
-					<StyledInput prefix={<UserOutlined />} placeholder="John Doe" />
-				</FormLabel>
-
-				<FormLabel
-					label="Email Address"
-					name="email"
-					rules={[{ required: true, type: "email" }]}
+				<Form
+					form={form}
+					layout="vertical"
+					onFinish={handleSave}
+					initialValues={{
+						...editData,
+						dob: editData.dob ? moment(editData.dob, "YYYY-MM-DD") : null,
+					}}
+					onValuesChange={() => {
+						form
+							.validateFields()
+							.then(() => {})
+							.catch(() => {});
+					}}
 				>
-					<StyledInput
-						prefix={<GoogleOutlined />}
-						placeholder="john@example.com"
-					/>
-				</FormLabel>
+					<SectionHeader>
+						<h3>
+							<UserOutlined /> Personal Information
+						</h3>
+					</SectionHeader>
 
-				<SectionHeader>
-					<h3>
-						<PhoneOutlined /> Contact Details
-					</h3>
-				</SectionHeader>
+					<FormLabel label="Full Name" name="name" rules={[{ required: true }]}>
+						<StyledInput prefix={<UserOutlined />} placeholder="John Doe" />
+					</FormLabel>
 
-				<FormLabel label="Phone Number" name="phone">
-					<StyledInput
-						prefix={<PhoneOutlined />}
-						placeholder="+254 712 345 678"
-					/>
-				</FormLabel>
+					<FormLabel
+						label="Email Address"
+						name="email"
+						rules={[{ required: true, type: "email" }]}
+					>
+						<StyledInput
+							prefix={<GoogleOutlined />}
+							placeholder="john@example.com"
+						/>
+					</FormLabel>
 
-				<FormLabel
-					label="Location"
-					name="location"
-					rules={[{ required: true }]}
-				>
-					<StyledInput
-						prefix={<EnvironmentOutlined />}
-						placeholder="Nairobi, Kenya"
-					/>
-				</FormLabel>
+					<SectionHeader>
+						<h3>
+							<PhoneOutlined /> Contact Details
+						</h3>
+					</SectionHeader>
 
-				<SectionHeader>
-					<h3>
-						<CalendarOutlined /> Additional Information
-					</h3>
-				</SectionHeader>
+					<FormLabel label="Phone Number" name="phone">
+						<StyledInput
+							prefix={<PhoneOutlined />}
+							placeholder="+254 712 345 678"
+						/>
+					</FormLabel>
 
-				<FormLabel
-					label="Date of Birth"
-					name="dob"
-					rules={[{ required: true }]}
-				>
-					<StyledDatePicker
-						format="YYYY-MM-DD"
-						disabledDate={(current) => current > moment().endOf("day")}
-					/>
-				</FormLabel>
+					<FormLabel
+						label="Location"
+						name="location"
+						rules={[{ required: true }]}
+					>
+						<StyledInput
+							prefix={<EnvironmentOutlined />}
+							placeholder="Nairobi, Kenya"
+						/>
+					</FormLabel>
 
-				<FormLabel label="Gender" name="gender" rules={[{ required: true }]}>
-					<StyledSelect placeholder="Select gender">
-						<Option value="male">Male</Option>
-						<Option value="female">Female</Option>
-						<Option value="other">Other</Option>
-					</StyledSelect>
-				</FormLabel>
+					<SectionHeader>
+						<h3>
+							<CalendarOutlined /> Additional Information
+						</h3>
+					</SectionHeader>
 
-				<FormLabel label="Bio" name="bio">
-					<StyledTextArea
-						rows={4}
-						placeholder="Tell us about yourself..."
-						showCount
-						maxLength={200}
-					/>
-				</FormLabel>
-			</Form>
-		</FormContainer>
+					<FormLabel
+						label="Date of Birth"
+						name="dob"
+						rules={[{ required: true }]}
+					>
+						<StyledDatePicker
+							format="YYYY-MM-DD"
+							disabledDate={(current) => current > moment().endOf("day")}
+						/>
+					</FormLabel>
+
+					<FormLabel label="Gender" name="gender" rules={[{ required: true }]}>
+						<StyledSelect placeholder="Select gender">
+							<Option value="male">Male</Option>
+							<Option value="female">Female</Option>
+							<Option value="other">Other</Option>
+						</StyledSelect>
+					</FormLabel>
+
+					<FormLabel label="Bio" name="bio">
+						<StyledTextArea
+							rows={4}
+							placeholder="Tell us about yourself..."
+							showCount
+							maxLength={200}
+						/>
+					</FormLabel>
+				</Form>
+			</FormContainer>
+		</Modal>
 	);
 };
 
 ModalForm.propTypes = {
 	form: PropTypes.object.isRequired,
 	editData: PropTypes.object.isRequired,
-    handleSave: PropTypes.func.isRequired,
+	handleSave: PropTypes.func.isRequired,
+	isVisible: PropTypes.bool.isRequired,
+	onCancel: PropTypes.func.isRequired,
+	savingChanges: PropTypes.bool,
 };
 
-export default ModalForm;
+const GlobalModalStyle = styled.div`
+	.profile-edit-modal {
+		.ant-modal-header {
+			padding: 16px 24px;
+			border-bottom: 1px solid #f0f0f0;
+			margin-bottom: 0;
+		}
+
+		.ant-modal-content {
+			border-radius: 16px;
+			overflow: hidden;
+		}
+
+		.ant-modal-footer {
+			border-top: 1px solid #f0f0f0;
+			padding: 16px 24px;
+		}
+	}
+`;
+
+const WrappedModalForm = (props) => (
+	<GlobalModalStyle>
+		<ModalForm {...props} />
+	</GlobalModalStyle>
+);
+
+export default WrappedModalForm;

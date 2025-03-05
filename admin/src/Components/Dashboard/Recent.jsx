@@ -1,17 +1,5 @@
-import React from "react";
-import {
-	Card,
-	Col,
-	Row,
-	Statistic,
-	Table,
-	Avatar,
-	List,
-	Skeleton,
-	Tag,
-	Badge,
-	Typography,
-} from "antd";
+import React, { useMemo, useState, useEffect } from "react";
+import { Card, Col, Row, Table, List, Skeleton, Tag, Typography } from "antd";
 import {
 	ShoppingCartOutlined,
 	NotificationOutlined,
@@ -20,7 +8,7 @@ import {
 
 const { Title, Text } = Typography;
 
-// ✅ Transaction Data with Status Colors
+// Move data outside component
 const columns = [
 	{ title: "Product", dataIndex: "product", key: "product" },
 	{ title: "Category", dataIndex: "category", key: "category" },
@@ -61,7 +49,6 @@ const tableData = [
 	},
 ];
 
-// ✅ Notifications with Icons & Styling
 const notifications = [
 	{
 		title: "New Order Placed",
@@ -81,10 +68,60 @@ const notifications = [
 ];
 
 const Recent = () => {
+	const [loading, setLoading] = useState(true);
+
+	// Simulate data loading
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setLoading(false);
+		}, 1000);
+		return () => clearTimeout(timer);
+	}, []);
+
+	const renderNotificationItem = useMemo(
+		() => (item) =>
+			(
+				<List.Item className="border-b border-gray-100 last:border-none pb-3">
+					<List.Item.Meta
+						avatar={item.icon}
+						title={
+							<Text strong className="text-gray-700">
+								{item.title}
+							</Text>
+						}
+						description={
+							<Text type="secondary" className="text-gray-500">
+								{item.description}
+							</Text>
+						}
+					/>
+				</List.Item>
+			),
+		[]
+	);
+
+	if (loading) {
+		return (
+			<div className="w-full py-4 px-2 sm:px-4 lg:px-8">
+				<Row gutter={[24, 24]} justify="center">
+					<Col xs={24} md={16}>
+						<Card className="rounded-xl shadow-lg">
+							<Skeleton active />
+						</Card>
+					</Col>
+					<Col xs={24} md={8}>
+						<Card className="rounded-xl shadow-lg">
+							<Skeleton active />
+						</Card>
+					</Col>
+				</Row>
+			</div>
+		);
+	}
+
 	return (
 		<div className="w-full py-4 px-2 sm:px-4 lg:px-8">
 			<Row gutter={[24, 24]} justify="center">
-				{/* Recent Transactions Section */}
 				<Col xs={24} md={16}>
 					<Card
 						title={
@@ -105,7 +142,6 @@ const Recent = () => {
 					</Card>
 				</Col>
 
-				{/* Notifications Section */}
 				<Col xs={24} md={8}>
 					<Card
 						title={
@@ -118,23 +154,7 @@ const Recent = () => {
 					>
 						<List
 							dataSource={notifications}
-							renderItem={(item) => (
-								<List.Item className="border-b border-gray-100 last:border-none pb-3">
-									<List.Item.Meta
-										avatar={<Avatar size={40} icon={item.icon} />}
-										title={
-											<Text strong className="text-gray-700">
-												{item.title}
-											</Text>
-										}
-										description={
-											<Text type="secondary" className="text-gray-500">
-												{item.description}
-											</Text>
-										}
-									/>
-								</List.Item>
-							)}
+							renderItem={renderNotificationItem}
 						/>
 					</Card>
 				</Col>
@@ -143,4 +163,4 @@ const Recent = () => {
 	);
 };
 
-export default Recent;
+export default React.memo(Recent);

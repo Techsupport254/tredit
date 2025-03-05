@@ -3,12 +3,14 @@ import react from "@vitejs/plugin-react";
 import { readFileSync } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import tailwindcss from "@tailwindcss/vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-	plugins: [react(), tailwindcss()],
+	plugins: [react()],
+	css: {
+		postcss: "./postcss.config.js",
+	},
 	server: {
 		https: {
 			key: readFileSync(path.resolve(__dirname, "localhost-key.pem")),

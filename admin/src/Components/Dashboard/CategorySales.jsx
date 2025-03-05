@@ -1,9 +1,9 @@
-import React, { useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Card, Col, Row, Skeleton } from "antd";
 import { Column } from "@ant-design/plots";
 import { WorldMap } from "react-svg-worldmap";
 
-// ✅ Dummy Product Views Data for TikTok, Facebook, Instagram
+// Move data outside component
 const productViewsData = [
 	{ day: "Sun", platform: "TikTok", views: 8000 },
 	{ day: "Sun", platform: "Facebook", views: 10000 },
@@ -28,7 +28,6 @@ const productViewsData = [
 	{ day: "Sat", platform: "Instagram", views: 12500 },
 ];
 
-// ✅ Dummy Active Users Data
 const userData = [
 	{ country: "us", value: 5000 },
 	{ country: "gb", value: 1200 },
@@ -39,32 +38,43 @@ const userData = [
 ];
 
 const ProductViews = () => {
+	const [loading, setLoading] = useState(true);
 
-	// Column Chart Config
-	const columnConfig = {
-		data: productViewsData,
-		xField: "day",
-		yField: "views",
-		seriesField: "platform",
-		isGroup: true,
-		legend: { position: "top-right" },
-		color: ["#FF0050", "#1877F2", "#C13584"], // TikTok, Facebook, Instagram colors
-		responsive: true,
-		yAxis: {
-			label: {
-				formatter: (val) => `${val / 1000}K`, // Converts values to "K" format
+	// Simulate data loading
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setLoading(false);
+		}, 1000);
+		return () => clearTimeout(timer);
+	}, []);
+
+	// Memoize chart configuration
+	const columnConfig = useMemo(
+		() => ({
+			data: productViewsData,
+			xField: "day",
+			yField: "views",
+			seriesField: "platform",
+			isGroup: true,
+			legend: { position: "top-right" },
+			color: ["#FF0050", "#1877F2", "#C13584"],
+			responsive: true,
+			animation: false, // Disable animation to prevent flickering
+			yAxis: {
+				label: {
+					formatter: (val) => `${val / 1000}K`,
+				},
 			},
-		},
-		xAxis: {
-			label: {
-				autoHide: false,
-				autoRotate: true,
+			xAxis: {
+				label: {
+					autoHide: false,
+					autoRotate: true,
+				},
 			},
-		},
-		tooltip: {
-			shared: true,
-			showMarkers: false,
-			customContent: (title, data) => `
+			tooltip: {
+				shared: true,
+				showMarkers: false,
+				customContent: (title, data) => `
 				<div style="padding:10px;">
 					<strong>${title}</strong>
 					${data
@@ -77,29 +87,45 @@ const ProductViews = () => {
 						.join("")}
 				</div>
 			`,
-		},
-	};
+			},
+		}),
+		[]
+	);
+
+	if (loading) {
+		return (
+			<div className="w-full px-2 sm:px-4 lg:px-8 xl:px-12 py-2 sm:py-4 lg:py-6">
+				<Row gutter={[16, 16]} justify="center">
+					<Col xs={24} sm={24} md={12} lg={10}>
+						<Card className="rounded-xl shadow-lg">
+							<Skeleton active />
+						</Card>
+					</Col>
+					<Col xs={24} sm={24} md={12} lg={14}>
+						<Card className="rounded-xl shadow-lg">
+							<Skeleton active />
+						</Card>
+					</Col>
+				</Row>
+			</div>
+		);
+	}
 
 	return (
 		<div className="w-full px-2 sm:px-4 lg:px-8 xl:px-12 py-2 sm:py-4 lg:py-6">
 			<Row gutter={[16, 16]} justify="center">
-				{/* Product Views Bar Chart - Stacks Below on Mobile */}
 				<Col xs={24} sm={24} md={12} lg={10}>
 					<Card
 						title="Product Views (TikTok, Facebook, Instagram)"
 						className="rounded-xl shadow-lg"
 						bodyStyle={{ padding: "16px" }}
 					>
-						<div className="w-full">
-							<Column
-								{...columnConfig}
-								style={{ height: "300px", width: "100%" }}
-							/>
+						<div className="w-full" style={{ height: "300px" }}>
+							<Column {...columnConfig} />
 						</div>
 					</Card>
 				</Col>
 
-				{/* Active Users Map - Stacks Below on Mobile */}
 				<Col xs={24} sm={24} md={12} lg={14}>
 					<Card
 						title="User Activity by Country"
@@ -114,7 +140,7 @@ const ProductViews = () => {
 								style={{
 									width: "100%",
 									maxWidth: "600px",
-									height: "auto",
+									height: "300px",
 									overflow: "hidden",
 								}}
 							/>
@@ -126,4 +152,4 @@ const ProductViews = () => {
 	);
 };
 
-export default ProductViews;
+export default React.memo(ProductViews);

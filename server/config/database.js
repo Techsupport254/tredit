@@ -9,6 +9,17 @@ const DB_PASSWORD = process.env.DB_PASS || "";
 const DB_NAME = process.env.DB_NAME || "marketplace";
 const USE_SSL = process.env.DB_SSL === "true"; // Enable SSL if needed
 
+// Initialize Sequelize with configuration
+const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
+	host: DB_HOST,
+	port: DB_PORT,
+	dialect: "postgres",
+	logging: (msg) => console.log(`[Sequelize] ${msg}`), // Enable logging for debugging
+	define: {
+		timestamps: true,
+	},
+});
+
 // Ensure the database exists before connecting with Sequelize
 async function createDatabaseIfNotExists() {
 	try {
@@ -53,19 +64,17 @@ async function createDatabaseIfNotExists() {
 	}
 }
 
-// Initialize Sequelize connection
-const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
-	host: DB_HOST,
-	port: DB_PORT,
-	dialect: "postgres",
-	logging: (msg) => console.log(`[Sequelize] ${msg}`), // Enable logging for debugging
-});
-
 async function connectDB() {
 	try {
 		await sequelize.authenticate();
 		console.log("[DB] Connection to the database established successfully.");
-		return sequelize; // RETURN the sequelize instance
+
+		// Force sync all models
+		console.log("[DB] Forcing database schema synchronization...");
+		await sequelize.sync({ force: true });
+		console.log("[DB] Database schema synchronized successfully.");
+
+		return sequelize;
 	} catch (error) {
 		console.error("[DB ERROR] Unable to connect to the database:", error);
 		throw error;

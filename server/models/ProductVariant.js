@@ -1,3 +1,6 @@
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/database");
+
 const ProductVariant = sequelize.define(
 	"ProductVariant",
 	{
@@ -6,7 +9,14 @@ const ProductVariant = sequelize.define(
 			defaultValue: DataTypes.UUIDV4,
 			primaryKey: true,
 		},
-		product_id: { type: DataTypes.UUID, allowNull: false }, // Foreign key to Product
+		product_id: {
+			type: DataTypes.UUID,
+			allowNull: false,
+			references: {
+				model: "Products",
+				key: "id",
+			},
+		},
 		variant_name: { type: DataTypes.STRING, allowNull: false },
 		variant_price: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
 		variant_stock: {
@@ -17,8 +27,8 @@ const ProductVariant = sequelize.define(
 		variant_sku: { type: DataTypes.STRING, allowNull: false, unique: true },
 	},
 	{
-		indexes: [
-			{ fields: ["product_id"] }, // Index for filtering by product
-		],
+		indexes: [{ fields: ["product_id"] }],
 	}
 );
+
+module.exports = ProductVariant;

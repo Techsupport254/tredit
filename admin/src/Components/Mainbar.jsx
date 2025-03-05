@@ -1,18 +1,11 @@
 import { Alert } from "antd"; // Import Ant Design ErrorBoundary
-import Breadcrumb from "./Breadcrumb";
-import Routes from "../routes"; // Import the dynamic Routes component
+import { Outlet } from "react-router-dom";
 
 const Mainbar = () => {
 	return (
-		<div className="py-0 px-2 sm:px-1 flex-1 flex flex-col bg-white overflow-hidden">
-			{/* Breadcrumb Navigation */}
-			<Breadcrumb />
-
-			{/* Main Content - Dynamic Routes with Error Boundary */}
+		<div className="p-2">
 			<Alert.ErrorBoundary>
-				<div className="overflow-y-auto">
-					<Routes />
-				</div>
+				<Outlet />
 			</Alert.ErrorBoundary>
 		</div>
 	);

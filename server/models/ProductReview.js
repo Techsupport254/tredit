@@ -1,3 +1,6 @@
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/database");
+
 const ProductReview = sequelize.define(
 	"ProductReview",
 	{
@@ -6,7 +9,14 @@ const ProductReview = sequelize.define(
 			defaultValue: DataTypes.UUIDV4,
 			primaryKey: true,
 		},
-		product_id: { type: DataTypes.UUID, allowNull: false }, // Foreign key to Product
+		product_id: {
+			type: DataTypes.UUID,
+			allowNull: false,
+			references: {
+				model: "Products",
+				key: "id",
+			},
+		},
 		reviewer_name: { type: DataTypes.STRING, allowNull: false },
 		reviewer_email: { type: DataTypes.STRING, allowNull: false },
 		review_rating: { type: DataTypes.INTEGER, allowNull: false },
@@ -16,8 +26,8 @@ const ProductReview = sequelize.define(
 		review_verified: { type: DataTypes.BOOLEAN, defaultValue: false },
 	},
 	{
-		indexes: [
-			{ fields: ["product_id"] }, // Index for filtering by product
-		],
+		indexes: [{ fields: ["product_id"] }],
 	}
 );
+
+module.exports = ProductReview;

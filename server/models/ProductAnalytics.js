@@ -1,3 +1,6 @@
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/database");
+
 const ProductAnalytics = sequelize.define(
 	"ProductAnalytics",
 	{
@@ -6,7 +9,14 @@ const ProductAnalytics = sequelize.define(
 			defaultValue: DataTypes.UUIDV4,
 			primaryKey: true,
 		},
-		product_id: { type: DataTypes.UUID, allowNull: false }, // Foreign key to Product
+		product_id: {
+			type: DataTypes.UUID,
+			allowNull: false,
+			references: {
+				model: "Products",
+				key: "id",
+			},
+		},
 		views_count: { type: DataTypes.INTEGER, defaultValue: 0 },
 		purchases_count: { type: DataTypes.INTEGER, defaultValue: 0 },
 		wishlist_count: { type: DataTypes.INTEGER, defaultValue: 0 },
@@ -18,3 +28,5 @@ const ProductAnalytics = sequelize.define(
 		],
 	}
 );
+
+module.exports = ProductAnalytics;

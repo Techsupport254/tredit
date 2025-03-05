@@ -1,171 +1,228 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-contract MilestoneEscrow {
-    enum State { AWAITING_PAYMENT, AWAITING_APPROVAL, COMPLETE, DISPUTE }
-    State public state;
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Context.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "./UserProfile.sol";
 
-    address public immutable client;
-    address public immutable freelancer;
-    address public immutable arbitrator;
-    uint256 public immutable totalAmount;
-    uint256 public immutable disputeTimeLimit;
-    uint256 public currentMilestone;
-    uint256 public milestoneCount;
-    uint256 public lastInteraction;
+contract MilestoneEscrow is Context, Ownable, ReentrancyGuard {
+    UserProfile private immutable userProfile;
+    address private _trustedForwarder;
 
     struct Milestone {
         uint256 amount;
-        bool isPaid;
+        bool isCompleted;
+        bool isFunded;
+        bool isReleased;
+        uint256 completedAt;
+        uint256 releasedAt;
     }
 
-    mapping(uint256 => Milestone) public milestones;
-
-    event MilestoneFunded(uint256 indexed milestoneIndex, uint256 amount);
-    event MilestoneApproved(uint256 indexed milestoneIndex);
-    event PaymentReleased(uint256 indexed milestoneIndex, uint256 amount);
-    event DisputeRaised(uint256 indexed milestoneIndex);
-    event DisputeResolved(uint256 indexed milestoneIndex, address winner);
-    event RefundIssued(uint256 indexed milestoneIndex, uint256 amount);
-
-    modifier onlyClient() {
-        require(msg.sender == client, "Only client can call this function");
-        _;
+    struct Project {
+        address client;
+        address freelancer;
+        uint256 totalAmount;
+        uint256 totalMilestones;
+        uint256 completedMilestones;
+        uint256 releasedMilestones;
+        bool isActive;
+        mapping(uint256 => Milestone) milestones;
     }
 
-    modifier onlyFreelancer() {
-        require(msg.sender == freelancer, "Only freelancer can call this function");
-        _;
+    mapping(uint256 => Project) private projects;
+    uint256 private nextProjectId;
+
+    event ProjectCreated(uint256 indexed projectId, address indexed client, address indexed freelancer);
+    event MilestoneCompleted(uint256 indexed projectId, uint256 milestoneIndex);
+    event MilestoneReleased(uint256 indexed projectId, uint256 milestoneIndex, uint256 amount);
+    event ProjectCancelled(uint256 indexed projectId);
+    event TrustedForwarderUpdated(address indexed oldForwarder, address indexed newForwarder);
+
+    error InvalidForwarderAddress();
+    error InvalidUserProfileAddress();
+    error UnauthorizedAccess();
+    error InvalidMilestone();
+    error InsufficientFunds();
+    error ProjectNotActive();
+    error MilestoneAlreadyCompleted();
+    error MilestoneNotCompleted();
+    error MilestoneAlreadyReleased();
+    error MilestoneNotFunded();
+
+    constructor(address _userProfile) {
+        if (_userProfile == address(0)) revert InvalidUserProfileAddress();
+        userProfile = UserProfile(_userProfile);
     }
 
-    modifier onlyArbitrator() {
-        require(msg.sender == arbitrator, "Only arbitrator can call this function");
-        _;
+    function getTrustedForwarder() public view returns (address) {
+        return _trustedForwarder;
     }
 
-    modifier inState(State expectedState) {
-        require(state == expectedState, "Invalid state");
-        _;
+    function setTrustedForwarder(address newForwarder) external onlyOwner {
+        if (newForwarder == address(0)) revert InvalidForwarderAddress();
+        address oldForwarder = _trustedForwarder;
+        _trustedForwarder = newForwarder;
+        emit TrustedForwarderUpdated(oldForwarder, newForwarder);
     }
 
-    constructor(
-        address _freelancer,
-        address _arbitrator,
-        uint256[] memory _milestoneAmounts,
-        uint256 _disputeTimeLimit
-    ) payable {
-        require(msg.value > 0, "Total payment must be greater than zero");
-        require(_milestoneAmounts.length > 0, "At least one milestone required");
+    function isTrustedForwarder(address forwarder) public view returns (bool) {
+        return forwarder == getTrustedForwarder();
+    }
 
-        client = msg.sender;
-        freelancer = _freelancer;
-        arbitrator = _arbitrator;
-        totalAmount = msg.value;
-        disputeTimeLimit = _disputeTimeLimit;
-        lastInteraction = block.timestamp;
+    function _msgSender() internal view virtual override returns (address sender) {
+        if (isTrustedForwarder(msg.sender)) {
+            assembly {
+                sender := shr(96, calldataload(sub(calldatasize(), 20)))
+            }
+            return sender;
+        }
+        return super._msgSender();
+    }
 
-        uint256 sum = 0;
-        for (uint256 i = 0; i < _milestoneAmounts.length; i++) {
-            milestones[i] = Milestone({
-                amount: _milestoneAmounts[i],
-                isPaid: false
+    function _msgData() internal view virtual override returns (bytes calldata) {
+        if (isTrustedForwarder(msg.sender)) {
+            return msg.data[:msg.data.length - 20];
+        }
+        return super._msgData();
+    }
+
+    function createProject(
+        address freelancer,
+        uint256[] calldata amounts
+    ) external payable returns (uint256) {
+        if (amounts.length == 0) revert InvalidMilestone();
+        
+        uint256 totalAmount = 0;
+        for (uint256 i = 0; i < amounts.length; i++) {
+            totalAmount += amounts[i];
+        }
+        
+        if (msg.value < totalAmount) revert InsufficientFunds();
+
+        uint256 projectId = nextProjectId++;
+        Project storage project = projects[projectId];
+        project.client = _msgSender();
+        project.freelancer = freelancer;
+        project.totalAmount = totalAmount;
+        project.totalMilestones = amounts.length;
+        project.isActive = true;
+
+        for (uint256 i = 0; i < amounts.length; i++) {
+            project.milestones[i] = Milestone({
+                amount: amounts[i],
+                isCompleted: false,
+                isFunded: true,
+                isReleased: false,
+                completedAt: 0,
+                releasedAt: 0
             });
-            sum += _milestoneAmounts[i];
         }
-        require(sum == totalAmount, "Sum of milestones must equal total payment");
-        milestoneCount = _milestoneAmounts.length;
-        currentMilestone = 0;
-        state = State.AWAITING_PAYMENT;
+
+        emit ProjectCreated(projectId, _msgSender(), freelancer);
+        return projectId;
     }
 
-    function fundMilestone() external onlyClient inState(State.AWAITING_PAYMENT) {
-        require(currentMilestone < milestoneCount, "All milestones funded");
-        state = State.AWAITING_APPROVAL;
-        emit MilestoneFunded(currentMilestone, milestones[currentMilestone].amount);
+    function completeMilestone(uint256 projectId, uint256 milestoneIndex) external {
+        Project storage project = projects[projectId];
+        if (!project.isActive) revert ProjectNotActive();
+        if (_msgSender() != project.freelancer) revert UnauthorizedAccess();
+        if (milestoneIndex >= project.totalMilestones) revert InvalidMilestone();
+
+        Milestone storage milestone = project.milestones[milestoneIndex];
+        if (milestone.isCompleted) revert MilestoneAlreadyCompleted();
+
+        milestone.isCompleted = true;
+        milestone.completedAt = block.timestamp;
+        project.completedMilestones++;
+
+        emit MilestoneCompleted(projectId, milestoneIndex);
     }
 
-    function approveMilestone() external onlyClient inState(State.AWAITING_APPROVAL) {
-        require(currentMilestone < milestoneCount, "All milestones completed");
-        Milestone storage milestone = milestones[currentMilestone];
-        require(!milestone.isPaid, "Milestone already paid");
+    function releaseMilestone(uint256 projectId, uint256 milestoneIndex) external nonReentrant {
+        Project storage project = projects[projectId];
+        if (!project.isActive) revert ProjectNotActive();
+        if (_msgSender() != project.client) revert UnauthorizedAccess();
+        if (milestoneIndex >= project.totalMilestones) revert InvalidMilestone();
 
-        milestone.isPaid = true;
-        state = State.AWAITING_PAYMENT;
-        lastInteraction = block.timestamp;
+        Milestone storage milestone = project.milestones[milestoneIndex];
+        if (!milestone.isCompleted) revert MilestoneNotCompleted();
+        if (!milestone.isFunded) revert MilestoneNotFunded();
+        if (milestone.isReleased) revert MilestoneAlreadyReleased();
 
-        (bool success, ) = freelancer.call{value: milestone.amount}("");
-        require(success, "Transfer to freelancer failed");
+        milestone.isReleased = true;
+        milestone.releasedAt = block.timestamp;
+        project.releasedMilestones++;
 
-        emit MilestoneApproved(currentMilestone);
-        emit PaymentReleased(currentMilestone, milestone.amount);
+        (bool success, ) = project.freelancer.call{value: milestone.amount}("");
+        require(success, "Transfer failed");
 
-        currentMilestone++;
-        if (currentMilestone == milestoneCount) {
-            state = State.COMPLETE;
-        }
+        emit MilestoneReleased(projectId, milestoneIndex, milestone.amount);
     }
 
-    function raiseDispute() external {
-        require(
-            msg.sender == client || msg.sender == freelancer,
-            "Only client or freelancer can raise a dispute"
-        );
-        require(state == State.AWAITING_APPROVAL, "No active milestone to dispute");
-        require(
-            block.timestamp <= lastInteraction + disputeTimeLimit,
-            "Dispute period has expired"
-        );
+    function cancelProject(uint256 projectId) external {
+        Project storage project = projects[projectId];
+        if (!project.isActive) revert ProjectNotActive();
+        if (_msgSender() != project.client) revert UnauthorizedAccess();
 
-        state = State.DISPUTE;
-        emit DisputeRaised(currentMilestone);
-    }
-
-    function resolveDispute(address winner) external onlyArbitrator inState(State.DISPUTE) {
-        require(
-            winner == client || winner == freelancer,
-            "Winner must be client or freelancer"
-        );
-
-        Milestone storage milestone = milestones[currentMilestone];
-        if (winner == client) {
-            state = State.AWAITING_PAYMENT;
-            lastInteraction = block.timestamp;
-        } else {
-            milestone.isPaid = true;
-            state = State.AWAITING_PAYMENT;
-            lastInteraction = block.timestamp;
-
-            (bool success, ) = freelancer.call{value: milestone.amount}("");
-            require(success, "Transfer to freelancer failed");
-
-            emit PaymentReleased(currentMilestone, milestone.amount);
-            currentMilestone++;
-            if (currentMilestone == milestoneCount) {
-                state = State.COMPLETE;
+        uint256 remainingAmount = 0;
+        for (uint256 i = 0; i < project.totalMilestones; i++) {
+            Milestone storage milestone = project.milestones[i];
+            if (milestone.isFunded && !milestone.isReleased) {
+                remainingAmount += milestone.amount;
+                milestone.isFunded = false;
             }
         }
-        emit DisputeResolved(currentMilestone, winner);
+
+        project.isActive = false;
+
+        if (remainingAmount > 0) {
+            (bool success, ) = project.client.call{value: remainingAmount}("");
+            require(success, "Refund failed");
+        }
+
+        emit ProjectCancelled(projectId);
     }
 
-    function refundClient() external onlyClient {
-        require(state != State.COMPLETE, "Contract already completed");
-        require(
-            block.timestamp > lastInteraction + disputeTimeLimit,
-            "Dispute period not yet expired"
+    function getProject(uint256 projectId) external view returns (
+        address client,
+        address freelancer,
+        uint256 totalAmount,
+        uint256 totalMilestones,
+        uint256 completedMilestones,
+        uint256 releasedMilestones,
+        bool isActive
+    ) {
+        Project storage project = projects[projectId];
+        return (
+            project.client,
+            project.freelancer,
+            project.totalAmount,
+            project.totalMilestones,
+            project.completedMilestones,
+            project.releasedMilestones,
+            project.isActive
         );
+    }
 
-        uint256 refundAmount = 0;
-        for (uint256 i = currentMilestone; i < milestoneCount; i++) {
-            if (!milestones[i].isPaid) {
-                refundAmount += milestones[i].amount;
-                milestones[i].isPaid = true;
-            }
-        }
-        state = State.COMPLETE;
-
-        (bool success, ) = client.call{value: refundAmount}("");
-        require(success, "Refund to client failed");
-
-        emit RefundIssued(currentMilestone, refundAmount);
+    function getMilestone(uint256 projectId, uint256 milestoneIndex) external view returns (
+        uint256 amount,
+        bool isCompleted,
+        bool isFunded,
+        bool isReleased,
+        uint256 completedAt,
+        uint256 releasedAt
+    ) {
+        Project storage project = projects[projectId];
+        require(milestoneIndex < project.totalMilestones, "Invalid milestone index");
+        Milestone storage milestone = project.milestones[milestoneIndex];
+        return (
+            milestone.amount,
+            milestone.isCompleted,
+            milestone.isFunded,
+            milestone.isReleased,
+            milestone.completedAt,
+            milestone.releasedAt
+        );
     }
 }

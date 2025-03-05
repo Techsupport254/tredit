@@ -1,5 +1,9 @@
-@import "tailwindcss";
 @import "@fortawesome/fontawesome-free/css/all.min.css";
+@import "react-toastify/dist/ReactToastify.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* 🔹 Base Styles */
 html,

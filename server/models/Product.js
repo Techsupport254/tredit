@@ -47,10 +47,12 @@ const Product = sequelize.define(
 		video_url: { type: DataTypes.STRING, allowNull: true }, // YouTube video URL
 		image_urls: { type: DataTypes.JSON, allowNull: true }, // Array of image URLs
 		video_urls: { type: DataTypes.JSON, allowNull: true }, // Array of additional video URLs
-		created_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-		updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
 	},
 	{
+		tableName: "Products",
+		timestamps: true,
+		createdAt: "created_at",
+		updatedAt: "updated_at",
 		indexes: [
 			{ fields: ["category_id"] }, // Index for filtering by category
 			{ fields: ["brand"] }, // Index for filtering by brand
@@ -58,3 +60,5 @@ const Product = sequelize.define(
 		],
 	}
 );
+
+module.exports = Product;

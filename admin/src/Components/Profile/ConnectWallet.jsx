@@ -1,170 +1,239 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "../../Context/AccountContext";
-import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Tag } from "antd";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Button, Alert, Typography } from "antd";
+import {
+	SafetyOutlined,
+	UserOutlined,
+	ShopOutlined,
+	CheckCircleFilled,
+} from "@ant-design/icons";
 import metamaskIcon from "../../assets/metamask.svg";
 
+const { Title, Text } = Typography;
+
 const ConnectWallet = () => {
-	const { isConnected, userAddress, balance, connectWallet, disconnectWallet } =
-		useAccount();
+	const { walletAddress, connectWallet, loading } = useAccount();
 	const navigate = useNavigate();
+	const location = useLocation();
 	const [error, setError] = useState("");
-	const [isMobile, setIsMobile] = useState(false);
 	const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
 
-	// Detect mobile devices
 	useEffect(() => {
-		const userAgent = navigator.userAgent.toLowerCase();
-		const isMobileDevice =
-			/android|iphone|ipad|ipod/i.test(userAgent) ||
-			navigator.maxTouchPoints > 1;
-		setIsMobile(isMobileDevice);
+		setIsMetaMaskInstalled(typeof window.ethereum !== "undefined");
 	}, []);
 
-	// Check MetaMask installation for both Mobile and Desktop
 	useEffect(() => {
-		const checkMetaMask = async () => {
-			if (isMobile) {
-				// Attempt to open MetaMask mobile app
-				const handle = setTimeout(() => setIsMetaMaskInstalled(false), 2000);
-				window.location.href = "metamask://";
-				setIsMetaMaskInstalled(true);
-				return () => clearTimeout(handle);
-			} else {
-				// Check if MetaMask extension exists
-				setIsMetaMaskInstalled(typeof window.ethereum !== "undefined");
-			}
-		};
-		checkMetaMask();
-	}, [isMobile]);
-
-	// Redirect to dashboard if already connected
-	useEffect(() => {
-		if (isConnected) {
-			navigate("/dashboard", { replace: true });
+		if (walletAddress) {
+			const destination = location.state?.from || "/create-profile";
+			navigate(destination, { replace: true });
 		}
-	}, [isConnected, navigate]);
+	}, [walletAddress, navigate, location.state]);
 
-	// Handle Wallet Connection
 	const handleConnect = async () => {
-		if (!isMetaMaskInstalled) {
-			setError("MetaMask is not installed. Please install it first.");
-			return;
-		}
 		try {
-			await connectWallet();
 			setError("");
-		} catch (err) {
-			console.error("Error connecting wallet:", err);
-			setError("Failed to connect. Make sure MetaMask is installed.");
+			await connectWallet();
+		} catch (error) {
+			console.error("Connection error:", error);
+			setError("Failed to connect wallet. Please try again.");
 		}
 	};
 
+	const steps = [
+		{
+			title: "Install MetaMask",
+			description: isMetaMaskInstalled
+				? "MetaMask extension is installed"
+				: "Get the MetaMask browser extension",
+			completed: isMetaMaskInstalled,
+			current: !isMetaMaskInstalled,
+		},
+		{
+			title: "Connect Wallet",
+			description: walletAddress
+				? `Wallet ${walletAddress.slice(0, 6)}...${walletAddress.slice(
+						-4
+				  )} connected`
+				: "Not connected",
+			completed: !!walletAddress,
+			current: isMetaMaskInstalled && !walletAddress,
+		},
+		{
+			title: "Connect with Google",
+			description: "Link your Google account to create your store",
+			completed: false,
+			current: !!walletAddress,
+		},
+		{
+			title: "Create Store",
+			description: "Set up your store profile",
+			completed: false,
+			current: false,
+		},
+	];
+
+	const features = [
+		{
+			icon: <SafetyOutlined />,
+			text: "Secure Authentication",
+			desc: "Connect securely using your Web3 wallet",
+		},
+		{
+			icon: <UserOutlined />,
+			text: "Personalized Experience",
+			desc: "Create and manage your vendor profile",
+		},
+		{
+			icon: <ShopOutlined />,
+			text: "Vendor Dashboard",
+			desc: "Access your personalized dashboard",
+		},
+	];
+
 	return (
-		<div className="min-h-screen bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center p-6">
-			<motion.div
-				initial={{ opacity: 0, y: -30 }}
-				animate={{ opacity: 1, y: 0 }}
-				transition={{ duration: 0.6, ease: "easeOut" }}
-				className="bg-white bg-opacity-95 rounded-3xl shadow-2xl p-8 w-full max-w-md text-center"
-			>
-				<h1 className="text-4xl font-bold text-gray-800">
-					{isConnected ? "Wallet Connected" : "Connect Your Wallet"}
-				</h1>
-				<p className="mt-4 text-gray-600 text-base">
-					{isConnected
-						? "You are securely connected to MetaMask."
-						: "Connect to MetaMask to access your personalized dashboard."}
-				</p>
-
-				{/* Render Connect or Install button */}
-				{!isConnected && (
-					<>
-						{isMetaMaskInstalled ? (
-							<button
-								onClick={handleConnect}
-								className="mt-8 flex items-center justify-center w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg shadow transition transform hover:scale-105 duration-300"
-							>
-								<img
-									src={metamaskIcon}
-									alt="MetaMask"
-									className="w-6 h-6 mr-3"
-								/>
-								<span>Connect with MetaMask</span>
-							</button>
-						) : (
-							<a
-								href={
-									isMobile
-										? "https://metamask.app.link/dapp/example.com"
-										: "https://metamask.io/download"
-								}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="mt-8 flex items-center justify-center w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg shadow transition transform hover:scale-105 duration-300"
-							>
-								<img
-									src={metamaskIcon}
-									alt="MetaMask"
-									className="w-6 h-6 mr-3"
-								/>
-								<span>Install MetaMask</span>
-							</a>
-						)}
-					</>
-				)}
-
-				{isConnected && (
-					<div className="mt-8 p-6 bg-gray-100 rounded-xl text-gray-800">
-						<div className="mb-4">
-							<p className="font-medium text-sm text-gray-700">Address:</p>
-							<p className="text-sm break-all text-gray-900">{userAddress}</p>
+		<div className="min-h-screen flex items-center justify-center bg-gray-50 py-8">
+			<div className="w-[1000px] max-w-[90%] mx-auto bg-white rounded-xl overflow-hidden shadow-sm">
+				<div className="grid grid-cols-1 md:grid-cols-2">
+					{/* Left Panel */}
+					<div className="p-8 md:p-12 flex flex-col border-r border-gray-100">
+						<div className="mb-12">
+							<img
+								src={metamaskIcon}
+								alt="MetaMask"
+								className="h-8 w-auto mb-6"
+							/>
+							<Title level={2} className="mb-2">
+								Connect Wallet
+							</Title>
+							<Text type="secondary">
+								Connect your wallet to access the platform
+							</Text>
 						</div>
-						<div className="mb-4">
-							<p className="font-medium text-sm text-gray-700">Balance:</p>
-							<p className="text-xl font-bold text-gray-800">{balance} ETH</p>
+
+						{/* Steps */}
+						<div className="flex-grow mb-12">
+							<div className="relative flex flex-col gap-8">
+								{steps.map((step, index) => (
+									<div key={index} className="flex items-start">
+										{/* Step connector */}
+										{index < steps.length - 1 && (
+											<div
+												className={`absolute left-[15px] h-8 w-[2px] mt-8
+													${step.completed ? "bg-blue-500" : "bg-gray-200"}`}
+												style={{ top: `${index * 80}px` }}
+											/>
+										)}
+
+										{/* Step circle */}
+										<div
+											className={`relative z-10 flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center
+												${
+													step.completed
+														? "bg-blue-500 text-white"
+														: step.current
+														? "bg-white border-2 border-blue-500 text-blue-500"
+														: "bg-gray-100 text-gray-400"
+												}`}
+										>
+											{step.completed ? (
+												<CheckCircleFilled />
+											) : (
+												<Text className="text-sm">{index + 1}</Text>
+											)}
+										</div>
+
+										{/* Step content */}
+										<div className="ml-4 min-w-0">
+											<Text
+												strong
+												className={step.current ? "text-blue-500" : ""}
+											>
+												{step.title}
+											</Text>
+											<Text type="secondary" className="text-sm block">
+												{step.description}
+											</Text>
+										</div>
+									</div>
+								))}
+							</div>
 						</div>
-						<button
-							onClick={disconnectWallet}
-							className="mt-4 w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-lg transition transform hover:scale-105 duration-300"
-						>
-							Disconnect Wallet
-						</button>
+
+						{/* Connect Button */}
+						<div className="flex-grow">
+							{error && (
+								<Alert message={error} type="error" showIcon className="mb-4" />
+							)}
+
+							{!isMetaMaskInstalled ? (
+								<Button
+									href="https://metamask.io/download"
+									target="_blank"
+									rel="noopener noreferrer"
+									type="primary"
+									size="large"
+									className="w-full h-12"
+								>
+									Install MetaMask Extension
+								</Button>
+							) : (
+								<Button
+									onClick={handleConnect}
+									icon={
+										<img src={metamaskIcon} alt="" className="w-5 h-5 mr-2" />
+									}
+									className="w-full h-12"
+									type="primary"
+									loading={loading}
+									disabled={loading}
+									size="large"
+								>
+									{loading ? "Connecting..." : "Connect with MetaMask"}
+								</Button>
+							)}
+						</div>
+
+						{/* Footer */}
+						<div className="mt-8 text-center">
+							<Text type="secondary" className="text-sm">
+								New to Web3?{" "}
+								<a
+									href="https://ethereum.org/wallets/"
+									target="_blank"
+									rel="noopener noreferrer"
+									className="text-blue-500 hover:text-blue-600"
+								>
+									Learn about wallets
+								</a>
+							</Text>
+						</div>
 					</div>
-				)}
 
-				{error && (
-					<div className="mt-6 p-3 bg-red-100 border border-red-300 rounded-lg">
-						<p className="text-sm text-red-600">{error}</p>
-					</div>
-				)}
+					{/* Right Panel */}
+					<div className="hidden md:flex flex-col justify-center p-12 bg-gray-50">
+						<Title level={2} className="mb-8">
+							Connect with every application
+						</Title>
 
-				<div className="mt-10 border-t border-gray-300 pt-4">
-					<h3 className="text-lg font-semibold text-gray-800">
-						Supported Wallet
-					</h3>
-					<div className="mt-4 flex items-center justify-between">
-						<div className="flex items-center gap-3">
-							<img src={metamaskIcon} alt="MetaMask" className="w-10 h-10" />
-							<span className="text-base font-medium text-gray-700">
-								MetaMask Wallet
-							</span>
+						<div className="space-y-8">
+							{features.map((feature, index) => (
+								<div key={index} className="flex items-start gap-4">
+									<div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-500">
+										{feature.icon}
+									</div>
+									<div>
+										<Text strong className="block mb-1">
+											{feature.text}
+										</Text>
+										<Text type="secondary">{feature.desc}</Text>
+									</div>
+								</div>
+							))}
 						</div>
-						<Tag
-							color={isMetaMaskInstalled ? "green" : "red"}
-							className="text-sm font-medium"
-							style={{
-								border: "none",
-								borderRadius: "999px",
-								padding: "4px 12px",
-							}}
-						>
-							{isMetaMaskInstalled ? "Installed" : "Not Installed"}
-						</Tag>
 					</div>
 				</div>
-			</motion.div>
+			</div>
 		</div>
 	);
 };

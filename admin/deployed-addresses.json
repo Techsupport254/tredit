@@ -1,0 +1,10 @@
+{
+  "Store": "0xE79eF6771FDA502C1aB1e4B196e3c5A38B4D24b9",
+  "UserProfile": "0x27dd0912f69fAA124C52C508b2ec5503Ec983a89",
+  "MilestoneEscrow": "0xc1C9Bbe61f6079C860E1FC1DD23d026E0C092e43",
+  "BiconomyForwarder": "0x3d5c5b61e39bf45e3cb0e733837ad6e74c3c7937",
+  "network": "amoy",
+  "chainId": 80002,
+  "deployer": "0xa5ac70878636Dd1B945f4f74fC36fD6430adCb5D",
+  "timestamp": "2025-03-05T06:59:17.107Z"
+}

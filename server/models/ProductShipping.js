@@ -1,3 +1,6 @@
+const { DataTypes } = require("sequelize");
+const { sequelize } = require("../config/database");
+
 const ProductShipping = sequelize.define(
 	"ProductShipping",
 	{
@@ -6,7 +9,14 @@ const ProductShipping = sequelize.define(
 			defaultValue: DataTypes.UUIDV4,
 			primaryKey: true,
 		},
-		product_id: { type: DataTypes.UUID, allowNull: false }, // Foreign key to Product
+		product_id: {
+			type: DataTypes.UUID,
+			allowNull: false,
+			references: {
+				model: "Products",
+				key: "id",
+			},
+		},
 		shipping_cost: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
 		shipping_time: { type: DataTypes.STRING, allowNull: true },
 		free_shipping: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -19,3 +29,5 @@ const ProductShipping = sequelize.define(
 		],
 	}
 );
+
+module.exports = ProductShipping;
