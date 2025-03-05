@@ -1,7 +1,7 @@
 const { DataTypes } = require("sequelize");
-const { sequelize } = require("../config/database");
+const db = require("../config/database");
 
-const SocialAccount = sequelize.define(
+const SocialAccount = db.sequelize.define(
 	"SocialAccount",
 	{
 		id: {
@@ -18,37 +18,36 @@ const SocialAccount = sequelize.define(
 			},
 		},
 		platform: {
-			type: DataTypes.ENUM("TikTok", "Facebook", "Instagram", "YouTube"),
+			type: DataTypes.STRING,
+			allowNull: false,
+		},
+		platformUserId: {
+			type: DataTypes.STRING,
+			allowNull: false,
+		},
+		platformUsername: {
+			type: DataTypes.STRING,
 			allowNull: false,
 		},
 		accessToken: {
 			type: DataTypes.TEXT,
-			allowNull: true,
+			allowNull: false,
 		},
 		refreshToken: {
 			type: DataTypes.TEXT,
 			allowNull: true,
 		},
-		platformUserId: {
-			type: DataTypes.STRING,
+		tokenExpiry: {
+			type: DataTypes.DATE,
 			allowNull: true,
 		},
-		username: {
-			type: DataTypes.STRING,
-			allowNull: true,
-		},
-		profileUrl: {
-			type: DataTypes.STRING,
-			allowNull: true,
-		},
-		stats: {
+		metadata: {
 			type: DataTypes.JSON,
 			allowNull: true,
-			defaultValue: {},
 		},
 		lastSynced: {
 			type: DataTypes.DATE,
-			allowNull: true,
+			defaultValue: DataTypes.NOW,
 		},
 		isActive: {
 			type: DataTypes.BOOLEAN,

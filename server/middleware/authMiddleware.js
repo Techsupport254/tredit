@@ -5,26 +5,29 @@ const UAParser = require("ua-parser-js");
 
 const logLoginAttempt = async (userId, req, status, failureReason = null) => {
 	try {
-		const parser = new UAParser(req.headers["user-agent"]);
-		const browser = parser.getBrowser();
-		const os = parser.getOS();
-		const device = parser.getDevice();
+		// Only create login history if userId is provided
+		if (userId) {
+			const parser = new UAParser(req.headers["user-agent"]);
+			const browser = parser.getBrowser();
+			const os = parser.getOS();
+			const device = parser.getDevice();
 
-		await UserLoginHistory.create({
-			userId,
-			ipAddress: req.ip || req.connection.remoteAddress,
-			userAgent: req.headers["user-agent"],
-			browser: browser.name,
-			browserVersion: browser.version,
-			os: os.name,
-			osVersion: os.version,
-			device: device.model || device.vendor,
-			deviceType: device.type || "other",
-			status,
-			failureReason,
-			loginMethod: "wallet",
-			location: null, // You can add IP geolocation service here if needed
-		});
+			await UserLoginHistory.create({
+				userId,
+				ipAddress: req.ip || req.connection.remoteAddress,
+				userAgent: req.headers["user-agent"],
+				browser: browser.name,
+				browserVersion: browser.version,
+				os: os.name,
+				osVersion: os.version,
+				device: device.model || device.vendor,
+				deviceType: device.type || "other",
+				status,
+				failureReason,
+				loginMethod: "wallet",
+				location: null, // You can add IP geolocation service here if needed
+			});
+		}
 	} catch (error) {
 		console.error("Error logging login attempt:", error);
 	}

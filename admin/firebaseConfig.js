@@ -39,6 +39,7 @@ googleProvider.addScope("https://www.googleapis.com/auth/youtube.download");
 
 // Create a user store
 let currentUser = null;
+let currentToken = null;
 const userListeners = new Set();
 
 // Notify listeners when user changes
@@ -55,6 +56,21 @@ const subscribeToUser = (listener) => {
 
 // Get current user
 const getCurrentUser = () => currentUser;
+
+// Get current token
+const getCurrentToken = () => currentToken;
+
+// Update axios default authorization header
+const updateAxiosAuth = async (user) => {
+	if (user) {
+		const token = await user.getIdToken(true);
+		currentToken = token;
+		axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+	} else {
+		currentToken = null;
+		delete axios.defaults.headers.common["Authorization"];
+	}
+};
 
 // Add this constant
 const API_URL = import.meta.env.VITE_PUBLIC_API_URL;
@@ -85,17 +101,55 @@ const fetchYouTubeData = async (accessToken) => {
 	}
 };
 
-// Modify the signInWithGoogle function to check if user exists
+// Listen to auth state changes
+onAuthStateChanged(auth, async (firebaseUser) => {
+	if (firebaseUser) {
+		await updateAxiosAuth(firebaseUser);
+		if (!currentUser) {
+			currentUser = {
+				uid: firebaseUser.uid,
+				name: firebaseUser.displayName || "",
+				email: firebaseUser.email || "",
+				photoURL: firebaseUser.photoURL || null,
+				accessToken: currentToken,
+				socialMedias: [],
+			};
+			notifyUserListeners(currentUser);
+		}
+		console.log("User logged in:", currentUser);
+	} else {
+		currentUser = null;
+		currentToken = null;
+		delete axios.defaults.headers.common["Authorization"];
+		notifyUserListeners(null);
+		console.log("User logged out");
+	}
+});
+
+// Modify the signInWithGoogle function
 const signInWithGoogle = async () => {
 	try {
 		const result = await signInWithPopup(auth, googleProvider);
 		const credential = GoogleAuthProvider.credentialFromResult(result);
-		const token = await result.user.getIdToken(true);
+
+		// Update axios auth header
+		await updateAxiosAuth(result.user);
 
 		// Get YouTube data if available
 		const youtubeData = credential?.accessToken
 			? await fetchYouTubeData(credential.accessToken)
 			: null;
+
+		// Store tokens in backend
+		try {
+			await axios.post(`${API_URL}/users/update-tokens`, {
+				accessToken: credential.accessToken,
+				refreshToken: credential.refreshToken,
+				expiresIn: credential.expiresIn,
+			});
+		} catch (error) {
+			console.error("Error storing tokens:", error);
+		}
 
 		// Create enhanced user object
 		const enhancedUser = {
@@ -103,8 +157,12 @@ const signInWithGoogle = async () => {
 			name: result.user.displayName || "",
 			email: result.user.email || "",
 			photoURL: result.user.photoURL || null,
-			accessToken: token,
+			accessToken: currentToken,
 			googleAccessToken: credential?.accessToken || null,
+			refreshToken: credential?.refreshToken || null,
+			tokenExpiry: credential?.expiresIn
+				? new Date(Date.now() + credential.expiresIn * 1000)
+				: null,
 			youtube: youtubeData,
 			socialMedias: youtubeData
 				? [
@@ -148,6 +206,8 @@ const googleLogout = async () => {
 	try {
 		await signOut(auth);
 		currentUser = null;
+		currentToken = null;
+		delete axios.defaults.headers.common["Authorization"];
 		notifyUserListeners(null);
 		console.log("User logged out successfully");
 	} catch (error) {
@@ -156,30 +216,7 @@ const googleLogout = async () => {
 	}
 };
 
-// Listen to auth state changes
-onAuthStateChanged(auth, async (firebaseUser) => {
-	if (firebaseUser) {
-		if (!currentUser) {
-			const token = await firebaseUser.getIdToken();
-			currentUser = {
-				uid: firebaseUser.uid,
-				name: firebaseUser.displayName || "",
-				email: firebaseUser.email || "",
-				photoURL: firebaseUser.photoURL || null,
-				accessToken: token,
-				socialMedias: [],
-			};
-			notifyUserListeners(currentUser);
-		}
-		console.log("User logged in:", currentUser);
-	} else {
-		currentUser = null;
-		notifyUserListeners(null);
-		console.log("User logged out");
-	}
-});
-
-// Single consolidated export statement
+// Export additional functions
 export {
 	auth,
 	googleProvider,
@@ -187,5 +224,6 @@ export {
 	signInWithGoogle,
 	googleLogout,
 	getCurrentUser,
+	getCurrentToken,
 	subscribeToUser,
 };

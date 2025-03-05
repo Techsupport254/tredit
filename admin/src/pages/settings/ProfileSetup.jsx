@@ -120,24 +120,21 @@ const ProfileSetup = () => {
 			const result = await linkGoogleProfile(walletAddress, {
 				uid: googleUser.uid,
 				email: googleUser.email,
-				displayName: googleUser.name,
+				displayName: googleUser.displayName || googleUser.name,
 				photoURL: googleUser.photoURL,
 				accessToken: googleUser.accessToken,
 			});
 
 			if (result) {
-				toast.success(
-					"Store created successfully! Redirecting to dashboard..."
-				);
-				setTimeout(() => {
-					navigate("/dashboard");
-				}, 2000);
+				toast.success("Store created successfully!");
+				// Navigation is now handled in linkGoogleProfile
+			} else {
+				setLoading(false);
 			}
 		} catch (error) {
+			setLoading(false);
 			console.error("Store creation error:", error);
 			toast.error(error.message || "Failed to create store");
-		} finally {
-			setLoading(false);
 		}
 	};
 

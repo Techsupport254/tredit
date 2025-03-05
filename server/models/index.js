@@ -1,6 +1,30 @@
-const { sequelize } = require("../config/database");
+const { Sequelize } = require("sequelize");
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
-// Import models
+const sequelize = new Sequelize({
+	dialect: "postgres",
+	host: process.env.DB_HOST || "localhost",
+	port: process.env.DB_PORT || 5432,
+	username: process.env.DB_USER || "postgres",
+	password: process.env.DB_PASSWORD || "",
+	database: process.env.DB_NAME || "tredit",
+	logging: false,
+	dialectOptions: {
+		ssl:
+			process.env.DB_SSL === "true"
+				? {
+						require: true,
+						rejectUnauthorized: false,
+				  }
+				: false,
+	},
+});
+
+// Export the sequelize instance first
+module.exports = { sequelize };
+
+// Import models after exporting sequelize
 const Product = require("./Product");
 const ProductSEO = require("./ProductSEO");
 const ProductShipping = require("./ProductShipping");
@@ -10,6 +34,7 @@ const ProductReview = require("./ProductReview");
 const ProductMedia = require("./ProductMedia");
 const User = require("./User");
 const Store = require("./Store");
+const SocialAccount = require("./SocialAccount");
 
 const initializeModels = () => {
 	// Define associations
@@ -42,12 +67,16 @@ const initializeModels = () => {
 		sourceKey: "walletAddress",
 		as: "store",
 	});
+
+	// Social Account associations
+	User.hasMany(SocialAccount, { foreignKey: "userId" });
+	SocialAccount.belongsTo(User, { foreignKey: "userId" });
 };
 
 // Initialize associations
 initializeModels();
 
-// Export models
+// Update exports to include all models
 module.exports = {
 	sequelize,
 	Product,
@@ -59,4 +88,5 @@ module.exports = {
 	ProductMedia,
 	User,
 	Store,
+	SocialAccount,
 };

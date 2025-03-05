@@ -8,10 +8,14 @@ import {
 import { ethers } from "ethers";
 import PropTypes from "prop-types";
 import axios from "axios";
-import { getCurrentUser, subscribeToUser } from "../../firebaseConfig";
+import {
+	getCurrentUser,
+	subscribeToUser,
+	getCurrentToken,
+} from "../../firebaseConfig";
 import { toast } from "react-toastify";
 import { saveProfileToBlockchain } from "../utils/ipfsHelper";
-import { useAuth } from "./AuthContext";
+import { useNavigate } from "react-router-dom";
 
 // Update API URL to use the correct environment variable and default value
 const API_URL =
@@ -48,6 +52,7 @@ const NETWORK_NAMES = {
 const AccountContext = createContext();
 
 export const AccountProvider = ({ children }) => {
+	const navigate = useNavigate();
 	const [walletAddress, setWalletAddress] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [user, setUser] = useState(null);
@@ -56,6 +61,7 @@ export const AccountProvider = ({ children }) => {
 	const [networkName, setNetworkName] = useState(null);
 	const [balance, setBalance] = useState(null);
 	const [loginHistory, setLoginHistory] = useState([]);
+	const [socialAccounts, setSocialAccounts] = useState([]);
 
 	// Subscribe to Firebase auth state changes
 	useEffect(() => {
@@ -66,17 +72,56 @@ export const AccountProvider = ({ children }) => {
 		return () => unsubscribe();
 	}, []);
 
+	const showLoadingToast = (message) => {
+		return toast.loading(message);
+	};
+
+	const showErrorToast = (message, id) => {
+		toast.error(message, { toastId: id });
+	};
+
 	const fetchUserAndStoreData = useCallback(async (address) => {
 		try {
-			// Fetch user data
-			const userResponse = await axios.get(`/users`);
+			// Check server health first
+			try {
+				await axios.get(`${API_URL}/health`);
+			} catch (error) {
+				throw new Error(
+					"Server is not running. Please start the server and try again."
+				);
+			}
+
+			// Fetch user data with error handling
+			let userResponse;
+			try {
+				userResponse = await axios.get(`/users`);
+			} catch (error) {
+				if (error.code === "ERR_NETWORK") {
+					throw new Error(
+						"Cannot connect to server. Please check if the server is running."
+					);
+				}
+				throw error;
+			}
+
 			const userData = userResponse.data.find(
 				(u) => u.walletAddress.toLowerCase() === address.toLowerCase()
 			);
 
 			if (userData) {
-				// Fetch store data
-				const storeResponse = await axios.get(`/stores`);
+				// Fetch store data with error handling
+				let storeResponse;
+				try {
+					storeResponse = await axios.get(`/stores`);
+				} catch (error) {
+					if (error.code === "ERR_NETWORK") {
+						throw new Error(
+							"Cannot connect to server. Please check if the server is running."
+						);
+					}
+					throw error;
+				}
+
 				const storeData = storeResponse.data.stores.find(
 					(s) => s.userId === userData.id
 				);
@@ -141,6 +186,30 @@ export const AccountProvider = ({ children }) => {
 		[fetchUserAndStoreData]
 	);
 
+	const updateTokens = async (tokens) => {
+		try {
+			const token = getCurrentToken();
+			if (!token) {
+				throw new Error("No auth token found");
+			}
+
+			// Set the token in axios headers
+			axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+			// Send tokens to backend for storage
+			const response = await axios.post(`${API_URL}/users/update-tokens`, {
+				accessToken: tokens.accessToken,
+				refreshToken: tokens.refreshToken,
+				expiresIn: tokens.expiresIn,
+			});
+
+			return response.data.success;
+		} catch (error) {
+			console.error("Error updating tokens:", error);
+			throw error;
+		}
+	};
+
 	const connectWallet = useCallback(async () => {
 		try {
 			if (typeof window === "undefined" || !window.ethereum) {
@@ -162,6 +231,26 @@ export const AccountProvider = ({ children }) => {
 			}\nNonce: ${Date.now()}`;
 			const signature = await signer.signMessage(message);
 
+			// Check if server is running before making the request
+			try {
+				await axios.get(`${API_URL}/health`);
+			} catch (error) {
+				throw new Error(
+					"Server is not running. Please start the server and try again."
+				);
+			}
+
+			// Get Firebase token and user tokens
+			const firebaseToken = getCurrentToken();
+			if (!firebaseToken) {
+				throw new Error("Not authenticated with Firebase");
+			}
+
+			// Set authorization header
+			axios.defaults.headers.common[
+				"Authorization"
+			] = `Bearer ${firebaseToken}`;
+
 			// Send the signature to the backend for verification and login
 			const response = await axios.post(`${API_URL}/users/wallet-auth`, {
 				address,
@@ -176,35 +265,62 @@ export const AccountProvider = ({ children }) => {
 				},
 			});
 
-			if (response.data?.token) {
-				// Store the token in axios defaults
-				axios.defaults.headers.common[
-					"Authorization"
-				] = `Bearer ${response.data.token}`;
-				localStorage.setItem("auth_token", response.data.token);
+			// Store tokens if received
+			if (response.data?.tokens) {
+				await updateTokens(response.data.tokens);
 			}
 
 			setWalletAddress(address);
 			const hasProfile = await checkUserProfile(address);
+
+			// Use React Router navigation instead of window.location
+			if (hasProfile) {
+				navigate("/dashboard", { replace: true });
+			} else {
+				navigate("/create-profile", { replace: true });
+			}
+
 			return { address, hasProfile };
 		} catch (error) {
 			if (error.code === 4001) {
-				// User rejected the signature request
-				toast.error("Please sign the message to login");
+				showErrorToast(
+					"Please sign the message to login",
+					"signature-rejected"
+				);
+			} else if (error.code === "ERR_NETWORK") {
+				showErrorToast(
+					error.message ||
+						"Cannot connect to server. Please check if the server is running.",
+					"network-error"
+				);
 			} else {
-				const errorMessage = error.message || "Failed to connect wallet";
-				toast.error(errorMessage);
+				showErrorToast(
+					error.message || "Failed to connect wallet",
+					"wallet-connection-error"
+				);
 			}
 			console.error("Wallet connection error:", error);
 			throw error;
 		}
-	}, [checkUserProfile]);
+	}, [checkUserProfile, navigate]);
 
 	const linkGoogleProfile = async (address, googleData) => {
-		console.log("Linking Google profile:", address, googleData);
 		try {
 			setLoading(true);
 			const loadingToast = toast.loading("Creating your vendor account...");
+
+			// Check server health first
+			try {
+				await axios.get(`${API_URL}/health`);
+			} catch (error) {
+				toast.dismiss(loadingToast);
+				showErrorToast(
+					"Server is not running. Please start the server and try again.",
+					"server-health-check"
+				);
+				setLoading(false);
+				return null;
+			}
 
 			// Use email as fallback for displayName
 			const displayName =
@@ -226,79 +342,128 @@ export const AccountProvider = ({ children }) => {
 				timestamp: new Date().toISOString(),
 			};
 
-			// Save to blockchain and IPFS
-			const { ipfsUrl, ipfsCid } = await saveProfileToBlockchain(
-				userData,
-				(message) => {
-					toast.update(loadingToast, {
-						render: message,
-						isLoading: true,
-					});
+			let ipfsData;
+			try {
+				// Save to blockchain and IPFS with a timeout
+				const timeoutPromise = new Promise((_, reject) =>
+					setTimeout(
+						() => reject(new Error("Blockchain operation timed out")),
+						60000
+					)
+				);
+
+				ipfsData = await Promise.race([
+					saveProfileToBlockchain(userData, (message) => {
+						toast.update(loadingToast, {
+							render: message,
+							isLoading: true,
+						});
+					}),
+					timeoutPromise,
+				]);
+
+				if (!ipfsData) {
+					throw new Error("Failed to save profile to blockchain");
 				}
-			);
+			} catch (error) {
+				toast.dismiss(loadingToast);
+				showErrorToast(
+					error.message || "Failed to save profile to blockchain",
+					"blockchain-error"
+				);
+				setLoading(false);
+				return null;
+			}
 
 			// Add IPFS data to user data
 			const finalUserData = {
 				...userData,
-				ipfsURI: ipfsUrl,
-				ipfsUrl: ipfsUrl,
-				ipfsCid: ipfsCid,
+				ipfsURI: ipfsData.ipfsUrl,
+				ipfsUrl: ipfsData.ipfsUrl,
+				ipfsCid: ipfsData.ipfsCid,
 				ipfsMetadata: userData,
+				googleProfile: {
+					uid: googleData.uid,
+					email: googleData.email,
+					displayName: googleData.displayName,
+					photoURL: googleData.photoURL,
+				},
 			};
 
-			console.log("Sending user data:", finalUserData);
-
 			// Save to database
-			const response = await axios.post(`/users/link-google`, finalUserData);
+			try {
+				const response = await axios.post(
+					`${API_URL}/users/link-google`,
+					finalUserData
+				);
 
-			console.log("Server response:", response.data);
+				if (response.data?.success && response.data?.user) {
+					setUser(response.data.user);
+					toast.update(loadingToast, {
+						render: "Account created successfully!",
+						type: "success",
+						isLoading: false,
+						autoClose: 3000,
+					});
 
-			if (response.data?.success && response.data?.user) {
-				setUser(response.data.user);
-				toast.update(loadingToast, {
-					render: "Account created successfully!",
-					type: "success",
-					isLoading: false,
-					autoClose: 3000,
-				});
-				return response.data.user;
+					// Use React Router navigation
+					setTimeout(() => {
+						navigate("/dashboard", { replace: true });
+					}, 1000);
+
+					return response.data.user;
+				}
+
+				throw new Error(response.data?.message || "Failed to create account");
+			} catch (error) {
+				toast.dismiss(loadingToast);
+				showErrorToast(
+					error.message || "Failed to save user data",
+					"database-error"
+				);
+				setLoading(false);
+				return null;
 			}
-
-			throw new Error(response.data?.message || "Failed to create account");
 		} catch (error) {
+			setLoading(false);
 			let errorMessage = "Failed to create account";
-			let errorDetails = "";
 
 			if (error.code === "ERR_NETWORK") {
 				errorMessage =
 					"Cannot connect to server. Please check your internet connection.";
-				console.error("Network error details:", error);
 			} else if (error.response?.data) {
 				errorMessage = error.response.data.message || "Server error";
-				errorDetails = error.response.data.details
-					? "\nDetails: " + error.response.data.details.join(", ")
-					: "";
-				console.error("Server error details:", error.response.data);
 			} else if (error.message) {
 				errorMessage = error.message;
-				console.error("General error details:", error);
 			}
 
-			toast.error(errorMessage + errorDetails);
-			console.error("Account creation error:", error);
-			throw error;
+			showErrorToast(errorMessage, "account-creation-error");
+			return null;
 		} finally {
 			setLoading(false);
 		}
 	};
 
-	// Initialize: Check if wallet is already connected and restore auth token
+	// Initialize: Check if wallet is already connected
 	useEffect(() => {
 		const checkConnection = async () => {
 			setLoading(true);
 			try {
-				// Restore auth token if it exists
-				const token = localStorage.getItem("auth_token");
+				// Check server health first
+				try {
+					await axios.get(`${API_URL}/health`);
+				} catch (error) {
+					console.error("Server health check failed:", error);
+					showErrorToast(
+						"Server is not running. Please start the server and try again.",
+						"server-health-check"
+					);
+					setLoading(false);
+					return;
+				}
+
+				// Get token from Firebase
+				const token = getCurrentToken();
 				if (token) {
 					axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 				}
@@ -314,9 +479,6 @@ export const AccountProvider = ({ children }) => {
 				}
 			} catch (error) {
 				console.error("Initial connection check failed:", error);
-				// Clear potentially invalid token
-				localStorage.removeItem("auth_token");
-				delete axios.defaults.headers.common["Authorization"];
 			} finally {
 				setLoading(false);
 			}
@@ -455,6 +617,218 @@ export const AccountProvider = ({ children }) => {
 		}
 	}, [walletAddress]);
 
+	const deleteAccount = async () => {
+		try {
+			if (!walletAddress) {
+				throw new Error("No wallet connected");
+			}
+
+			const loadingToast = toast.loading("Deleting your account...");
+
+			// Check server health first
+			try {
+				await axios.get(`${API_URL}/health`);
+			} catch (error) {
+				toast.dismiss(loadingToast);
+				showErrorToast(
+					"Server is not running. Please start the server and try again.",
+					"server-health-check"
+				);
+				return false;
+			}
+
+			// Delete the user account
+			const response = await axios.delete(`${API_URL}/users/${walletAddress}`);
+
+			if (response.data?.success) {
+				// Clear local state
+				setWalletAddress(null);
+				setUser(null);
+				setStore(null);
+				// Clear auth token
+				delete axios.defaults.headers.common["Authorization"];
+				localStorage.removeItem("auth_token");
+
+				toast.update(loadingToast, {
+					render: "Account deleted successfully",
+					type: "success",
+					isLoading: false,
+					autoClose: 3000,
+				});
+
+				// Navigate to home page
+				navigate("/", { replace: true });
+				return true;
+			}
+
+			throw new Error(response.data?.message || "Failed to delete account");
+		} catch (error) {
+			console.error("Error deleting account:", error);
+			showErrorToast(
+				error.message || "Failed to delete account",
+				"account-deletion-error"
+			);
+			return false;
+		}
+	};
+
+	const connectYouTube = async () => {
+		try {
+			showLoadingToast("Connecting to YouTube...");
+			const response = await axios.get(`${API_URL}/social/youtube/connect`);
+			window.location.href = response.data.url;
+		} catch (error) {
+			console.error("Error connecting to YouTube:", error);
+			showErrorToast("Failed to connect to YouTube", "youtube-connect-error");
+		}
+	};
+
+	const handleYouTubeCallback = async (code) => {
+		try {
+			showLoadingToast("Finalizing YouTube connection...");
+			await axios.post(`${API_URL}/social/youtube/save-tokens`, { code });
+			await fetchUserAndStoreData(); // Refresh user data
+			toast.success("YouTube account connected successfully!");
+		} catch (error) {
+			console.error("Error saving YouTube tokens:", error);
+			showErrorToast("Failed to save YouTube connection", "youtube-save-error");
+		}
+	};
+
+	// Fetch social accounts
+	const fetchSocialAccounts = async () => {
+		try {
+			const token = getCurrentToken();
+			if (!token) {
+				console.warn("No auth token found");
+				setSocialAccounts([]);
+				return;
+			}
+
+			// Set the token in axios headers
+			axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+			const response = await axios.get(`${API_URL}/social/accounts`);
+			if (response.data.success) {
+				setSocialAccounts(response.data.accounts);
+			} else {
+				setSocialAccounts([]);
+			}
+		} catch (error) {
+			console.error("Error fetching social accounts:", error);
+			if (error.response?.status === 401) {
+				setSocialAccounts([]);
+			}
+			showErrorToast(
+				"Failed to fetch social accounts",
+				"fetch-social-accounts-error"
+			);
+		}
+	};
+
+	// Connect social platform
+	const connectSocialPlatform = async (platform) => {
+		try {
+			if (!walletAddress) {
+				throw new Error("No wallet connected");
+			}
+
+			const loadingToast = showLoadingToast(`Connecting to ${platform}...`);
+
+			// Check server health
+			try {
+				await axios.get(`${API_URL}/health`);
+			} catch (error) {
+				toast.dismiss(loadingToast);
+				showErrorToast(
+					"Server is not running. Please start the server and try again.",
+					"server-health-check"
+				);
+				return false;
+			}
+
+			const response = await axios.get(
+				`${API_URL}/social/${platform.toLowerCase()}/connect`
+			);
+
+			if (response.data.success && response.data.url) {
+				// Open the OAuth URL in a new window
+				window.location.href = response.data.url;
+				return true;
+			}
+
+			throw new Error(`Failed to connect to ${platform}`);
+		} catch (error) {
+			console.error(`Error connecting to ${platform}:`, error);
+			showErrorToast(
+				error.message || `Failed to connect to ${platform}`,
+				"social-connect-error"
+			);
+			return false;
+		}
+	};
+
+	// Disconnect social platform
+	const disconnectSocialPlatform = async (platform) => {
+		try {
+			if (!walletAddress) {
+				throw new Error("No wallet connected");
+			}
+
+			const loadingToast = showLoadingToast(
+				`Disconnecting from ${platform}...`
+			);
+
+			const response = await axios.post(
+				`${API_URL}/social/${platform.toLowerCase()}/disconnect`
+			);
+
+			if (response.data.success) {
+				await fetchSocialAccounts(); // Refresh the list
+				toast.success(`${platform} disconnected successfully`);
+				return true;
+			}
+
+			throw new Error(`Failed to disconnect from ${platform}`);
+		} catch (error) {
+			console.error(`Error disconnecting from ${platform}:`, error);
+			showErrorToast(
+				error.message || `Failed to disconnect from ${platform}`,
+				"social-disconnect-error"
+			);
+			return false;
+		}
+	};
+
+	// Handle social platform callback
+	const handleSocialCallback = async (platform, code) => {
+		try {
+			const loadingToast = showLoadingToast(
+				`Finalizing ${platform} connection...`
+			);
+
+			const response = await axios.post(
+				`${API_URL}/social/${platform.toLowerCase()}/save-tokens`,
+				{ code }
+			);
+
+			if (response.data.success) {
+				await fetchSocialAccounts(); // Refresh the list
+				toast.success(`${platform} connected successfully!`);
+				return true;
+			}
+
+			throw new Error(`Failed to save ${platform} connection`);
+		} catch (error) {
+			console.error(`Error saving ${platform} connection:`, error);
+			showErrorToast(
+				error.message || `Failed to save ${platform} connection`,
+				"social-callback-error"
+			);
+			return false;
+		}
+	};
+
 	const value = {
 		walletAddress,
 		user,
@@ -476,6 +850,15 @@ export const AccountProvider = ({ children }) => {
 		updateStoreSettings,
 		loginHistory,
 		fetchLoginHistory,
+		deleteAccount,
+		connectYouTube,
+		handleYouTubeCallback,
+		socialAccounts,
+		connectSocialPlatform,
+		disconnectSocialPlatform,
+		handleSocialCallback,
+		fetchSocialAccounts,
+		updateTokens,
 	};
 
 	return (

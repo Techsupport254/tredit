@@ -1,6 +1,5 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { useAccount } from "../../Context/AccountContext";
-import { useAuth } from "../../Context/AuthContext";
 import {
 	UserOutlined,
 	EditOutlined,
@@ -9,16 +8,16 @@ import {
 	SecurityScanOutlined,
 	CreditCardOutlined,
 	DeleteOutlined,
-	CheckCircleFilled,
 	LinkOutlined,
 	ShoppingOutlined,
 	StarOutlined,
-	HistoryOutlined,
-	BellOutlined,
 	SafetyCertificateOutlined,
 	WalletOutlined,
 	CreditCardFilled,
 	ExclamationCircleOutlined,
+	MobileOutlined,
+	TabletOutlined,
+	DesktopOutlined,
 } from "@ant-design/icons";
 import { FaTiktok, FaFacebook, FaInstagram, FaYoutube } from "react-icons/fa";
 import {
@@ -29,15 +28,15 @@ import {
 	Menu,
 	Switch,
 	message,
-	Tabs,
 	Input,
 	Form,
 	Select,
 	Tag,
 	Modal,
 	Alert,
+	Empty,
+	Tabs,
 } from "antd";
-import { useState } from "react";
 
 const { Title, Text } = Typography;
 
@@ -151,17 +150,41 @@ const STORE_CATEGORIES = [
 	"Other",
 ];
 
-const formatValue = (value) => {
-	if (!value) return "0";
-	if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
-	if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
-	return value;
+const formatDate = (dateString) => {
+	const date = new Date(dateString);
+	return new Intl.DateTimeFormat("en-US", {
+		year: "numeric",
+		month: "short",
+		day: "numeric",
+		hour: "numeric",
+		minute: "numeric",
+		hour12: true,
+	}).format(date);
+};
+
+const getDeviceIcon = (deviceType) => {
+	switch (deviceType) {
+		case "mobile":
+			return <MobileOutlined />;
+		case "tablet":
+			return <TabletOutlined />;
+		case "desktop":
+		default:
+			return <DesktopOutlined />;
+	}
 };
 
 const ProfileSettings = () => {
-	const { profile, updateStoreSettings, loginHistory } = useAccount();
-	const auth = useAuth();
-	const youtube = auth?.youtube;
+	const {
+		profile,
+		updateStoreSettings,
+		loginHistory,
+		fetchLoginHistory,
+		socialAccounts,
+		connectSocialPlatform,
+		disconnectSocialPlatform,
+		fetchSocialAccounts,
+	} = useAccount();
 	const [selectedMenu, setSelectedMenu] = useState("profile");
 	const [editingSection, setEditingSection] = useState(null);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -169,6 +192,11 @@ const ProfileSettings = () => {
 	const [deleteText, setDeleteText] = useState("");
 
 	const [form] = Form.useForm();
+
+	useEffect(() => {
+		fetchLoginHistory();
+		fetchSocialAccounts();
+	}, [fetchLoginHistory, fetchSocialAccounts]);
 
 	// Menu items for the sidebar
 	const menuItems = [
@@ -249,11 +277,14 @@ const ProfileSettings = () => {
 
 	const handleSocialConnect = async (platform) => {
 		if (platform === "YouTube") {
-			try {
-				await auth.fetchYouTubeData();
-				message.success("YouTube account connected successfully!");
-			} catch (error) {
-				message.error("Failed to connect YouTube account");
+			const isConnected = socialAccounts.some(
+				(account) => account.platform.toLowerCase() === "youtube"
+			);
+
+			if (isConnected) {
+				await disconnectSocialPlatform(platform);
+			} else {
+				await connectSocialPlatform(platform);
 			}
 		} else {
 			message.info(`${platform} connection coming soon!`);
@@ -369,6 +400,49 @@ const ProfileSettings = () => {
 			setDeleteLoading(false);
 			setShowDeleteConfirm(false);
 		}
+	};
+
+	const renderLoginHistory = () => {
+		if (!loginHistory?.length) {
+			return (
+				<Empty description="No login history available" className="py-8" />
+			);
+		}
+
+		return (
+			<div className="space-y-4">
+				{loginHistory.map((login) => (
+					<div
+						key={login.id}
+						className="flex items-center justify-between p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
+					>
+						<div className="flex items-center gap-4">
+							<div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
+								{getDeviceIcon(login.deviceType)}
+							</div>
+							<div>
+								<div className="font-medium">
+									{login.browser} on {login.os}
+								</div>
+								<div className="text-sm text-gray-500">
+									{login.device} • {login.ipAddress}
+								</div>
+							</div>
+						</div>
+						<div className="text-right">
+							<div className="text-sm text-gray-500">
+								{formatDate(login.createdAt)}
+							</div>
+							<div className="text-sm">
+								<Tag color={login.status === "success" ? "success" : "error"}>
+									{login.status}
+								</Tag>
+							</div>
+						</div>
+					</div>
+				))}
+			</div>
+		);
 	};
 
 	const renderContent = () => {
@@ -735,259 +809,153 @@ const ProfileSettings = () => {
 			case "social":
 				return (
 					<div className="space-y-4">
-						<Card className="overflow-hidden !p-4">
-							<div className="flex items-center justify-between mb-4 pb-3 border-b border-gray-100">
-								<div className="flex items-center gap-3">
-									<div className="w-8 h-8 flex items-center justify-center">
-										<LinkOutlined className="text-blue-500 text-lg" />
-									</div>
-									<Title level={5} className="!mb-0">
-										Social Connections
-									</Title>
-								</div>
-							</div>
+						<Card className="!p-4">
+							<Title level={5}>Social Media Integration</Title>
 							<Tabs
 								defaultActiveKey="connect"
-								className="!mt-0"
+								className="mt-4"
 								items={[
 									{
 										key: "connect",
-										label: (
-											<span className="flex items-center gap-2">
-												<LinkOutlined />
-												Connect Platforms
-											</span>
-										),
+										label: "Connect Platforms",
 										children: (
-											<div className="space-y-4">
-												{SOCIAL_ACCOUNTS.map((account) => (
-													<div
-														key={account.name}
-														className="bg-gray-50 hover:bg-gray-100 transition-all duration-200 rounded-xl p-3"
-													>
-														<div className="flex items-center justify-between">
-															<div className="flex items-center gap-4">
-																<div
-																	className="w-12 h-12 rounded-full flex items-center justify-center"
-																	style={{
-																		backgroundColor: `${account.color}15`,
-																		color: account.color,
-																	}}
-																>
-																	{account.icon}
+											<div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
+												{SOCIAL_ACCOUNTS.map((account) => {
+													const socialAccount = socialAccounts.find(
+														(sa) =>
+															sa.platform.toLowerCase() ===
+															account.name.toLowerCase()
+													);
+													const isConnected = !!socialAccount;
+
+													return (
+														<div
+															key={account.name}
+															className="bg-white rounded-lg border border-gray-100 p-4 hover:shadow-sm transition-shadow"
+														>
+															<div className="flex items-center justify-between">
+																<div className="flex items-center gap-3">
+																	<div
+																		className="w-10 h-10 rounded-full flex items-center justify-center"
+																		style={{
+																			backgroundColor: `${account.color}20`,
+																		}}
+																	>
+																		{React.cloneElement(account.icon, {
+																			style: { color: account.color },
+																		})}
+																	</div>
+																	<div>
+																		<Text strong>{account.name}</Text>
+																		<Text className="text-gray-500 block text-sm">
+																			{isConnected
+																				? `Connected as ${socialAccount.platformUsername}`
+																				: "Not connected"}
+																		</Text>
+																	</div>
 																</div>
-																<div>
-																	<Text className="font-medium text-lg text-gray-800 block">
-																		{account.name}
-																	</Text>
-																	<Text className="text-gray-500">
-																		{account.name === "TikTok" &&
-																			"Share short-form videos and engage with trends"}
-																		{account.name === "Facebook" &&
-																			"Connect with customers and share updates"}
-																		{account.name === "Instagram" &&
-																			"Showcase products with visual content"}
-																		{account.name === "YouTube" &&
-																			"Share detailed product reviews and tutorials"}
-																	</Text>
-																</div>
-															</div>
-															{account.name === "YouTube" && !!youtube ? (
-																<div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-full">
-																	<CheckCircleFilled className="text-green-500" />
-																	<span className="text-green-600 font-medium">
-																		Connected
-																	</span>
-																</div>
-															) : (
 																<Button
-																	type="default"
-																	className="border-1 hover:border-opacity-80 hover:text-opacity-80 transition-all duration-200 flex items-center gap-2 px-4 h-9"
-																	style={{
-																		borderColor: account.color,
-																		color: account.color,
-																	}}
+																	type={isConnected ? "default" : "primary"}
 																	onClick={() =>
 																		handleSocialConnect(account.name)
 																	}
 																>
-																	<LinkOutlined /> Connect
+																	{isConnected ? "Disconnect" : "Connect"}
 																</Button>
-															)}
+															</div>
 														</div>
-													</div>
-												))}
+													);
+												})}
 											</div>
 										),
 									},
-									...SOCIAL_ACCOUNTS.map((account) => ({
-										key: account.name.toLowerCase(),
-										label: (
-											<span
-												className="flex items-center gap-2"
-												style={{ color: account.color }}
-											>
-												{account.icon}
-												{account.name}
-												{account.name === "YouTube" && !!youtube && (
-													<CheckCircleFilled className="text-green-500 text-sm" />
-												)}
-											</span>
-										),
-										children: (
-											<div className="space-y-6">
-												{account.name === "YouTube" && youtube ? (
-													<>
-														<div
-															className="flex items-center gap-4 mb-6"
-															style={{ color: account.color }}
-														>
-															<Avatar
-																size={64}
-																src={youtube?.snippet?.thumbnails?.default?.url}
-																alt={youtube?.snippet?.title}
-																className="border-2 border-gray-100"
-															/>
-															<div>
-																<Text
-																	strong
-																	className="text-xl block text-gray-800"
-																>
-																	{youtube?.snippet?.title}
-																</Text>
-																<Text className="text-gray-500">
-																	Joined{" "}
-																	{new Date(
-																		youtube?.snippet?.publishedAt
-																	).toLocaleDateString("en-US", {
-																		year: "numeric",
-																		month: "long",
-																	})}
-																</Text>
-															</div>
-														</div>
+									...SOCIAL_ACCOUNTS.map((account) => {
+										const socialAccount = socialAccounts.find(
+											(sa) =>
+												sa.platform.toLowerCase() === account.name.toLowerCase()
+										);
+										const isConnected = !!socialAccount;
 
-														<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-															<div
-																className="rounded-xl p-4"
-																style={{
-																	backgroundColor: `${account.color}15`,
-																}}
-															>
-																<Text className="text-gray-500 text-sm block mb-1">
-																	{account.name === "YouTube"
-																		? "Subscribers"
-																		: "Followers"}
-																</Text>
-																<Text
-																	strong
-																	className="text-xl block"
-																	style={{ color: account.color }}
-																>
-																	{formatValue(
-																		youtube?.statistics?.subscriberCount
-																	)}
-																</Text>
+										return {
+											key: account.name.toLowerCase(),
+											label: (
+												<span className="flex items-center gap-2">
+													{React.cloneElement(account.icon, {
+														style: { color: account.color },
+														className: "text-lg",
+													})}
+													<span>{account.name}</span>
+												</span>
+											),
+											children: (
+												<div className="p-4">
+													{isConnected ? (
+														<>
+															<div className="mb-6">
+																<Title level={5}>Account Information</Title>
+																<div className="bg-gray-50 rounded-lg p-4">
+																	<div className="grid grid-cols-2 gap-4">
+																		<div>
+																			<Text className="text-gray-500 block mb-1">
+																				Username
+																			</Text>
+																			<Text strong>
+																				{socialAccount.platformUsername}
+																			</Text>
+																		</div>
+																		<div>
+																			<Text className="text-gray-500 block mb-1">
+																				Connected Since
+																			</Text>
+																			<Text strong>
+																				{formatDate(socialAccount.createdAt)}
+																			</Text>
+																		</div>
+																		{socialAccount.metadata && (
+																			<>
+																				{Object.entries(
+																					socialAccount.metadata
+																				).map(([key, value]) => (
+																					<div key={key}>
+																						<Text className="text-gray-500 block mb-1">
+																							{key
+																								.replace(/([A-Z])/g, " $1")
+																								.trim()}
+																						</Text>
+																						<Text strong>{value}</Text>
+																					</div>
+																				))}
+																			</>
+																		)}
+																	</div>
+																</div>
 															</div>
-															<div
-																className="rounded-xl p-4"
-																style={{
-																	backgroundColor: `${account.color}15`,
-																}}
-															>
-																<Text className="text-gray-500 text-sm block mb-1">
-																	{account.name === "YouTube"
-																		? "Total Views"
-																		: "Engagement"}
-																</Text>
-																<Text
-																	strong
-																	className="text-xl block"
-																	style={{ color: account.color }}
-																>
-																	{formatValue(youtube?.statistics?.viewCount)}
-																</Text>
+															<div className="grid grid-cols-2 gap-4">
+																{account.features.map((feature, index) => (
+																	<div
+																		key={index}
+																		className="bg-blue-50 rounded-lg p-4"
+																	>
+																		<Text strong className="block">
+																			{feature.title}
+																		</Text>
+																		<Text className="text-sm text-gray-500">
+																			{feature.description}
+																		</Text>
+																	</div>
+																))}
 															</div>
-															<div
-																className="rounded-xl p-4"
-																style={{
-																	backgroundColor: `${account.color}15`,
-																}}
-															>
-																<Text className="text-gray-500 text-sm block mb-1">
-																	{account.name === "YouTube"
-																		? "Videos"
-																		: "Posts"}
-																</Text>
-																<Text
-																	strong
-																	className="text-xl block"
-																	style={{ color: account.color }}
-																>
-																	{formatValue(youtube?.statistics?.videoCount)}
-																</Text>
-															</div>
-														</div>
-
-														<div className="bg-gray-50 rounded-xl p-6">
-															<Text className="text-gray-500 text-sm font-medium mb-3 block">
-																Channel Description
-															</Text>
-															<Text className="text-gray-800">
-																{youtube?.snippet?.description ||
-																	"No description available"}
-															</Text>
-														</div>
-													</>
-												) : (
-													<div className="text-center py-8">
-														<div
-															className="mb-4"
-															style={{ color: account.color }}
-														>
-															{account.icon}
-														</div>
-														<Text className="text-gray-500 block mb-4">
-															Connect your {account.name} account to view
-															analytics and manage integration
-														</Text>
-														<Button
-															type="primary"
-															icon={<LinkOutlined />}
-															onClick={() => handleSocialConnect(account.name)}
-															style={{
-																backgroundColor: account.color,
-																borderColor: account.color,
-															}}
-														>
-															Connect {account.name}
-														</Button>
-													</div>
-												)}
-
-												<div className="bg-gray-50 rounded-xl p-6">
-													<Text className="text-gray-500 text-sm font-medium mb-4 block">
-														Integration Features
-													</Text>
-													<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-														{account.features.map((feature, index) => (
-															<div
-																key={index}
-																className="bg-white rounded-xl p-4 border border-gray-100"
-															>
-																<Text strong className="block mb-1">
-																	{feature.title}
-																</Text>
-																<Text className="text-gray-500 text-sm">
-																	{feature.description}
-																</Text>
-															</div>
-														))}
-													</div>
+														</>
+													) : (
+														<Empty
+															description={`Connect your ${account.name} account to access these features`}
+															className="my-8"
+														/>
+													)}
 												</div>
-											</div>
-										),
-									})),
+											),
+										};
+									}),
 								]}
 							/>
 						</Card>
@@ -1036,44 +1004,7 @@ const ProfileSettings = () => {
 									<Text className="text-gray-500 text-sm font-medium uppercase tracking-wider mb-4 block">
 										Recent Login Activity
 									</Text>
-									<div className="space-y-4">
-										{loginHistory.map((session, index) => (
-											<div
-												key={index}
-												className="bg-gray-50 rounded-xl p-4 flex items-center justify-between"
-											>
-												<div className="flex items-center gap-4">
-													<div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-														<HistoryOutlined className="text-blue-500" />
-													</div>
-													<div>
-														<Text strong className="block">
-															{session.browser} on {session.os}
-															{session.status === "success" && (
-																<Tag color="success" className="ml-2">
-																	Success
-																</Tag>
-															)}
-															{session.status === "failed" && (
-																<Tag color="error" className="ml-2">
-																	Failed
-																</Tag>
-															)}
-														</Text>
-														<Text className="text-gray-500 text-sm">
-															{session.ipAddress} •{" "}
-															{new Date(session.createdAt).toLocaleString()}
-														</Text>
-														{session.failureReason && (
-															<Text className="text-red-500 text-sm">
-																Reason: {session.failureReason}
-															</Text>
-														)}
-													</div>
-												</div>
-											</div>
-										))}
-									</div>
+									<div className="space-y-4">{renderLoginHistory()}</div>
 								</div>
 
 								{/* Notification Preferences */}
@@ -1099,7 +1030,7 @@ const ProfileSettings = () => {
 												title: "Security Updates",
 												description:
 													"Stay informed about important security updates",
-												icon: <BellOutlined />,
+												icon: <SafetyCertificateOutlined />,
 											},
 										].map((setting, index) => (
 											<div

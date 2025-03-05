@@ -12,6 +12,31 @@ const { Op } = require("sequelize");
 const UserLoginHistory = require("../models/UserLoginHistory");
 const jwt = require("jsonwebtoken");
 const ethers = require("ethers");
+const UAParser = require("ua-parser-js");
+const SocialAccount = require("../models/SocialAccount");
+
+// Health check endpoint
+router.get("/health", async (req, res) => {
+	try {
+		// Check database connection
+		await sequelize.authenticate();
+
+		res.json({
+			success: true,
+			message: "Server is healthy",
+			timestamp: new Date().toISOString(),
+			database: "connected",
+		});
+	} catch (error) {
+		console.error("Health check failed:", error);
+		res.status(503).json({
+			success: false,
+			message: "Server is unhealthy",
+			error: error.message,
+			timestamp: new Date().toISOString(),
+		});
+	}
+});
 
 // ✅ Check if a wallet is registered
 router.get("/check-wallet/:walletAddress", async (req, res) => {
@@ -556,12 +581,17 @@ router.post("/wallet-auth", async (req, res) => {
 			{ expiresIn: "30d" }
 		);
 
+		// Parse user agent string
+		const parser = new UAParser(userAgent);
+		const browser = parser.getBrowser();
+		const os = parser.getOS();
+		const device = parser.getDevice();
+
 		// Determine device type based on user agent
 		let deviceType = "desktop"; // default to desktop
-		const ua = userAgent.toLowerCase();
-		if (ua.includes("mobile")) {
+		if (device.type === "mobile") {
 			deviceType = "mobile";
-		} else if (ua.includes("tablet")) {
+		} else if (device.type === "tablet") {
 			deviceType = "tablet";
 		}
 
@@ -570,11 +600,11 @@ router.post("/wallet-auth", async (req, res) => {
 			userId: user.id,
 			ipAddress: req.ip || req.connection.remoteAddress,
 			userAgent,
-			browser: deviceInfo?.browser,
-			browserVersion: deviceInfo?.browserVersion,
-			os: deviceInfo?.platform,
-			osVersion: deviceInfo?.osVersion,
-			device: deviceInfo?.vendor,
+			browser: browser.name,
+			browserVersion: browser.version,
+			os: os.name,
+			osVersion: os.version,
+			device: device.model || device.vendor,
 			deviceType,
 			status: "success",
 			loginMethod: "wallet",
@@ -595,6 +625,63 @@ router.post("/wallet-auth", async (req, res) => {
 		res.status(500).json({
 			success: false,
 			message: "Authentication failed",
+			error: error.message,
+		});
+	}
+});
+
+// Delete specific user with cascade
+router.delete("/:walletAddress", async (req, res) => {
+	const transaction = await sequelize.transaction();
+	try {
+		const { walletAddress } = req.params;
+
+		// Find the user
+		const user = await User.findOne({
+			where: { walletAddress: walletAddress.toLowerCase() },
+			transaction,
+		});
+
+		if (!user) {
+			await transaction.rollback();
+			return res.status(404).json({
+				success: false,
+				message: "User not found",
+			});
+		}
+
+		// Delete associated records
+		await Promise.all([
+			// Delete user's store
+			Store.destroy({
+				where: { userId: user.id },
+				transaction,
+			}),
+			// Delete user's social accounts
+			SocialAccount.destroy({
+				where: { userId: user.id },
+				transaction,
+			}),
+			// Delete user's login history
+			UserLoginHistory.destroy({
+				where: { userId: user.id },
+				transaction,
+			}),
+		]);
+
+		// Delete the user
+		await user.destroy({ transaction });
+
+		await transaction.commit();
+		res.json({
+			success: true,
+			message: "User and all associated data deleted successfully",
+		});
+	} catch (error) {
+		await transaction.rollback();
+		console.error("Error deleting user:", error);
+		res.status(500).json({
+			success: false,
 			error: error.message,
 		});
 	}

@@ -6,9 +6,10 @@ import {
 	googleLogout,
 } from "../../firebaseConfig";
 import PropTypes from "prop-types";
-import { useAccount } from "./AccountContext";
 import axios from "axios"; // Import axios for API calls
 import { toast } from "react-toastify";
+import { useAccount } from "./AccountContext";
+import { GoogleAuthProvider } from "firebase/auth";
 
 // Update API URL to use the environment variable
 const API_URL =
@@ -17,7 +18,7 @@ const API_URL =
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-	const { completeUserProfile } = useAccount();
+	const { fetchUserAndStoreData } = useAccount();
 	const [loading, setLoading] = useState(true);
 	const [user, setUser] = useState(() => {
 		// Retrieve user data from local storage if available
@@ -30,16 +31,31 @@ export const AuthProvider = ({ children }) => {
 	const signInWithGoogle = async () => {
 		try {
 			const result = await signInWithPopup(auth, googleProvider);
+			const credential = GoogleAuthProvider.credentialFromResult(result);
+			const token = await result.user.getIdToken();
+
+			// Set authorization header
+			axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
 			const userData = {
 				uid: result.user.uid,
 				name: result.user.displayName,
 				email: result.user.email,
 				profileImage: result.user.photoURL,
 				id: result.user.uid,
+				accessToken: credential.accessToken,
+				refreshToken: credential.refreshToken,
+				tokenExpiry: new Date(Date.now() + credential.expiresIn * 1000),
 			};
+
+			// Store tokens in backend
+			await axios.post(`${API_URL}/users/update-tokens`, {
+				accessToken: credential.accessToken,
+				refreshToken: credential.refreshToken,
+				expiresIn: credential.expiresIn,
+			});
+
 			setUser(userData);
-			localStorage.setItem("user", JSON.stringify(userData)); // Save user data to local storage
-			completeUserProfile(userData); // Update user profile in AccountContext
 			return userData;
 		} catch (error) {
 			console.error("Google Sign-In Error:", error);
@@ -169,6 +185,23 @@ export const AuthProvider = ({ children }) => {
 		toast.info("Logged out successfully");
 	};
 
+	const handleYouTubeCallback = async (code) => {
+		try {
+			const response = await axios.post(
+				`${API_URL}/social/youtube/save-tokens`,
+				{ code }
+			);
+			if (response.data.success) {
+				toast.success("YouTube account connected successfully!");
+				// Refresh user data to get updated YouTube info
+				await fetchUserAndStoreData();
+			}
+		} catch (error) {
+			console.error("Error saving YouTube tokens:", error);
+			toast.error("Failed to connect YouTube account");
+		}
+	};
+
 	const value = {
 		loading,
 		user,
@@ -182,6 +215,8 @@ export const AuthProvider = ({ children }) => {
 		refreshLoginHistory,
 		logout,
 		fetchUserProfile,
+		handleYouTubeCallback,
+		token: user?.accessToken,
 	};
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -18,6 +18,40 @@ const app = express();
 
 // Middleware
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// CORS configuration
+app.use(
+	cors({
+		origin: ["http://localhost:5173", "https://localhost:5173"],
+		credentials: true,
+		methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+		allowedHeaders: ["Content-Type", "Authorization"],
+	})
+);
+
+// Health check endpoint
+app.get("/api/health", async (req, res) => {
+	try {
+		// Check database connection
+		await sequelize.authenticate();
+
+		res.json({
+			success: true,
+			message: "Server is healthy",
+			timestamp: new Date().toISOString(),
+			database: "connected",
+		});
+	} catch (error) {
+		console.error("Health check failed:", error);
+		res.status(503).json({
+			success: false,
+			message: "Server is unhealthy",
+			error: error.message,
+			timestamp: new Date().toISOString(),
+		});
+	}
+});
 
 // Session configuration
 app.use(
@@ -29,32 +63,6 @@ app.use(
 			secure: process.env.NODE_ENV === "production",
 			maxAge: 24 * 60 * 60 * 1000, // 24 hours
 		},
-	})
-);
-
-// CORS configuration
-const allowedOrigins = [
-	"http://localhost:5173",
-	"https://localhost:5173",
-	process.env.FRONTEND_URL,
-].filter(Boolean);
-
-app.use(
-	cors({
-		origin: function (origin, callback) {
-			// Allow requests with no origin (like mobile apps or curl requests)
-			if (!origin) return callback(null, true);
-
-			if (allowedOrigins.indexOf(origin) === -1) {
-				const msg =
-					"The CORS policy for this site does not allow access from the specified Origin.";
-				return callback(new Error(msg), false);
-			}
-			return callback(null, true);
-		},
-		credentials: true,
-		methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-		allowedHeaders: ["Content-Type", "Authorization"],
 	})
 );
 
@@ -100,10 +108,13 @@ const initializeAssociations = () => {
 };
 
 // Routes
-app.use("/api/users", require("./routes/userRoutes"));
-app.use("/api/stores", require("./routes/storeRoutes"));
-app.use("/api/products", require("./routes/productRoutes"));
-app.use("/api/social", require("./routes/socialRoutes"));
+const userRoutes = require("./routes/userRoutes");
+const storeRoutes = require("./routes/storeRoutes");
+const socialRoutes = require("./routes/socialRoutes");
+
+app.use("/api/users", userRoutes);
+app.use("/api/stores", storeRoutes);
+app.use("/api/social", socialRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

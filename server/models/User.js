@@ -113,6 +113,21 @@ User.init(
 			allowNull: true,
 			defaultValue: {},
 		},
+		accessToken: {
+			type: DataTypes.TEXT,
+			allowNull: true,
+			comment: "Encrypted access token for the user",
+		},
+		refreshToken: {
+			type: DataTypes.TEXT,
+			allowNull: true,
+			comment: "Encrypted refresh token for the user",
+		},
+		tokenExpiry: {
+			type: DataTypes.DATE,
+			allowNull: true,
+			comment: "Expiration timestamp for the access token",
+		},
 		bio: {
 			type: DataTypes.TEXT,
 			allowNull: true,

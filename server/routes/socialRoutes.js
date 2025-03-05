@@ -4,12 +4,27 @@ const { protect } = require("../middleware/authMiddleware");
 const SocialAccount = require("../models/SocialAccount");
 const { OAuth2Client } = require("google-auth-library");
 const { google } = require("googleapis");
+const { Store } = require("../models/Store");
+const User = require("../models/User");
 
 // Initialize OAuth clients
 const youtubeClient = new OAuth2Client({
 	clientId: process.env.YOUTUBE_CLIENT_ID,
 	clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
 	redirectUri: `${process.env.BACKEND_URL}/api/social/youtube/callback`,
+});
+
+// Initialize YouTube OAuth2 client
+const oauth2Client = new google.auth.OAuth2(
+	process.env.YOUTUBE_CLIENT_ID,
+	process.env.YOUTUBE_CLIENT_SECRET,
+	process.env.YOUTUBE_REDIRECT_URI
+);
+
+// Initialize YouTube API
+const youtube = google.youtube({
+	version: "v3",
+	auth: oauth2Client,
 });
 
 // @desc    Get all connected social accounts
@@ -30,19 +45,25 @@ router.get("/", protect, async (req, res) => {
 // @desc    Connect YouTube account
 // @route   GET /api/social/youtube/connect
 // @access  Private
-router.get("/youtube/connect", protect, (req, res) => {
+router.get("/youtube/connect", protect, async (req, res) => {
 	try {
-		const authUrl = youtubeClient.generateAuthUrl({
+		const scopes = [
+			"https://www.googleapis.com/auth/youtube.readonly",
+			"https://www.googleapis.com/auth/youtube.force-ssl",
+		];
+
+		const url = oauth2Client.generateAuthUrl({
 			access_type: "offline",
-			scope: [
-				"https://www.googleapis.com/auth/youtube.readonly",
-				"https://www.googleapis.com/auth/youtube.force-ssl",
-			],
+			scope: scopes,
+			include_granted_scopes: true,
 		});
-		res.json({ url: authUrl });
+
+		res.json({ success: true, url });
 	} catch (error) {
 		console.error("Error generating YouTube auth URL:", error);
-		res.status(500).json({ message: "Error generating YouTube auth URL" });
+		res
+			.status(500)
+			.json({ success: false, message: "Failed to generate auth URL" });
 	}
 });
 
@@ -69,43 +90,63 @@ router.get("/youtube/callback", async (req, res) => {
 // @access  Private
 router.post("/youtube/save-tokens", protect, async (req, res) => {
 	try {
-		if (!req.session.youtubeTokens) {
+		const { code } = req.body;
+		if (!code) {
 			return res
 				.status(400)
-				.json({ message: "No YouTube tokens found in session" });
+				.json({ success: false, message: "No code provided" });
 		}
 
-		const tokens = req.session.youtubeTokens;
+		// Exchange code for tokens
+		const { tokens } = await oauth2Client.getToken(code);
+		oauth2Client.setCredentials(tokens);
 
-		// Get YouTube channel info
-		youtubeClient.setCredentials(tokens);
-		const youtube = google.youtube("v3");
+		// Get channel info
 		const response = await youtube.channels.list({
 			part: "snippet",
 			mine: true,
 		});
 
-		const channelData = response.data.items[0];
+		const channel = response.data.items[0];
+		if (!channel) {
+			throw new Error("No YouTube channel found");
+		}
 
 		// Save or update social account
-		await SocialAccount.upsert({
+		const [socialAccount] = await SocialAccount.upsert({
 			userId: req.user.id,
-			platform: "YouTube",
+			platform: "youtube",
+			platformUserId: channel.id,
+			platformUsername: channel.snippet.title,
 			accessToken: tokens.access_token,
 			refreshToken: tokens.refresh_token,
-			platformUserId: channelData.id,
-			username: channelData.snippet.title,
-			profileUrl: `https://youtube.com/channel/${channelData.id}`,
+			tokenExpiry: new Date(tokens.expiry_date),
+			metadata: {
+				channelId: channel.id,
+				title: channel.snippet.title,
+				description: channel.snippet.description,
+				thumbnails: channel.snippet.thumbnails,
+			},
 			isActive: true,
 		});
 
-		// Clear session tokens
-		delete req.session.youtubeTokens;
+		// Update store settings
+		if (req.user.store) {
+			await Store.update(
+				{
+					settings: {
+						...req.user.store.settings,
+						enableYouTubeIntegration: true,
+					},
+				},
+				{ where: { id: req.user.store.id } }
+			);
+		}
 
-		res.json({ message: "YouTube account connected successfully" });
+		res.json({ success: true, account: socialAccount });
 	} catch (error) {
 		console.error("Error saving YouTube tokens:", error);
-		res.status(500).json({ message: "Error saving YouTube tokens" });
+		res.status(500).json({ success: false, message: "Failed to save tokens" });
 	}
 });
 
@@ -159,6 +200,62 @@ router.post("/:platform/sync", protect, async (req, res) => {
 	} catch (error) {
 		console.error("Error syncing stats:", error);
 		res.status(500).json({ message: "Error syncing stats" });
+	}
+});
+
+// @desc    Disconnect YouTube
+// @route   POST /api/social/youtube/disconnect
+// @access  Private
+router.post("/youtube/disconnect", protect, async (req, res) => {
+	try {
+		await SocialAccount.update(
+			{ isActive: false },
+			{
+				where: {
+					userId: req.user.id,
+					platform: "youtube",
+				},
+			}
+		);
+
+		// Update store settings
+		if (req.user.store) {
+			await Store.update(
+				{
+					settings: {
+						...req.user.store.settings,
+						enableYouTubeIntegration: false,
+					},
+				},
+				{ where: { id: req.user.store.id } }
+			);
+		}
+
+		res.json({ success: true });
+	} catch (error) {
+		console.error("Error disconnecting YouTube:", error);
+		res.status(500).json({ success: false, message: "Failed to disconnect" });
+	}
+});
+
+// @desc    Get connected social accounts
+// @route   GET /api/social/accounts
+// @access  Private
+router.get("/accounts", protect, async (req, res) => {
+	try {
+		const accounts = await SocialAccount.findAll({
+			where: {
+				userId: req.user.id,
+				isActive: true,
+			},
+		});
+
+		res.json({ success: true, accounts });
+	} catch (error) {
+		console.error("Error fetching social accounts:", error);
+		res
+			.status(500)
+			.json({ success: false, message: "Failed to fetch accounts" });
 	}
 });
 

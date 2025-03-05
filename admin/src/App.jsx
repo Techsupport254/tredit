@@ -1,5 +1,11 @@
 import { lazy, Suspense, useEffect } from "react";
-import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import {
+	Routes,
+	Route,
+	Navigate,
+	useNavigate,
+	useLocation,
+} from "react-router-dom";
 import { useAccount } from "./Context/AccountContext";
 import { useAuth } from "./Context/AuthContext";
 import LoadingOverlay from "./components/LoadingOverlay";
@@ -42,8 +48,14 @@ const ProtectedRoute = ({ children }) => {
 	const navigate = useNavigate();
 
 	useEffect(() => {
-		if (!loading && (!walletAddress || !user || !authUser)) {
-			navigate("/connect", { replace: true });
+		if (!loading) {
+			if (!walletAddress) {
+				navigate("/connect", { replace: true });
+			} else if (!user) {
+				navigate("/create-profile", { replace: true });
+			} else if (!authUser) {
+				navigate("/connect", { replace: true });
+			}
 		}
 	}, [walletAddress, user, authUser, loading, navigate]);
 
@@ -58,13 +70,48 @@ ProtectedRoute.propTypes = {
 };
 
 const App = () => {
+	const { walletAddress, user, handleYouTubeCallback } = useAccount();
+	const { user: authUser } = useAuth();
+	const location = useLocation();
+
+	useEffect(() => {
+		// Handle YouTube OAuth callback
+		const searchParams = new URLSearchParams(location.search);
+		const youtubeCode = searchParams.get("code");
+		const youtubeState = searchParams.get("state");
+
+		if (youtubeCode && youtubeState === "youtube") {
+			handleYouTubeCallback(youtubeCode);
+		}
+	}, [location.search, handleYouTubeCallback]);
+
 	return (
 		<>
 			<Suspense fallback={<LoadingOverlay message="Loading..." />}>
 				<Routes>
 					{/* Public Routes */}
-					<Route path="/connect" element={<ConnectWallet />} />
-					<Route path="/create-profile" element={<ProfileSetup />} />
+					<Route
+						path="/connect"
+						element={
+							walletAddress && user && authUser ? (
+								<Navigate to="/dashboard" replace />
+							) : (
+								<ConnectWallet />
+							)
+						}
+					/>
+					<Route
+						path="/create-profile"
+						element={
+							!walletAddress ? (
+								<Navigate to="/connect" replace />
+							) : user ? (
+								<Navigate to="/dashboard" replace />
+							) : (
+								<ProfileSetup />
+							)
+						}
+					/>
 
 					{/* Protected Routes with DashboardLayout */}
 					<Route

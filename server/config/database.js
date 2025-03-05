@@ -1,24 +1,43 @@
 const { Sequelize } = require("sequelize");
 const { Client } = require("pg"); // PostgreSQL client for database creation
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "../.env") });
 
 const DB_HOST = process.env.DB_HOST || "localhost";
 const DB_PORT = process.env.DB_PORT || 5432;
 const DB_USER = process.env.DB_USER || "postgres";
-const DB_PASSWORD = process.env.DB_PASS || "";
-const DB_NAME = process.env.DB_NAME || "marketplace";
+const DB_PASSWORD = process.env.DB_PASSWORD || "";
+const DB_NAME = process.env.DB_NAME || "tredit";
 const USE_SSL = process.env.DB_SSL === "true"; // Enable SSL if needed
 
 // Initialize Sequelize with configuration
-const sequelize = new Sequelize(DB_NAME, DB_USER, DB_PASSWORD, {
+const sequelize = new Sequelize({
+	dialect: "postgres",
 	host: DB_HOST,
 	port: DB_PORT,
-	dialect: "postgres",
-	logging: (msg) => console.log(`[Sequelize] ${msg}`), // Enable logging for debugging
-	define: {
-		timestamps: true,
+	username: DB_USER,
+	password: DB_PASSWORD,
+	database: DB_NAME,
+	logging: false,
+	dialectOptions: {
+		ssl: USE_SSL
+			? {
+					require: true,
+					rejectUnauthorized: false,
+			  }
+			: false,
 	},
 });
+
+// Test the connection
+sequelize
+	.authenticate()
+	.then(() => {
+		console.log("Database connection has been established successfully.");
+	})
+	.catch((err) => {
+		console.error("Unable to connect to the database:", err);
+	});
 
 // Ensure the database exists before connecting with Sequelize
 async function createDatabaseIfNotExists() {
@@ -66,6 +85,7 @@ async function createDatabaseIfNotExists() {
 
 async function connectDB() {
 	try {
+		await createDatabaseIfNotExists();
 		await sequelize.authenticate();
 		console.log("[DB] Connection to the database established successfully.");
 
