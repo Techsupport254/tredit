@@ -1,33 +1,51 @@
 const { Model, DataTypes } = require("sequelize");
 const { sequelize } = require("../config/database");
 
-class User extends Model {}
+class User extends Model {
+	static associate(models) {
+		User.hasMany(models.UserLoginHistory, {
+			foreignKey: "userAddress",
+			sourceKey: "walletAddress",
+			as: "loginHistory",
+		});
+
+		// Add business associations
+		User.hasMany(models.Business, {
+			foreignKey: "walletAddress",
+			sourceKey: "walletAddress",
+			as: "ownedBusinesses",
+		});
+
+		User.belongsToMany(models.Business, {
+			through: "BusinessTeamMembers",
+			foreignKey: "walletAddress",
+			otherKey: "businessId",
+			as: "teamMemberships",
+		});
+	}
+}
 
 User.init(
 	{
-		id: {
-			type: DataTypes.UUID,
-			defaultValue: DataTypes.UUIDV4,
-			primaryKey: true,
-		},
 		walletAddress: {
 			type: DataTypes.STRING,
-			unique: true,
+			primaryKey: true,
 			allowNull: false,
+			validate: {
+				isLowercase: true,
+			},
 		},
 		name: {
 			type: DataTypes.STRING,
-			allowNull: true,
-		},
-		username: {
-			type: DataTypes.STRING,
-			unique: true,
 			allowNull: true,
 		},
 		email: {
 			type: DataTypes.STRING,
 			unique: true,
 			allowNull: true,
+			validate: {
+				isEmail: true,
+			},
 		},
 		profileImage: {
 			type: DataTypes.STRING(1024),
@@ -38,56 +56,33 @@ User.init(
 				},
 			},
 		},
-		ipfsURI: {
-			type: DataTypes.STRING(1024),
+		gender: {
+			type: DataTypes.ENUM("male", "female"),
 			allowNull: true,
-			unique: true,
+		},
+		dob: {
+			type: DataTypes.DATEONLY,
+			allowNull: true,
 			validate: {
-				isUrl: {
-					msg: "Invalid IPFS URI format",
-				},
+				isDate: true,
+				isBefore: new Date().toISOString(),
 			},
 		},
-		ipfsUrl: {
-			type: DataTypes.STRING(255),
+		phoneNumber: {
+			type: DataTypes.STRING,
 			allowNull: true,
-			comment: "The IPFS gateway URL for the user data",
+			validate: {
+				is: /^\+?[\d\s-()]+$/,
+			},
 		},
-		ipfsCid: {
-			type: DataTypes.STRING(64),
+		location: {
+			type: DataTypes.STRING,
 			allowNull: true,
-			comment: "The IPFS CID of the user data",
-		},
-		ipfsMetadata: {
-			type: DataTypes.JSONB,
-			allowNull: true,
-			defaultValue: {},
-			comment: "Additional IPFS metadata including version history",
 		},
 		role: {
-			type: DataTypes.ENUM("user", "vendor", "arbitrator", "admin"),
+			type: DataTypes.ENUM("user", "admin", "freelancer"),
 			allowNull: false,
 			defaultValue: "user",
-		},
-		taxId: {
-			type: DataTypes.STRING,
-			allowNull: true,
-		},
-		country: {
-			type: DataTypes.STRING,
-			allowNull: true,
-		},
-		cityState: {
-			type: DataTypes.STRING,
-			allowNull: true,
-		},
-		address: {
-			type: DataTypes.STRING,
-			allowNull: true,
-		},
-		postalCode: {
-			type: DataTypes.STRING,
-			allowNull: true,
 		},
 		isVerified: {
 			type: DataTypes.BOOLEAN,
@@ -106,31 +101,60 @@ User.init(
 		preferences: {
 			type: DataTypes.JSONB,
 			allowNull: true,
-			defaultValue: {},
-		},
-		socialSettings: {
-			type: DataTypes.JSONB,
-			allowNull: true,
-			defaultValue: {},
-		},
-		accessToken: {
-			type: DataTypes.TEXT,
-			allowNull: true,
-			comment: "Encrypted access token for the user",
-		},
-		refreshToken: {
-			type: DataTypes.TEXT,
-			allowNull: true,
-			comment: "Encrypted refresh token for the user",
-		},
-		tokenExpiry: {
-			type: DataTypes.DATE,
-			allowNull: true,
-			comment: "Expiration timestamp for the access token",
+			defaultValue: {
+				theme: "light",
+				notifications: {
+					email: true,
+					push: true,
+				},
+				language: "en",
+			},
 		},
 		bio: {
 			type: DataTypes.TEXT,
 			allowNull: true,
+		},
+		ipfsCid: {
+			type: DataTypes.STRING,
+			allowNull: true,
+			comment: "IPFS Content Identifier for user profile",
+		},
+		ipfsUrl: {
+			type: DataTypes.STRING(1024),
+			allowNull: true,
+			validate: {
+				isUrl: {
+					msg: "Invalid IPFS URL",
+				},
+			},
+			comment: "Full IPFS gateway URL for user profile",
+		},
+		blockchainTxHash: {
+			type: DataTypes.STRING,
+			allowNull: true,
+			comment: "Transaction hash of the last blockchain update",
+		},
+		lastBlockchainUpdate: {
+			type: DataTypes.DATE,
+			allowNull: true,
+			comment: "Timestamp of the last blockchain update",
+		},
+		metadata: {
+			type: DataTypes.JSONB,
+			allowNull: true,
+			defaultValue: {},
+			comment: "Additional metadata for the user profile",
+		},
+		uid: {
+			type: DataTypes.STRING,
+			allowNull: true,
+			comment: "Firebase user ID",
+		},
+		acceptBlockchainStorage: {
+			type: DataTypes.BOOLEAN,
+			allowNull: false,
+			defaultValue: true,
+			comment: "Whether user accepts blockchain storage",
 		},
 	},
 	{
@@ -138,6 +162,23 @@ User.init(
 		modelName: "User",
 		tableName: "Users",
 		timestamps: true,
+		hooks: {
+			beforeValidate: (user) => {
+				if (user.walletAddress) {
+					user.walletAddress = user.walletAddress.toLowerCase();
+				}
+			},
+		},
+		indexes: [
+			{
+				unique: true,
+				fields: ["walletAddress"],
+			},
+			{
+				unique: true,
+				fields: ["email"],
+			},
+		],
 	}
 );
 

@@ -3,8 +3,18 @@ import TopStats from "../Components/Dashboard/TopStats";
 import Sales from "../Components/Dashboard/Sales";
 import CategorySales from "../Components/Dashboard/CategorySales";
 import Recent from "../Components/Dashboard/Recent";
+import { useEffect } from "react";
 
 const Dashboard = () => {
+	// Handle page reload after registration
+	useEffect(() => {
+		const shouldReload = localStorage.getItem("should_reload");
+		if (shouldReload) {
+			localStorage.removeItem("should_reload");
+			window.location.reload();
+		}
+	}, []);
+
 	return (
 		<div className="min-h-full bg-gray-50">
 			{/* Welcome Section */}

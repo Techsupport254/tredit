@@ -1,16 +1,19 @@
 {
 	"name": "server",
 	"version": "1.0.0",
-	"main": "index.js",
+	"description": "Tredit Business Management API",
+	"main": "server.js",
 	"scripts": {
-		"test": "echo \"Error: no test specified\" && exit 1",
+		"start": "node server.js",
 		"dev": "nodemon server.js",
-		"start": "node server.js"
+		"test": "jest",
+		"test:watch": "jest --watch",
+		"test:ipfs": "jest tests/routes/business.ipfs.test.js --verbose",
+		"test:coverage": "jest --coverage"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
-	"description": "",
 	"dependencies": {
 		"axios": "^1.8.1",
 		"bcryptjs": "^3.0.2",
@@ -30,6 +33,12 @@
 		"ua-parser-js": "^2.0.2"
 	},
 	"devDependencies": {
-		"nodemon": "^3.1.9"
+		"@types/jest": "^29.5.14",
+		"jest": "^29.7.0",
+		"nodemon": "^3.1.9",
+		"supertest": "^7.0.0"
+	},
+	"directories": {
+		"test": "tests"
 	}
 }

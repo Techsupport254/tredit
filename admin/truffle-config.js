@@ -12,7 +12,7 @@ module.exports = {
 			provider: () =>
 				new HDWalletProvider(
 					process.env.MNEMONIC,
-					process.env.POLYGON_AMOY_RPC
+					"https://rpc-amoy.polygon.technology"
 				),
 			network_id: 80002, // Polygon Amoy chain ID
 			confirmations: 2,
@@ -34,7 +34,7 @@ module.exports = {
 	},
 	compilers: {
 		solc: {
-			version: "0.8.19",
+			version: "0.8.20",
 			settings: {
 				optimizer: {
 					enabled: true,

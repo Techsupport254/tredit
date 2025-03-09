@@ -1,196 +1,247 @@
 export const sidebarData = [
-	// 🔹 Dashboard (Common)
+	// 🔹 Dashboard - Main entry point with key metrics
 	{
 		category: "Dashboard",
 		path: "/dashboard",
-		roles: ["Vendor", "Freelancer"],
 		icon: "fas fa-tachometer-alt",
-		description: "Business overview and key metrics",
+		roles: ["Vendor", "Freelancer"],
+		badge: {
+			type: "notification",
+			condition: (user) => user?.unreadNotifications > 0,
+			content: (user) => user?.unreadNotifications || 0,
+		},
 	},
 
-	// 🔹 Products (Vendor Only)
+	// 🔹 Business Hub - Manage all stores and service portfolios
 	{
-		category: "Products",
-		roles: ["Vendor"],
-		icon: "fas fa-box-open",
+		category: "Business Hub",
+		icon: "fas fa-building",
+		roles: ["Vendor", "Freelancer"],
+		badge: {
+			type: "counter",
+			content: (user) => user?.activeBusinesses || 0,
+		},
 		pages: [
-			{ name: "Product Catalog", path: "/products", icon: "fas fa-boxes" },
 			{
-				name: "Add Product",
-				path: "/products/add",
-				icon: "fas fa-plus-square",
+				name: "My Businesses",
+				path: "/businesses",
+				exact: true, // Ensure exact path matching
+				icon: "fas fa-store",
+				roles: ["Vendor", "Freelancer"],
+				badge: {
+					type: "counter",
+					content: (user) => user?.activeBusinesses || 0,
+				},
 			},
 			{
-				name: "Inventory",
-				path: "/products/inventory",
-				icon: "fas fa-clipboard-list",
-			},
-		],
-	},
-
-	// 🔹 Services (Freelancer Only)
-	{
-		category: "Services",
-		roles: ["Freelancer"],
-		icon: "fas fa-handshake",
-		pages: [
-			{ name: "Service Listings", path: "/services", icon: "fas fa-briefcase" },
-			{
-				name: "New Service",
-				path: "/services/create",
+				name: "Create New",
+				path: "/businesses/create",
 				icon: "fas fa-plus-circle",
+				roles: ["Vendor", "Freelancer"],
 			},
 			{
-				name: "Active Contracts",
-				path: "/services/contracts",
+				name: "Listings Manager",
+				path: "/businesses/listings",
+				icon: "fas fa-tags",
+				roles: ["Vendor", "Freelancer"],
+				badge: {
+					type: "counter",
+					content: (user) => user?.totalListings || 0,
+				},
+			},
+			{
+				name: "Stock Control",
+				path: "/businesses/inventory",
+				icon: "fas fa-boxes",
+				roles: ["Vendor"],
+				badge: {
+					type: "status",
+					condition: (user) => user?.lowStockItems > 0,
+					content: (user) => `${user?.lowStockItems} low stock`,
+					color: "warning",
+				},
+			},
+			{
+				name: "Service Contracts",
+				path: "/businesses/contracts",
 				icon: "fas fa-file-contract",
+				roles: ["Freelancer"],
+				badge: {
+					type: "counter",
+					content: (user) => user?.activeContracts || 0,
+				},
 			},
 			{
-				name: "Deliverables",
-				path: "/services/deliverables",
-				icon: "fas fa-cloud-upload-alt",
+				name: "Orders",
+				path: "/businesses/orders",
+				icon: "fas fa-shopping-cart",
+				roles: ["Vendor", "Freelancer"],
+				badge: {
+					type: "counter",
+					content: (user) => user?.pendingOrders || 0,
+				},
+				quickAccess: true,
+			},
+			{
+				name: "Analytics",
+				path: "/businesses/analytics",
+				icon: "fas fa-chart-bar",
+				roles: ["Vendor", "Freelancer"],
 			},
 		],
 	},
 
-	// 🔹 Transactions (Common)
+	// 🔹 Transaction Hub - Combined financial operations and escrow
 	{
 		category: "Transactions",
-		roles: ["Vendor", "Freelancer"],
 		icon: "fas fa-exchange-alt",
+		roles: ["Vendor", "Freelancer"],
+		badge: {
+			type: "status",
+			condition: (user) => user?.pendingTransactions > 0,
+			content: (user) => `${user?.pendingTransactions} pending`,
+			color: "info",
+		},
 		pages: [
-			{ name: "All Transactions", path: "/transactions", icon: "fas fa-list" },
 			{
-				name: "Escrow Status",
-				path: "/transactions/escrow",
-				icon: "fas fa-lock",
+				name: "Transaction Overview",
+				path: "/transactions/overview",
+				icon: "fas fa-chart-line",
+				quickAccess: true,
 			},
 			{
-				name: "Dispute Center",
-				path: "/transactions/disputes",
-				icon: "fas fa-balance-scale",
+				name: "Escrow Management",
+				path: "/transactions/escrow",
+				icon: "fas fa-lock",
+				badge: {
+					type: "status",
+					condition: (user) => user?.activeEscrows > 0,
+					content: (user) => `${user?.activeEscrows} active`,
+					color: "info",
+				},
+			},
+			{
+				name: "Payment History",
+				path: "/transactions/history",
+				icon: "fas fa-history",
+			},
+			{
+				name: "Payout Settings",
+				path: "/transactions/payouts",
+				icon: "fas fa-money-check-alt",
+				quickAccess: true,
 			},
 		],
 	},
 
-	// 🔹 Messaging & Notifications (Common)
+	// 🔹 Dispute Management
 	{
-		category: "Communication",
+		category: "Disputes",
+		icon: "fas fa-gavel",
 		roles: ["Vendor", "Freelancer"],
+		badge: {
+			type: "counter",
+			content: (user) => user?.openDisputes || 0,
+		},
+		pages: [
+			{
+				name: "Active Disputes",
+				path: "/disputes/active",
+				icon: "fas fa-exclamation-circle",
+				badge: {
+					type: "counter",
+					content: (user) => user?.openDisputes || 0,
+				},
+			},
+			{
+				name: "Resolution Center",
+				path: "/disputes/resolution",
+				icon: "fas fa-balance-scale",
+			},
+			{
+				name: "Dispute History",
+				path: "/disputes/history",
+				icon: "fas fa-history",
+			},
+		],
+	},
+
+	// 🔹 Communications - Streamlined messaging and notifications
+	{
+		category: "Communications",
 		icon: "fas fa-comments",
+		roles: ["Vendor", "Freelancer"],
+		badge: {
+			type: "counter",
+			content: (user) =>
+				(user?.unreadMessages || 0) + (user?.unreadNotifications || 0),
+		},
 		pages: [
 			{
 				name: "Messages",
-				path: "/communication/messages",
-				icon: "fas fa-comment-dots",
-				submenu: [
-					{
-						name: "Inbox",
-						path: "/communication/messages/inbox",
-						icon: "fas fa-inbox",
-					},
-					{
-						name: "Sent",
-						path: "/communication/messages/sent",
-						icon: "fas fa-paper-plane",
-					},
-					{
-						name: "New Message",
-						path: "/communication/messages/compose",
-						icon: "fas fa-edit",
-					},
-				],
+				path: "/communications/messages",
+				icon: "fas fa-inbox",
+				badge: {
+					type: "counter",
+					content: (user) => user?.unreadMessages || 0,
+				},
+				quickAccess: true,
 			},
 			{
-				name: "Notifications",
-				path: "/communication/notifications",
+				name: "Announcements",
+				path: "/communications/announcements",
+				icon: "fas fa-bullhorn",
+			},
+			{
+				name: "Notification Settings",
+				path: "/communications/settings",
 				icon: "fas fa-bell",
-				submenu: [
-					{
-						name: "Alerts",
-						path: "/communication/notifications/alerts",
-						icon: "fas fa-exclamation-circle",
-					},
-					{
-						name: "System Updates",
-						path: "/communication/notifications/system",
-						icon: "fas fa-server",
-					},
-				],
 			},
 		],
 	},
 
-	// 🔹 Finance (Common)
-	{
-		category: "Finance",
-		roles: ["Vendor", "Freelancer"],
-		icon: "fas fa-wallet",
-		pages: [
-			{ name: "Earnings", path: "/finance", icon: "fas fa-chart-pie" },
-			{
-				name: "Payouts",
-				path: "/finance/payouts",
-				icon: "fas fa-money-check-alt",
-			},
-			{ name: "Tax Records", path: "/finance/taxes", icon: "fas fa-receipt" },
-		],
-	},
-
-	// 🔹 Clients & Reviews (Common)
-	{
-		category: "Clients",
-		roles: ["Vendor", "Freelancer"],
-		icon: "fas fa-users",
-		pages: [
-			{
-				name: "Client Directory",
-				path: "/clients",
-				icon: "fas fa-address-book",
-			},
-			{ name: "Reviews", path: "/clients/reviews", icon: "fas fa-star" },
-			{ name: "Reputation", path: "/clients/reputation", icon: "fas fa-medal" },
-		],
-	},
-
-	// 🔹 Platform Settings (Common)
+	// 🔹 Account Settings
 	{
 		category: "Settings",
-		roles: ["Vendor", "Freelancer"],
 		icon: "fas fa-cog",
-		pages: [
-			{
-				category: "Profile",
-				name: "Profile",
-				path: "/settings/profile",
-				icon: "fas fa-user-cog",
-				showBadge: true,
-			},
-		],
-	},
-
-	// 🔹 Support (Common)
-	{
-		category: "Help",
 		roles: ["Vendor", "Freelancer"],
-		icon: "fas fa-question-circle",
 		pages: [
-			{ name: "Documentation", path: "/help/docs", icon: "fas fa-book-open" },
 			{
-				name: "Contact Support",
-				path: "/help/contact",
-				icon: "fas fa-headset",
+				name: "Account Settings",
+				path: "/settings/account",
+				icon: "fas fa-user-cog",
+				badge: {
+					type: "status",
+					condition: (user) => user?.incompleteProfile,
+					content: "Incomplete",
+					color: "warning",
+				},
 			},
-			{ name: "Escrow Guide", path: "/help/escrow", icon: "fas fa-lock" },
+			{
+				name: "Security",
+				path: "/settings/security",
+				icon: "fas fa-shield-alt",
+				badge: {
+					type: "status",
+					condition: (user) => !user?.twoFactorEnabled,
+					content: "2FA disabled",
+					color: "error",
+				},
+			},
+			{
+				name: "API Keys",
+				path: "/settings/api",
+				icon: "fas fa-key",
+			},
 		],
 	},
 
-	// 🔹 Logout (Common)
+	// 🔹 Logout
 	{
 		category: "Logout",
 		path: "/logout",
-		roles: ["Vendor", "Freelancer"],
 		icon: "fas fa-sign-out-alt",
-		description: "Secure session termination",
+		roles: ["Vendor", "Freelancer"],
+		quickAccess: false,
 	},
 ];

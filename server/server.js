@@ -1,133 +1,43 @@
-const express = require("express");
-const cors = require("cors");
-const session = require("express-session");
 require("dotenv").config();
+const express = require("express");
 const {
 	connectDB,
 	createDatabaseIfNotExists,
 	sequelize,
 } = require("./config/database");
+const config = require("./config/app.config");
+const setupMiddleware = require("./middleware");
+const routes = require("./routes");
 
 // Import models
 const User = require("./models/User");
-const Store = require("./models/Store");
-const SocialAccount = require("./models/SocialAccount");
 const UserLoginHistory = require("./models/UserLoginHistory");
 
 const app = express();
 
-// Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// CORS configuration
-app.use(
-	cors({
-		origin: ["http://localhost:5173", "https://localhost:5173"],
-		credentials: true,
-		methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-		allowedHeaders: ["Content-Type", "Authorization"],
-	})
-);
-
-// Health check endpoint
-app.get("/api/health", async (req, res) => {
-	try {
-		// Check database connection
-		await sequelize.authenticate();
-
-		res.json({
-			success: true,
-			message: "Server is healthy",
-			timestamp: new Date().toISOString(),
-			database: "connected",
-		});
-	} catch (error) {
-		console.error("Health check failed:", error);
-		res.status(503).json({
-			success: false,
-			message: "Server is unhealthy",
-			error: error.message,
-			timestamp: new Date().toISOString(),
-		});
-	}
-});
-
-// Session configuration
-app.use(
-	session({
-		secret: process.env.SESSION_SECRET || "your-secret-key",
-		resave: false,
-		saveUninitialized: false,
-		cookie: {
-			secure: process.env.NODE_ENV === "production",
-			maxAge: 24 * 60 * 60 * 1000, // 24 hours
-		},
-	})
-);
+// Setup middleware
+setupMiddleware(app);
 
 // Initialize associations
 const initializeAssociations = () => {
-	// User has many stores
-	User.hasMany(Store, {
-		foreignKey: "userId",
-		as: "stores",
-	});
-
-	// Store belongs to User
-	Store.belongsTo(User, {
-		foreignKey: "userId",
-		as: "user",
-	});
-
-	// User has many social accounts
-	User.hasMany(SocialAccount, {
-		foreignKey: "userId",
-		as: "socialAccounts",
-	});
-
-	// Social account belongs to User
-	SocialAccount.belongsTo(User, {
-		foreignKey: "userId",
-		as: "user",
-	});
-
-	// User has many login history entries
 	User.hasMany(UserLoginHistory, {
-		foreignKey: "userId",
+		foreignKey: "userAddress",
+		sourceKey: "walletAddress",
 		as: "loginHistory",
 	});
 
-	// Login history belongs to User
 	UserLoginHistory.belongsTo(User, {
-		foreignKey: "userId",
-		as: "user",
+		foreignKey: "userAddress",
+		targetKey: "walletAddress",
 	});
 
 	console.log("✅ Model associations initialized");
 };
 
-// Routes
-const userRoutes = require("./routes/userRoutes");
-const storeRoutes = require("./routes/storeRoutes");
-const socialRoutes = require("./routes/socialRoutes");
+// Mount routes
+app.use("/api", routes);
 
-app.use("/api/users", userRoutes);
-app.use("/api/stores", storeRoutes);
-app.use("/api/social", socialRoutes);
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-	console.error(err.stack);
-	res.status(500).json({
-		success: false,
-		error: err.message || "Something went wrong!",
-	});
-});
-
-const PORT = process.env.PORT || 5000;
-
-// Ensure database is created, then sync models and start server
+// Start server
 const startServer = async () => {
 	try {
 		await createDatabaseIfNotExists();
@@ -138,21 +48,32 @@ const startServer = async () => {
 
 		// Sync all models
 		await sequelize.sync();
-
 		console.log("✅ Database synchronized successfully");
 
-		app.listen(PORT, () => {
-			console.log(`🚀 Server running on port ${PORT}`);
-			console.log(
-				`📱 Frontend URL: ${
-					process.env.FRONTEND_URL || "http://localhost:5173"
-				}`
-			);
+		app.listen(config.app.port, () => {
+			console.log(`🚀 Server running on port ${config.app.port}`);
+			console.log(`📱 Frontend URL: ${config.app.frontendUrl}`);
 		});
 	} catch (error) {
 		console.error("❌ Server startup error:", error);
 		process.exit(1);
 	}
 };
+
+// Handle uncaught exceptions
+process.on("uncaughtException", (err) => {
+	console.error("❌ UNCAUGHT EXCEPTION! Shutting down...");
+	console.error(err.name, err.message);
+	process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (err) => {
+	console.error("❌ UNHANDLED REJECTION! Shutting down...");
+	console.error(err.name, err.message);
+	server.close(() => {
+		process.exit(1);
+	});
+});
 
 startServer();

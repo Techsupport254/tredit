@@ -56,6 +56,7 @@ const subscribeToUser = (listener) => {
 
 // Get current user
 const getCurrentUser = () => currentUser;
+console.log("Current user:", currentUser);
 
 // Get current token
 const getCurrentToken = () => currentToken;
@@ -63,9 +64,24 @@ const getCurrentToken = () => currentToken;
 // Update axios default authorization header
 const updateAxiosAuth = async (user) => {
 	if (user) {
-		const token = await user.getIdToken(true);
-		currentToken = token;
-		axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+		try {
+			const tokenResult = await user.getIdTokenResult();
+			const expirationTime = new Date(tokenResult.expirationTime).getTime();
+			const now = Date.now();
+			const fiveMinutes = 5 * 60 * 1000;
+
+			if (expirationTime - now < fiveMinutes) {
+				currentToken = await user.getIdToken(true); // Force refresh
+			} else {
+				currentToken = tokenResult.token;
+			}
+
+			axios.defaults.headers.common["Authorization"] = `Bearer ${currentToken}`;
+		} catch (error) {
+			console.error("Error updating auth token:", error);
+			currentToken = null;
+			delete axios.defaults.headers.common["Authorization"];
+		}
 	} else {
 		currentToken = null;
 		delete axios.defaults.headers.common["Authorization"];
@@ -74,32 +90,6 @@ const updateAxiosAuth = async (user) => {
 
 // Add this constant
 const API_URL = import.meta.env.VITE_PUBLIC_API_URL;
-
-// Fetch YouTube data
-const fetchYouTubeData = async (accessToken) => {
-	try {
-		const response = await axios.get(
-			"https://www.googleapis.com/youtube/v3/channels",
-			{
-				params: { part: "snippet,statistics", mine: true },
-				headers: {
-					Authorization: `Bearer ${accessToken}`,
-					Accept: "application/json",
-				},
-			}
-		);
-
-		if (!response.data.items?.length) {
-			console.warn("No YouTube channel found");
-			return null;
-		}
-
-		return response.data.items[0];
-	} catch (error) {
-		console.error("Error fetching YouTube data:", error);
-		return null;
-	}
-};
 
 // Listen to auth state changes
 onAuthStateChanged(auth, async (firebaseUser) => {
@@ -112,7 +102,6 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 				email: firebaseUser.email || "",
 				photoURL: firebaseUser.photoURL || null,
 				accessToken: currentToken,
-				socialMedias: [],
 			};
 			notifyUserListeners(currentUser);
 		}
@@ -126,76 +115,52 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 	}
 });
 
-// Modify the signInWithGoogle function
-const signInWithGoogle = async () => {
+// Sign in with Google
+const signInWithGoogle = async (retryCount = 0) => {
 	try {
 		const result = await signInWithPopup(auth, googleProvider);
-		const credential = GoogleAuthProvider.credentialFromResult(result);
+		const user = result.user;
 
 		// Update axios auth header
-		await updateAxiosAuth(result.user);
+		await updateAxiosAuth(user);
 
-		// Get YouTube data if available
-		const youtubeData = credential?.accessToken
-			? await fetchYouTubeData(credential.accessToken)
-			: null;
-
-		// Store tokens in backend
-		try {
-			await axios.post(`${API_URL}/users/update-tokens`, {
-				accessToken: credential.accessToken,
-				refreshToken: credential.refreshToken,
-				expiresIn: credential.expiresIn,
-			});
-		} catch (error) {
-			console.error("Error storing tokens:", error);
-		}
-
-		// Create enhanced user object
+		// Create user object
 		const enhancedUser = {
-			uid: result.user.uid,
-			name: result.user.displayName || "",
-			email: result.user.email || "",
-			photoURL: result.user.photoURL || null,
-			accessToken: currentToken,
-			googleAccessToken: credential?.accessToken || null,
-			refreshToken: credential?.refreshToken || null,
-			tokenExpiry: credential?.expiresIn
-				? new Date(Date.now() + credential.expiresIn * 1000)
-				: null,
-			youtube: youtubeData,
-			socialMedias: youtubeData
-				? [
-						{
-							platform: "YouTube",
-							accessToken: credential.accessToken,
-							channelId: youtubeData.id,
-							channelName: youtubeData.snippet?.title,
-						},
-				  ]
-				: [],
-			isNewUser: true,
+			uid: user.uid,
+			name: user.displayName || "",
+			email: user.email || "",
+			photoURL: user.photoURL || null,
+			accessToken: await user.getIdToken(),
+			isNewUser: result.additionalUserInfo?.isNewUser || false,
 		};
 
-		// Check if user exists in your backend
+		// Store token in backend
 		try {
-			const response = await axios.get(`${API_URL}/users/${result.user.uid}`);
-			if (response.data.success) {
-				enhancedUser.isNewUser = false;
-				enhancedUser.profile = response.data.user;
-			}
+			await axios.post(`${API_URL}/users/update-tokens`, {
+				idToken: await user.getIdToken(),
+			});
 		} catch (error) {
-			if (error.response?.status !== 404) {
-				console.error("Error checking user existence:", error);
+			console.error("Error storing token:", error);
+			if (retryCount === 0 && error.response?.status === 401) {
+				await user.getIdToken(true); // Force token refresh
+				return signInWithGoogle(retryCount + 1);
 			}
-			// If 404, user doesn't exist, keep isNewUser as true
 		}
 
 		currentUser = enhancedUser;
 		notifyUserListeners(enhancedUser);
 
-		return enhancedUser;
+		return {
+			userData: enhancedUser,
+			token: await user.getIdToken(),
+		};
 	} catch (error) {
+		if (error.code === "auth/network-request-failed" && retryCount < 2) {
+			await new Promise((resolve) =>
+				setTimeout(resolve, 1000 * (retryCount + 1))
+			);
+			return signInWithGoogle(retryCount + 1);
+		}
 		console.error("Google Sign-In Error:", error);
 		throw error;
 	}
@@ -216,11 +181,10 @@ const googleLogout = async () => {
 	}
 };
 
-// Export additional functions
+// Export functions
 export {
 	auth,
 	googleProvider,
-	signInWithPopup,
 	signInWithGoogle,
 	googleLogout,
 	getCurrentUser,

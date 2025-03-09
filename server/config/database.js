@@ -89,9 +89,9 @@ async function connectDB() {
 		await sequelize.authenticate();
 		console.log("[DB] Connection to the database established successfully.");
 
-		// Force sync all models
-		console.log("[DB] Forcing database schema synchronization...");
-		await sequelize.sync({ force: true });
+		// Alter tables instead of force sync
+		console.log("[DB] Synchronizing database schema...");
+		await sequelize.sync({ alter: true });
 		console.log("[DB] Database schema synchronized successfully.");
 
 		return sequelize;

@@ -3,8 +3,16 @@ import { sidebarData } from "../data"; // Import the data.js file as is
 import { Link, useLocation } from "react-router-dom";
 import { useLayoutContext } from "../Context/LayoutContext";
 import { useAccount } from "../Context/AccountContext";
-import { Avatar, Tag, Badge, Tooltip } from "antd";
-import { UserOutlined, AppstoreOutlined } from "@ant-design/icons";
+import { useAuth } from "../Context/AuthContext";
+import { Avatar, Tag, Badge, Tooltip, Skeleton } from "antd";
+import {
+	UserOutlined,
+	AppstoreOutlined,
+	WalletOutlined,
+	LoadingOutlined,
+	CheckCircleFilled,
+	ExclamationCircleFilled,
+} from "@ant-design/icons";
 
 const getEthToKesRate = async () => {
 	try {
@@ -21,22 +29,47 @@ const getEthToKesRate = async () => {
 
 const Sidebar = () => {
 	const location = useLocation();
-	const [openMenu, setOpenMenu] = useState(() => {
-		const currentPath = location.pathname;
-		const parentCategory = sidebarData.find((item) =>
-			item.pages?.some((page) => currentPath.startsWith(page.path))
-		)?.category;
-		return parentCategory || null;
-	});
+	const { user } = useAuth();
+	const { walletAddress } = useAccount();
 	const { isSidebarOpen, closeSidebar, toggleSidebar } = useLayoutContext();
-	const { walletAddress, profile, networkName, balance } = useAccount();
 	const [ethToKesRate, setEthToKesRate] = useState(null);
+	const [isRateLoading, setIsRateLoading] = useState(false);
+
+	// Track the currently open menu
+	const [openMenu, setOpenMenu] = useState(null);
+
+	// Find active category based on current path
+	const findActiveCategory = (path) => {
+		return sidebarData.find(
+			(item) =>
+				item.pages?.some(
+					(page) =>
+						path === page.path ||
+						(page.path !== "/" && path.startsWith(page.path))
+				)?.category
+		);
+	};
+
+	// Set initial open menu based on current path
+	useEffect(() => {
+		const activeCategory = findActiveCategory(location.pathname);
+		if (activeCategory) {
+			setOpenMenu(activeCategory);
+		}
+	}, [location.pathname]);
 
 	// Fetch ETH to KES exchange rate
 	useEffect(() => {
 		const fetchExchangeRate = async () => {
-			const rate = await getEthToKesRate();
-			setEthToKesRate(rate);
+			setIsRateLoading(true);
+			try {
+				const rate = await getEthToKesRate();
+				setEthToKesRate(rate);
+			} catch (error) {
+				console.error("Error fetching rate:", error);
+			} finally {
+				setIsRateLoading(false);
+			}
 		};
 
 		fetchExchangeRate();
@@ -61,12 +94,12 @@ const Sidebar = () => {
 
 		// Keep parent menu open based on current path
 		const currentPath = location.pathname;
-		const parentCategory = sidebarData.find((item) =>
-			item.pages?.some((page) => currentPath.startsWith(page.path))
-		)?.category;
+		const currentMenu = sidebarData.find((item) =>
+			item.pages?.some((page) => page.path === currentPath)
+		);
 
-		if (parentCategory) {
-			setOpenMenu(parentCategory);
+		if (currentMenu) {
+			setOpenMenu(currentMenu.category);
 		}
 	}, []);
 
@@ -98,21 +131,32 @@ const Sidebar = () => {
 		};
 	}, [isSidebarOpen, closeSidebar]);
 
-	// Toggle submenu with persistence
+	// Updated toggleSubmenu to handle active state correctly
 	const toggleSubmenu = (category) => {
-		setOpenMenu(openMenu === category ? null : category);
-		localStorage.setItem("lastOpenMenu", category);
+		if (openMenu === category) {
+			// Close the menu if it's already open
+			setOpenMenu(null);
+		} else {
+			// Open the clicked menu and close others
+			setOpenMenu(category);
+		}
 	};
 
-	// Close sidebar on menu item click
+	// Close sidebar on mobile when an item is clicked
 	const handleItemClick = () => {
-		closeSidebar();
+		if (window.innerWidth <= 768) {
+			closeSidebar();
+		}
 	};
 
 	// Format balance display in KES
 	const formatBalance = (balance) => {
+		if (isRateLoading) {
+			return <LoadingOutlined className="text-blue-500" />;
+		}
+
 		if (!ethToKesRate || !balance) {
-			return "Loading...";
+			return "N/A";
 		}
 
 		try {
@@ -130,7 +174,7 @@ const Sidebar = () => {
 	};
 
 	const getMissingFields = () => {
-		if (!profile) return [];
+		if (!user) return [];
 
 		const missingFields = [];
 		const requiredFields = {
@@ -152,7 +196,7 @@ const Sidebar = () => {
 
 		// Check basic required fields
 		requiredFields.basic.forEach((field) => {
-			const value = profile[field.key];
+			const value = user[field.key];
 			if (field.validator) {
 				if (!field.validator(value)) {
 					missingFields.push(field.label);
@@ -163,9 +207,9 @@ const Sidebar = () => {
 		});
 
 		// Check vendor-specific fields if user is a vendor
-		if (profile.role === "vendor") {
+		if (user.role === "vendor") {
 			requiredFields.vendor.forEach((field) => {
-				const value = profile[field.key];
+				const value = user[field.key];
 				if (field.validator) {
 					if (!field.validator(value)) {
 						missingFields.push(field.label);
@@ -176,7 +220,7 @@ const Sidebar = () => {
 			});
 
 			// Check store data if it exists
-			if (profile.store) {
+			if (user.store) {
 				const storeFields = [
 					{ key: "name", label: "Store Name" },
 					{ key: "description", label: "Store Description" },
@@ -185,14 +229,14 @@ const Sidebar = () => {
 				];
 
 				storeFields.forEach((field) => {
-					const value = profile.store[field.key];
+					const value = user.store[field.key];
 					if (!value || value === "") {
 						missingFields.push(field.label);
 					}
 				});
 
 				// Check store settings
-				if (profile.store.settings) {
+				if (user.store.settings) {
 					const requiredSettings = [
 						{
 							key: "enableYouTubeIntegration",
@@ -203,14 +247,14 @@ const Sidebar = () => {
 					];
 
 					requiredSettings.forEach((setting) => {
-						if (typeof profile.store.settings[setting.key] === "undefined") {
+						if (typeof user.store.settings[setting.key] === "undefined") {
 							missingFields.push(setting.label);
 						}
 					});
 				} else {
 					missingFields.push("Store Settings");
 				}
-			} else if (profile.role === "vendor") {
+			} else if (user.role === "vendor") {
 				missingFields.push("Store Setup");
 			}
 		}
@@ -237,98 +281,91 @@ const Sidebar = () => {
 			{/* Navigation */}
 			<div className="flex-grow">
 				<ul className="space-y-2">
-					{sidebarData.map((item, index) => (
-						<li key={index} className="group">
+					{sidebarData.map((item) => (
+						<li key={item.category} className="group">
 							{item.pages ? (
 								<div>
 									<button
-										onClick={() => toggleSubmenu(item.category)}
+										onClick={() => {
+											toggleSubmenu(item.category);
+											handleItemClick();
+										}}
 										className={`flex items-center justify-between w-full p-3 text-left rounded-lg transition-all duration-300 
-											text-gray-700 hover:text-blue-800 hover:bg-blue-100`}
+                      ${
+												openMenu === item.category
+													? "text-blue-800"
+													: "text-gray-700 hover:text-blue-800"
+											}`}
 									>
 										<div className="flex items-center space-x-3">
 											<i
-												className={`${item.icon} w-5 h-5 flex-shrink-0 text-blue-400`}
+												className={`${item.icon} w-5 h-5 flex-shrink-0 ${
+													openMenu === item.category
+														? "text-blue-800"
+														: "text-blue-400"
+												}`}
 											></i>
 											<span className="whitespace-nowrap">{item.category}</span>
 										</div>
-										<div className="flex items-center gap-2">
-											{/* Show badge on Settings category ONLY when collapsed */}
-											{item.category === "Settings" &&
-												openMenu !== item.category &&
-												missingFields.length > 0 && (
-													<Badge
-														count={missingFields.length}
-														style={{ backgroundColor: "#ff4d4f" }}
-													/>
-												)}
-											<i
-												className={`fas fa-chevron-down transform transition-transform duration-300 ${
-													openMenu === item.category ? "rotate-180" : "rotate-0"
-												}`}
-											></i>
-										</div>
+										<i
+											className={`fas fa-chevron-down transform transition-transform duration-300 ${
+												openMenu === item.category ? "rotate-180" : "rotate-0"
+											}`}
+										></i>
 									</button>
 
-									{/* Display submenu items when open */}
 									<ul
-										className={`ml-5 mt-2 space-y-2 transition-all duration-300 ease-in-out ${
+										className={`ml-5 mt-2 space-y-2 overflow-hidden transition-all duration-300 ease-in-out ${
 											openMenu === item.category
-												? "max-h-96 opacity-100"
-												: "max-h-0 opacity-0 hidden"
+												? "max-h-[1000px] opacity-100 visible"
+												: "max-h-0 opacity-0 invisible"
 										}`}
+										style={{
+											transitionProperty: "max-height, opacity, visibility",
+											transitionTimingFunction: "cubic-bezier(0.4, 0, 0.2, 1)",
+										}}
 									>
-										{item.pages.map((subItem, subIndex) => (
-											<li key={subIndex}>
+										{item.pages.map((page) => (
+											<li key={page.path}>
 												<Link
-													to={subItem.path}
+													to={page.path}
 													onClick={handleItemClick}
 													className={`flex items-center justify-between p-2 text-sm rounded-lg transition-all duration-300 hover:bg-blue-100 hover:text-blue-800 ${
-														location.pathname === subItem.path ||
-														(subItem.path !== "/products" &&
-															location.pathname.startsWith(subItem.path))
+														location.pathname === page.path ||
+														(page.path !== "/" &&
+															!page.exact &&
+															location.pathname.startsWith(page.path))
 															? "!bg-blue-100 !text-blue-800"
 															: "text-gray-600"
 													}`}
 												>
 													<div className="flex items-center space-x-3">
 														<i
-															className={`${
-																subItem.icon
-															} w-4 h-4 flex-shrink-0 ${
-																location.pathname === subItem.path ||
-																(subItem.path !== "/products" &&
-																	location.pathname.startsWith(subItem.path))
+															className={`${page.icon} w-4 h-4 flex-shrink-0 ${
+																location.pathname === page.path ||
+																(page.path !== "/" &&
+																	!page.exact &&
+																	location.pathname.startsWith(page.path))
 																	? "!text-blue-800"
 																	: "text-blue-400"
 															}`}
 														></i>
 														<span className="whitespace-nowrap">
-															{subItem.name}
+															{page.name}
 														</span>
 													</div>
-													{/* Show badge on Profile item when expanded */}
-													{subItem.showBadge && missingFields.length > 0 && (
-														<Tooltip
-															title={
-																<div className="text-xs">
-																	<div className="font-semibold mb-1">
-																		Missing Profile Data:
-																	</div>
-																	{missingFields.map((field, index) => (
-																		<div key={index} className="text-red-500">
-																			• {field}
-																		</div>
-																	))}
-																</div>
-															}
-															placement="right"
-														>
-															<Badge
-																count={missingFields.length}
-																style={{ backgroundColor: "#ff4d4f" }}
-															/>
-														</Tooltip>
+													{page.badge && page.badge.content > 0 && (
+														<Badge
+															count={page.badge.content}
+															style={{
+																backgroundColor:
+																	page.badge.color === "warning"
+																		? "#faad14"
+																		: page.badge.color === "error"
+																		? "#ff4d4f"
+																		: "#1890ff",
+															}}
+														/>
 													)}
 												</Link>
 											</li>
@@ -339,20 +376,46 @@ const Sidebar = () => {
 								<Link
 									to={item.path}
 									onClick={handleItemClick}
-									className={`flex items-center space-x-3 p-3 rounded-lg transition-all duration-300 hover:bg-blue-100 hover:text-blue-800 ${
+									className={`flex items-center justify-between p-3 rounded-lg transition-all duration-300 hover:bg-blue-100 hover:text-blue-800 ${
 										location.pathname === item.path
 											? "!bg-blue-100 !text-blue-800"
 											: "text-gray-700"
 									}`}
 								>
-									<i
-										className={`${item.icon} w-5 h-5 flex-shrink-0 ${
-											location.pathname === item.path
-												? "!text-blue-800"
-												: "text-blue-400"
-										}`}
-									></i>
-									<span className="whitespace-nowrap">{item.category}</span>
+									<div className="flex items-center space-x-3">
+										<i
+											className={`${item.icon} w-5 h-5 flex-shrink-0 ${
+												location.pathname === item.path
+													? "!text-blue-800"
+													: "text-blue-400"
+											}`}
+										></i>
+										<span className="whitespace-nowrap">{item.category}</span>
+									</div>
+									{item.showBadge && missingFields.length > 0 && (
+										<Tooltip
+											title={
+												<div className="text-xs">
+													<div className="font-semibold mb-1">
+														Missing Profile Data:
+													</div>
+													<div className="max-h-48 overflow-y-auto">
+														{missingFields.map((field, index) => (
+															<div key={index} className="text-red-500">
+																• {field}
+															</div>
+														))}
+													</div>
+												</div>
+											}
+											placement="right"
+										>
+											<Badge
+												count={missingFields.length}
+												style={{ backgroundColor: "#ff4d4f" }}
+											/>
+										</Tooltip>
+									)}
 								</Link>
 							)}
 						</li>
@@ -362,34 +425,60 @@ const Sidebar = () => {
 
 			{/* User Info Section */}
 			<div className="mt-auto border-t border-gray-300 pt-4">
-				<div className="flex items-center gap-3 p-3">
-					<Avatar
-						size={48}
-						src={profile?.profileImage || profile?.photoURL}
-						icon={<UserOutlined />}
-						className="border border-gray-400"
-					/>
-					<div className="flex flex-col">
-						<span className="font-semibold text-gray-800 text-sm">
-							{profile?.name || "User"}
-						</span>
-						<div className="flex items-center gap-1">
-							<span className="text-xs text-gray-500">
-								{walletAddress
-									? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-									: "No Wallet"}
+				{user ? (
+					<div className="flex items-center gap-3 p-3">
+						<Avatar
+							size={48}
+							src={user.photoURL || user.profileImage}
+							icon={<UserOutlined />}
+							className="border border-gray-400"
+						/>
+						<div className="flex flex-col">
+							<span className="font-semibold text-gray-800 text-sm">
+								{user.name || "User"}
+								{user.isVerified ? (
+									<Tooltip title="Verified Account">
+										<CheckCircleFilled className="text-green-500" />
+									</Tooltip>
+								) : (
+									<Tooltip title="Unverified Account">
+										<ExclamationCircleFilled className="text-yellow-500" />
+									</Tooltip>
+								)}
 							</span>
-							{networkName && (
-								<Tag color="blue" className="text-xs">
-									{networkName}
-								</Tag>
-							)}
+							<div className="flex items-center gap-2">
+								<Tooltip title={walletAddress}>
+									<span className="text-xs text-gray-500">
+										{walletAddress
+											? `${walletAddress.slice(0, 6)}...${walletAddress.slice(
+													-4
+											  )}`
+											: "No Wallet"}
+									</span>
+									{user.networkName && (
+										<Tag color="blue" className="text-xs">
+											{user.networkName === "Polygon Amoy Testnet"
+												? "Amoy"
+												: user.networkName}
+										</Tag>
+									)}
+								</Tooltip>
+							</div>
 						</div>
-						<span className="text-sm font-medium text-gray-700">
-							{formatBalance(balance)}
-						</span>
 					</div>
-				</div>
+				) : (
+					<div className="p-3 flex items-center gap-2">
+						<Skeleton.Avatar size={50} active />
+						<Skeleton
+							active
+							paragraph={{
+								rows: 2,
+								gap: 0,
+								width: ["80%", "60%"],
+							}}
+						/>
+					</div>
+				)}
 
 				{/* Footer Links */}
 				<div className="text-center text-xs text-gray-500 mt-4">

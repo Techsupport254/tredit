@@ -1,20 +1,28 @@
-const { DataTypes } = require("sequelize");
+const { Model, DataTypes } = require("sequelize");
 const { sequelize } = require("../config/database");
 
-const UserLoginHistory = sequelize.define(
-	"UserLoginHistory",
+class UserLoginHistory extends Model {
+	static associate(models) {
+		UserLoginHistory.belongsTo(models.User, {
+			foreignKey: "userAddress",
+			targetKey: "walletAddress",
+		});
+	}
+}
+
+UserLoginHistory.init(
 	{
 		id: {
 			type: DataTypes.UUID,
 			defaultValue: DataTypes.UUIDV4,
 			primaryKey: true,
 		},
-		userId: {
-			type: DataTypes.UUID,
+		userAddress: {
+			type: DataTypes.STRING,
 			allowNull: false,
 			references: {
 				model: "Users",
-				key: "id",
+				key: "walletAddress",
 			},
 		},
 		ipAddress: {
@@ -70,16 +78,23 @@ const UserLoginHistory = sequelize.define(
 		},
 	},
 	{
+		sequelize,
+		modelName: "UserLoginHistory",
+		tableName: "UserLoginHistories",
 		timestamps: true,
+		hooks: {
+			beforeValidate: (loginHistory) => {
+				if (loginHistory.userAddress) {
+					loginHistory.userAddress = loginHistory.userAddress.toLowerCase();
+				}
+			},
+		},
 		indexes: [
 			{
-				fields: ["userId"],
+				fields: ["userAddress"],
 			},
 			{
 				fields: ["createdAt"],
-			},
-			{
-				fields: ["status"],
 			},
 		],
 	}

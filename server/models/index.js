@@ -21,72 +21,47 @@ const sequelize = new Sequelize({
 	},
 });
 
-// Export the sequelize instance first
-module.exports = { sequelize };
-
-// Import models after exporting sequelize
-const Product = require("./Product");
-const ProductSEO = require("./ProductSEO");
-const ProductShipping = require("./ProductShipping");
-const ProductAnalytics = require("./ProductAnalytics");
-const ProductVariant = require("./ProductVariant");
-const ProductReview = require("./ProductReview");
-const ProductMedia = require("./ProductMedia");
+// Import models
 const User = require("./User");
-const Store = require("./Store");
-const SocialAccount = require("./SocialAccount");
+const UserLoginHistory = require("./UserLoginHistory");
+const Business = require("./Business");
+const TestUser = require("./TestUser");
 
 const initializeModels = () => {
-	// Define associations
-	Product.hasOne(ProductSEO, { foreignKey: "product_id", as: "seo" });
-	Product.hasOne(ProductShipping, { foreignKey: "product_id", as: "shipping" });
-	Product.hasOne(ProductAnalytics, {
-		foreignKey: "product_id",
-		as: "analytics",
+	// User Login History associations
+	User.hasMany(UserLoginHistory, {
+		foreignKey: "userAddress",
+		sourceKey: "walletAddress",
+		as: "loginHistory",
 	});
-	Product.hasMany(ProductVariant, { foreignKey: "product_id", as: "variants" });
-	Product.hasMany(ProductReview, { foreignKey: "product_id", as: "reviews" });
-	Product.hasMany(ProductMedia, { foreignKey: "productId", as: "media" });
+	UserLoginHistory.belongsTo(User, {
+		foreignKey: "userAddress",
+		targetKey: "walletAddress",
+	});
 
-	// Define reverse associations
-	ProductSEO.belongsTo(Product, { foreignKey: "product_id" });
-	ProductShipping.belongsTo(Product, { foreignKey: "product_id" });
-	ProductAnalytics.belongsTo(Product, { foreignKey: "product_id" });
-	ProductVariant.belongsTo(Product, { foreignKey: "product_id" });
-	ProductReview.belongsTo(Product, { foreignKey: "product_id" });
-	ProductMedia.belongsTo(Product, { foreignKey: "productId" });
-
-	// Store associations
-	Store.belongsTo(User, {
-		foreignKey: "ownerAddress",
+	// Business associations
+	Business.belongsTo(User, {
+		foreignKey: "walletAddress",
 		targetKey: "walletAddress",
 		as: "owner",
 	});
-	User.hasOne(Store, {
-		foreignKey: "ownerAddress",
-		sourceKey: "walletAddress",
-		as: "store",
-	});
 
-	// Social Account associations
-	User.hasMany(SocialAccount, { foreignKey: "userId" });
-	SocialAccount.belongsTo(User, { foreignKey: "userId" });
+	Business.belongsToMany(User, {
+		through: "BusinessTeamMembers",
+		foreignKey: "businessId",
+		otherKey: "walletAddress",
+		as: "teamMembers",
+	});
 };
 
 // Initialize associations
 initializeModels();
 
-// Update exports to include all models
+// Export all models
 module.exports = {
 	sequelize,
-	Product,
-	ProductSEO,
-	ProductShipping,
-	ProductAnalytics,
-	ProductVariant,
-	ProductReview,
-	ProductMedia,
 	User,
-	Store,
-	SocialAccount,
+	UserLoginHistory,
+	Business,
+	TestUser,
 };
