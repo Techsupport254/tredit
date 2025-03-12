@@ -1,14 +1,21 @@
 const axios = require("axios");
 const FormData = require("form-data");
+const { blockchainConfig } = require("../config/config");
+
+const {
+	PINATA_API_KEY,
+	PINATA_API_SECRET,
+	PINATA_BASE_URL,
+	PINATA_GATEWAY_URL,
+	PINATA_JWT,
+} = blockchainConfig;
 
 class PinataManager {
 	constructor() {
-		this.apiKey = process.env.PINATA_API_KEY;
-		this.apiSecret = process.env.PINATA_API_SECRET;
-		this.baseURL = "https://api.pinata.cloud";
+		this.baseURL = PINATA_BASE_URL;
 		this.headers = {
-			pinata_api_key: this.apiKey,
-			pinata_secret_api_key: this.apiSecret,
+			pinata_api_key: PINATA_API_KEY,
+			pinata_secret_api_key: PINATA_API_SECRET,
 		};
 	}
 
@@ -229,25 +236,107 @@ class PinataManager {
 			throw new Error(`Failed to get ${dataKey} data`);
 		}
 	}
+
+	// Update the gateway URL construction
+	_constructGatewayUrl(cid) {
+		return `${PINATA_GATEWAY_URL}/ipfs/${cid}`;
+	}
+
+	async pinJSONToIPFS(jsonData) {
+		try {
+			const response = await axios.post(
+				`${this.baseURL}/pinning/pinJSONToIPFS`,
+				{
+					pinataContent: jsonData,
+					pinataMetadata: {
+						name: `data_${Date.now()}`,
+					},
+					pinataOptions: {
+						cidVersion: 1,
+					},
+				},
+				{ headers: this.headers }
+			);
+
+			return {
+				IpfsHash: response.data.IpfsHash,
+				url: this._constructGatewayUrl(response.data.IpfsHash),
+			};
+		} catch (error) {
+			console.error(
+				"Pinata JSON Upload Error:",
+				error.response?.data || error.message
+			);
+			throw new Error("Failed to pin JSON to IPFS");
+		}
+	}
 }
 
-// Mock IPFS utility for testing
-const pinata = {
-	pinFileToIPFS: async (file) => {
-		return {
-			IpfsHash: "QmTest123",
-			PinSize: 1234,
-			Timestamp: new Date().toISOString(),
-		};
-	},
+class IpfsService {
+	constructor() {
+		this.baseURL = PINATA_BASE_URL;
+		this.jwt = PINATA_JWT;
+	}
 
-	pinJSONToIPFS: async (json) => {
-		return {
-			IpfsHash: "QmTest456",
-			PinSize: 567,
-			Timestamp: new Date().toISOString(),
-		};
-	},
+	// Core methods for file operations
+	async uploadFile(file) {
+		try {
+			const formData = new FormData();
+			formData.append("file", file);
+
+			const response = await axios.post(
+				`${this.baseURL}/pinning/pinFileToIPFS`,
+				formData,
+				{
+					headers: {
+						"Content-Type": `multipart/form-data;`,
+						Authorization: `Bearer ${this.jwt}`,
+					},
+				}
+			);
+
+			return response.data;
+		} catch (error) {
+			console.error("Error uploading file to IPFS:", error);
+			throw new Error("Failed to upload file to IPFS");
+		}
+	}
+
+	async uploadJSON(jsonData) {
+		try {
+			const response = await axios.post(
+				`${this.baseURL}/pinning/pinJSONToIPFS`,
+				jsonData,
+				{
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${this.jwt}`,
+					},
+				}
+			);
+
+			return response.data;
+		} catch (error) {
+			console.error("Error uploading JSON to IPFS:", error);
+			throw new Error("Failed to upload JSON to IPFS");
+		}
+	}
+
+	async unpin(hash) {
+		try {
+			await axios.delete(`${this.baseURL}/pinning/unpin/${hash}`, {
+				headers: {
+					Authorization: `Bearer ${this.jwt}`,
+				},
+			});
+			return true;
+		} catch (error) {
+			console.error("Error unpinning from IPFS:", error);
+			throw new Error("Failed to unpin from IPFS");
+		}
+	}
+}
+
+module.exports = {
+	PinataManager,
 };
-
-module.exports = pinata;

@@ -60,6 +60,12 @@ const ProfileSetup = () => {
 	// Handle Google user changes
 	useEffect(() => {
 		if (googleUser) {
+			console.log("Google User Data:", {
+				name: googleUser.name,
+				email: googleUser.email,
+				photoURL: googleUser.photoURL,
+				fullObject: googleUser,
+			});
 			setSetupStatus((prev) => ({
 				...prev,
 				stage: prev.stage === "initial" ? "profile_creation" : prev.stage,
@@ -124,7 +130,9 @@ const ProfileSetup = () => {
 						<div className="text-sm">
 							<p>CID: {data.data.cid}</p>
 							<a
-								href={`https://gateway.pinata.cloud/ipfs/${data.data.cid}`}
+								href={`${import.meta.env.VITE_PINATA_GATEWAY_URL}/ipfs/${
+									data.data.cid
+								}`}
 								target="_blank"
 								rel="noopener noreferrer"
 								className="text-blue-500 hover:text-blue-600"
@@ -375,7 +383,7 @@ const ProfileSetup = () => {
 				}
 
 				// Navigate to dashboard immediately
-				navigate("/dashboard");
+				window.location.href = "/dashboard";
 			}
 		} catch (error) {
 			console.error("Profile creation error:", error);
@@ -468,16 +476,25 @@ const ProfileSetup = () => {
 									<div className="bg-white rounded-lg p-6 mb-6 border border-gray-100 flex gap-4 items-center">
 										<Avatar
 											size={48}
-											src={googleUser.photoURL}
-											alt={googleUser.name}
-											className="flex-shrink-0"
-										>
-											{!googleUser.photoURL && <UserOutlined />}
-										</Avatar>
+											src={googleUser?.photoURL}
+											icon={<UserOutlined />}
+											alt={googleUser?.name || "User Avatar"}
+											className="border border-gray-400 shrink-0"
+											style={{
+												objectFit: "cover",
+												backgroundColor: !googleUser?.photoURL
+													? "#1890ff"
+													: undefined,
+												display: "flex",
+												alignItems: "center",
+												justifyContent: "center",
+											}}
+											crossOrigin="anonymous"
+										/>
 										<div>
-											<div className="font-medium">{googleUser.name}</div>
+											<div className="font-medium">{googleUser?.name}</div>
 											<div className="text-gray-500 text-sm">
-												{googleUser.email}
+												{googleUser?.email}
 											</div>
 										</div>
 									</div>

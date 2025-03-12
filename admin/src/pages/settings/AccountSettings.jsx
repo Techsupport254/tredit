@@ -104,7 +104,7 @@ const formatLocation = (location) => {
 };
 
 const AccountSettings = () => {
-	const { user: authUser, loginHistory, fetchLoginHistory } = useAuth();
+	const { user: authUser } = useAuth();
 	const { user: accountUser, updateProfile } = useAccount();
 	const [selectedMenu, setSelectedMenu] = useState("profile");
 	const [editingSection, setEditingSection] = useState(null);
@@ -118,12 +118,6 @@ const AccountSettings = () => {
 
 	// Use accountUser as primary source, fallback to authUser
 	const user = accountUser || authUser;
-
-	useEffect(() => {
-		if (fetchLoginHistory) {
-			fetchLoginHistory();
-		}
-	}, [fetchLoginHistory]);
 
 	const searchLocation = debounce(async (query) => {
 		if (!query) {
@@ -211,7 +205,6 @@ const AccountSettings = () => {
 		location: user?.location || "Not set",
 	};
 
-
 	const storeInfo = {
 		name: user?.store?.name || "Not set",
 		description: user?.store?.description || "Not set",
@@ -225,7 +218,7 @@ const AccountSettings = () => {
 	};
 
 	const handleSettingToggle = (setting, checked) => {
-		message.info(`${setting} setting ${checked ? "enabled" : "disabled"}`);
+		// Remove the notification since it's redundant with the actual update notification
 	};
 
 	const toggleEditMode = (section) => {
@@ -320,7 +313,6 @@ const AccountSettings = () => {
 							location: updatedUser.location || "Not set",
 						});
 
-						message.success("Profile updated successfully!");
 						setEditingSection(null);
 					}
 				} catch (error) {
@@ -346,7 +338,6 @@ const AccountSettings = () => {
 							category: values.category,
 							description: values.description,
 						});
-						message.success("Store updated successfully!");
 						setEditingSection(null);
 					}
 				} catch (error) {
@@ -482,7 +473,6 @@ const AccountSettings = () => {
 			// await updateStoreSettings({
 			// 	deleted: true,
 			// });
-			message.success("Account deleted successfully!");
 			// Redirect to login page or home page
 		} catch (error) {
 			message.error("Failed to delete account");
@@ -490,61 +480,6 @@ const AccountSettings = () => {
 			setDeleteLoading(false);
 			setShowDeleteConfirm(false);
 		}
-	};
-
-	const renderLoginHistory = () => {
-		if (!loginHistory?.length) {
-			return (
-				<Empty
-					description="No recent login activity"
-					image={Empty.PRESENTED_IMAGE_SIMPLE}
-				/>
-			);
-		}
-
-		// Sort login history by date and take only the 5 most recent entries
-		const recentLogins = [...loginHistory]
-			.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-			.slice(0, 5);
-
-		return (
-			<div className="space-y-4">
-				{recentLogins.map((login) => (
-					<div
-						key={login.id}
-						className="flex items-center justify-between p-4 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
-					>
-						<div className="flex items-center gap-4">
-							<div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-500">
-								{getDeviceIcon(login.deviceType)}
-							</div>
-							<div>
-								<div className="font-medium">
-									{login.browser} {login.browserVersion} on {login.os}{" "}
-									{login.osVersion}
-								</div>
-								<div className="text-sm text-gray-500">
-									{login.device || "Unknown Device"} • {login.ipAddress}
-								</div>
-								<div className="text-xs text-gray-400">
-									Method: {login.loginMethod}
-								</div>
-							</div>
-						</div>
-						<div className="text-right">
-							<div className="text-sm text-gray-500">
-								{formatDate(login.createdAt)}
-							</div>
-							<div className="text-sm">
-								<Tag color={login.status === "success" ? "success" : "error"}>
-									{login.status}
-								</Tag>
-							</div>
-						</div>
-					</div>
-				))}
-			</div>
-		);
 	};
 
 	const renderStoreStats = () => (
@@ -696,9 +631,23 @@ const AccountSettings = () => {
 							<div className="flex items-center gap-3">
 								<Avatar
 									size={64}
-									src={user?.profileImage}
+									src={user?.photoURL || user?.profileImage}
 									icon={<UserOutlined />}
-									className="bg-blue-100"
+									className="border-2 border-gray-200"
+									referrerPolicy="no-referrer"
+									crossOrigin="anonymous"
+									onError={(e) => {
+										if (e && e.target) {
+											e.target.style.display = "none";
+											// Add a small delay before showing the icon to prevent flickering
+											setTimeout(() => {
+												const avatarElement = e.target.parentElement;
+												if (avatarElement) {
+													avatarElement.style.backgroundColor = "#f5f5f5";
+												}
+											}, 100);
+										}
+									}}
 								/>
 								<div>
 									<Title level={4} className="!mb-0">
@@ -831,6 +780,25 @@ const AccountSettings = () => {
 													src={storeInfo.logo}
 													icon={<ShopOutlined />}
 													className="bg-white border-2 border-gray-100 flex-shrink-0"
+													referrerPolicy="no-referrer"
+													crossOrigin="anonymous"
+													style={{
+														backgroundColor: "#f5f5f5",
+														objectFit: "cover",
+													}}
+													onError={(e) => {
+														if (e && e.target) {
+															e.target.style.display = "none";
+															// Add a small delay before showing the icon to prevent flickering
+															setTimeout(() => {
+																const avatarElement = e.target.parentElement;
+																if (avatarElement) {
+																	avatarElement.style.backgroundColor =
+																		"#f5f5f5";
+																}
+															}, 100);
+														}
+													}}
 												/>
 												<div className="flex-grow space-y-6">
 													{editingSection === "store" ? (
@@ -1019,14 +987,6 @@ const AccountSettings = () => {
 											<Switch defaultChecked={false} />
 										</div>
 									</div>
-								</div>
-
-								{/* Login History */}
-								<div>
-									<Text className="text-gray-500 text-sm font-medium uppercase tracking-wider mb-4 block">
-										Recent Login Activity
-									</Text>
-									<div className="space-y-4">{renderLoginHistory()}</div>
 								</div>
 
 								{/* Notification Preferences */}

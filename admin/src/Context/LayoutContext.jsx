@@ -1,66 +1,72 @@
-import { createContext, useState, useContext, useEffect } from "react";
+import {
+	createContext,
+	useState,
+	useContext,
+	useCallback,
+	useMemo,
+} from "react";
 import PropTypes from "prop-types";
 
 export const LayoutContext = createContext();
 
 export const LayoutProvider = ({ children }) => {
-	// Retrieve sidebar state from localStorage to persist user preference
-	const initialSidebarState =
-		JSON.parse(localStorage.getItem("isSidebarOpen")) ?? false;
-	const initialSidebarCollapse =
-		JSON.parse(localStorage.getItem("isSidebarCollapsed")) ?? false;
+	const [layoutState, setLayoutState] = useState({
+		isSidebarOpen: JSON.parse(localStorage.getItem("isSidebarOpen")) ?? false,
+		isSidebarCollapsed:
+			JSON.parse(localStorage.getItem("isSidebarCollapsed")) ?? false,
+	});
 
-	const [isSidebarOpen, setIsSidebarOpen] = useState(initialSidebarState);
-	const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
-		initialSidebarCollapse
+	const toggleSidebar = useCallback(() => {
+		setLayoutState((prev) => {
+			const newState = {
+				...prev,
+				isSidebarOpen: !prev.isSidebarOpen,
+			};
+			localStorage.setItem(
+				"isSidebarOpen",
+				JSON.stringify(newState.isSidebarOpen)
+			);
+			return newState;
+		});
+	}, []);
+
+	const closeSidebar = useCallback(() => {
+		setLayoutState((prev) => {
+			const newState = {
+				...prev,
+				isSidebarOpen: false,
+			};
+			localStorage.setItem("isSidebarOpen", JSON.stringify(false));
+			return newState;
+		});
+	}, []);
+
+	const toggleSidebarCollapse = useCallback(() => {
+		setLayoutState((prev) => {
+			const newState = {
+				...prev,
+				isSidebarCollapsed: !prev.isSidebarCollapsed,
+			};
+			localStorage.setItem(
+				"isSidebarCollapsed",
+				JSON.stringify(newState.isSidebarCollapsed)
+			);
+			return newState;
+		});
+	}, []);
+
+	const value = useMemo(
+		() => ({
+			...layoutState,
+			toggleSidebar,
+			closeSidebar,
+			toggleSidebarCollapse,
+		}),
+		[layoutState, toggleSidebar, closeSidebar, toggleSidebarCollapse]
 	);
 
-	// Toggle Sidebar
-	const toggleSidebar = () => {
-		setIsSidebarOpen((prev) => {
-			const newState = !prev;
-			localStorage.setItem("isSidebarOpen", JSON.stringify(newState));
-			return newState;
-		});
-	};
-
-	// Close Sidebar explicitly
-	const closeSidebar = () => {
-		setIsSidebarOpen(false);
-		localStorage.setItem("isSidebarOpen", JSON.stringify(false));
-	};
-
-	// Toggle Sidebar Collapse
-	const toggleSidebarCollapse = () => {
-		setIsSidebarCollapsed((prev) => {
-			const newState = !prev;
-			localStorage.setItem("isSidebarCollapsed", JSON.stringify(newState));
-			return newState;
-		});
-	};
-
-	// Sync sidebar state to localStorage on changes
-	useEffect(() => {
-		localStorage.setItem("isSidebarOpen", JSON.stringify(isSidebarOpen));
-		localStorage.setItem(
-			"isSidebarCollapsed",
-			JSON.stringify(isSidebarCollapsed)
-		);
-	}, [isSidebarOpen, isSidebarCollapsed]);
-
 	return (
-		<LayoutContext.Provider
-			value={{
-				isSidebarOpen,
-				isSidebarCollapsed,
-				toggleSidebar,
-				closeSidebar,
-				toggleSidebarCollapse,
-				setIsSidebarCollapsed,
-			}}
-		>
-			{children}
-		</LayoutContext.Provider>
+		<LayoutContext.Provider value={value}>{children}</LayoutContext.Provider>
 	);
 };
 
@@ -68,7 +74,6 @@ export const useLayoutContext = () => {
 	return useContext(LayoutContext);
 };
 
-// Props validation
 LayoutProvider.propTypes = {
 	children: PropTypes.node.isRequired,
 };

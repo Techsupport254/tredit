@@ -120,6 +120,12 @@ const signInWithGoogle = async (retryCount = 0) => {
 	try {
 		const result = await signInWithPopup(auth, googleProvider);
 		const user = result.user;
+		console.log("Firebase user data:", {
+			displayName: user.displayName,
+			email: user.email,
+			photoURL: user.photoURL,
+			uid: user.uid,
+		});
 
 		// Update axios auth header
 		await updateAxiosAuth(user);
@@ -133,6 +139,8 @@ const signInWithGoogle = async (retryCount = 0) => {
 			accessToken: await user.getIdToken(),
 			isNewUser: result.additionalUserInfo?.isNewUser || false,
 		};
+
+		console.log("Enhanced user object:", enhancedUser);
 
 		// Store token in backend
 		try {

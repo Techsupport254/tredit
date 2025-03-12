@@ -6,6 +6,7 @@ import { LayoutProvider } from "./Context/LayoutContext";
 import { BrowserRouter } from "react-router-dom";
 import { AccountProvider } from "./Context/AccountContext";
 import { AuthProvider } from "./Context/AuthContext";
+import { BusinessProvider } from "./Context/BusinessContext";
 import ErrorBoundary from "./Components/ErrorBoundary";
 
 // Ensure the root element exists
@@ -32,7 +33,9 @@ root.render(
 				<AccountProvider>
 					<AuthProvider>
 						<LayoutProvider>
-							<App />
+							<BusinessProvider>
+								<App />
+							</BusinessProvider>
 						</LayoutProvider>
 					</AuthProvider>
 				</AccountProvider>

@@ -1,10 +1,12 @@
-const User = require("../models/User");
-const { sequelize } = require("../config/database");
+const { User } = require("../models");
+const { Op } = require("sequelize");
+const { sequelize } = require("../models");
 const { verifySignature } = require("../utils/web3");
 const { generateToken } = require("../utils/jwt");
 const {
 	uploadToIPFS,
-	saveProfileToBlockchain,
+	createOrUpdateUserProfile,
+	getUserProfile: getUserProfileFromChain,
 } = require("../utils/blockchainHelper");
 
 // Create user profile
@@ -58,6 +60,14 @@ const createUser = async (req, res) => {
 			dob,
 			location,
 			phoneNumber,
+			preferences: preferences || {
+				theme: "light",
+				notifications: {
+					email: true,
+					push: true,
+				},
+				language: "en",
+			},
 			timestamp: new Date().toISOString(),
 		};
 
@@ -65,15 +75,11 @@ const createUser = async (req, res) => {
 			// Upload to IPFS first
 			const { ipfsCid, ipfsUrl } = await uploadToIPFS(userData);
 
-			// Save to blockchain
-			const blockchainResult = await saveProfileToBlockchain({
-				...userData,
-				ipfsUrl: ipfsCid,
-			});
-
-			if (!blockchainResult.success) {
-				throw new Error("Failed to save profile to blockchain");
-			}
+			// Save to blockchain using the IPFS URL
+			const blockchainTx = await createOrUpdateUserProfile(
+				walletAddress.toLowerCase(),
+				ipfsUrl
+			);
 
 			// Create user in database
 			const user = await User.create(
@@ -87,21 +93,14 @@ const createUser = async (req, res) => {
 					dob,
 					location,
 					phoneNumber,
-					preferences: preferences || {
-						theme: "light",
-						notifications: {
-							email: true,
-							push: true,
-						},
-						language: "en",
-					},
+					preferences: userData.preferences,
 					role: "user",
 					isVerified: false,
 					ipfsCid,
 					ipfsUrl,
 					metadata: {
 						lastIPFSUpdate: new Date().toISOString(),
-						blockchainTxHash: blockchainResult.txHash,
+						blockchainTxHash: blockchainTx.hash,
 					},
 				},
 				{ transaction }
@@ -122,7 +121,7 @@ const createUser = async (req, res) => {
 					url: ipfsUrl,
 				},
 				blockchain: {
-					txHash: blockchainResult.txHash,
+					transactionHash: blockchainTx.hash,
 				},
 			});
 		} catch (error) {
@@ -167,9 +166,17 @@ const getUserProfile = async (req, res) => {
 			});
 		}
 
+		// Get blockchain data
+		const blockchainData = await getUserProfileFromChain(
+			walletAddress.toLowerCase()
+		);
+
 		res.json({
 			success: true,
-			user,
+			user: {
+				...user.toJSON(),
+				blockchain: blockchainData,
+			},
 		});
 	} catch (error) {
 		console.error("Error fetching user:", error);
@@ -200,16 +207,43 @@ const updateUserProfile = async (req, res) => {
 			});
 		}
 
-		// Update user
+		// Prepare updated user data for IPFS
+		const updatedData = {
+			...user.toJSON(),
+			name,
+			email,
+			profileImage,
+			bio,
+			preferences: {
+				...user.preferences,
+				...preferences,
+			},
+			updatedAt: new Date().toISOString(),
+		};
+
+		// Upload updated data to IPFS
+		const { ipfsCid, ipfsUrl } = await uploadToIPFS(updatedData);
+
+		// Update on blockchain using the IPFS URL
+		const blockchainTx = await createOrUpdateUserProfile(
+			walletAddress.toLowerCase(),
+			ipfsUrl
+		);
+
+		// Update user in database
 		await user.update(
 			{
 				name,
 				email,
 				profileImage,
 				bio,
-				preferences: {
-					...user.preferences,
-					...preferences,
+				preferences: updatedData.preferences,
+				ipfsCid,
+				ipfsUrl,
+				metadata: {
+					...user.metadata,
+					lastIPFSUpdate: new Date().toISOString(),
+					blockchainTxHash: blockchainTx.hash,
 				},
 			},
 			{ transaction }
@@ -220,13 +254,23 @@ const updateUserProfile = async (req, res) => {
 		res.json({
 			success: true,
 			message: "Profile updated successfully",
-			user,
+			user: {
+				...user.toJSON(),
+				ipfs: {
+					cid: ipfsCid,
+					url: ipfsUrl,
+				},
+				blockchain: {
+					transactionHash: blockchainTx.hash,
+				},
+			},
 		});
 	} catch (error) {
 		await transaction.rollback();
 		console.error("Profile update error:", error);
 		res.status(500).json({
 			success: false,
+			message: "Failed to update profile",
 			error: error.message,
 		});
 	}

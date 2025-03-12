@@ -3,22 +3,24 @@ const {
 	saveProfileToBlockchain,
 	unpinFromPinata,
 } = require("./blockchainHelper");
-const { sequelize } = require("../config/database");
+const { sequelize } = require("../models");
+const { ethers } = require("ethers");
+const { blockchainConfig } = require("../config/config");
 
 /**
  * Manages the complete flow of uploading to IPFS, blockchain, and database with rollback support
  * @param {Object} data - The data to be stored
  * @param {Function} dbOperation - The database operation to perform
+ * @param {Function} blockchainOperation - The blockchain operation to perform
  * @param {Function} rollbackOperation - The database rollback operation
- * @param {boolean} skipBlockchain - Whether to skip blockchain operations
  * @param {Function} emitEvent - Function to emit events for real-time updates
  * @returns {Promise<Object>} The result of all operations
  */
 async function manageTransaction(
 	data,
 	dbOperation,
+	blockchainOperation,
 	rollbackOperation,
-	skipBlockchain = false,
 	emitEvent = null
 ) {
 	let ipfsResult = null;
@@ -30,7 +32,7 @@ async function manageTransaction(
 			emitEvent({
 				type: "status",
 				status: "started",
-				message: "Starting profile creation process...",
+				message: "Starting transaction process...",
 			});
 		}
 
@@ -46,7 +48,6 @@ async function manageTransaction(
 					type: "ipfs",
 					status: "preparing",
 					message: "Preparing data for IPFS storage...",
-					steps: ["Validating data format", "Initializing IPFS upload"],
 				});
 			}
 
@@ -97,58 +98,34 @@ async function manageTransaction(
 				};
 
 				// Step 2: Blockchain Storage
-				if (!skipBlockchain) {
+				if (blockchainOperation) {
 					if (emitEvent) {
 						emitEvent({
 							type: "blockchain",
 							status: "preparing",
 							message: "Preparing blockchain transaction...",
-							steps: [
-								"Initializing blockchain connection",
-								"Preparing transaction data",
-							],
 						});
 					}
 
-					// Add IPFS URI to the data for blockchain storage
-					const blockchainData = {
-						...enrichedData,
-						ipfsUri: ipfsResult.ipfsUrl, // Ensure IPFS URI is passed
-					};
+					blockchainResult = await blockchainOperation(enrichedData);
 
-					blockchainResult = await saveProfileToBlockchain(
-						blockchainData,
-						(event) => {
-							if (emitEvent) {
-								emitEvent({
-									...event,
-									steps: [...(event.steps || [])],
-								});
-							}
-						}
-					);
+					if (!blockchainResult?.success) {
+						throw new Error(
+							blockchainResult?.error || "Blockchain operation failed"
+						);
+					}
 
 					if (emitEvent) {
 						emitEvent({
 							type: "blockchain",
 							status: "success",
 							message: "Blockchain transaction completed",
-							data: {
-								txHash: blockchainResult.txHash,
-								blockNumber: blockchainResult.blockNumber,
-								gasUsed: blockchainResult.gasUsed,
-							},
-							steps: [
-								"Transaction prepared",
-								"Transaction signed and sent",
-								`Transaction confirmed in block ${blockchainResult.blockNumber}`,
-								`Gas used: ${blockchainResult.gasUsed}`,
-							],
+							data: blockchainResult,
 						});
 					}
 
 					// Add blockchain results to data
-					enrichedData.blockchainTxHash = blockchainResult.txHash;
+					enrichedData.blockchainTxHash = blockchainResult.hash;
 					enrichedData.blockchainTimestamp = new Date().toISOString();
 				}
 
@@ -163,14 +140,6 @@ async function manageTransaction(
 
 				dbResult = await dbOperation(enrichedData, dbTransaction);
 
-				if (emitEvent) {
-					emitEvent({
-						type: "database",
-						status: "success",
-						message: "Database operation completed successfully",
-					});
-				}
-
 				// Commit transaction
 				await dbTransaction.commit();
 
@@ -178,7 +147,7 @@ async function manageTransaction(
 					emitEvent({
 						type: "status",
 						status: "completed",
-						message: "Profile creation completed successfully",
+						message: "Transaction completed successfully",
 						data: {
 							ipfs: ipfsResult,
 							blockchain: blockchainResult,
@@ -191,7 +160,7 @@ async function manageTransaction(
 					success: true,
 					data: dbResult,
 					ipfs: ipfsResult,
-					blockchain: skipBlockchain ? null : blockchainResult,
+					blockchain: blockchainResult,
 				};
 			} catch (error) {
 				await dbTransaction.rollback();
@@ -209,23 +178,8 @@ async function manageTransaction(
 
 					try {
 						await unpinFromPinata(ipfsResult.ipfsCid);
-						if (emitEvent) {
-							emitEvent({
-								type: "ipfs",
-								status: "rollback_success",
-								message: "Successfully unpinned content from IPFS",
-							});
-						}
 					} catch (unpinError) {
 						console.error("Failed to unpin from IPFS:", unpinError);
-						if (emitEvent) {
-							emitEvent({
-								type: "ipfs",
-								status: "rollback_error",
-								message: "Failed to unpin content from IPFS",
-								error: unpinError.message,
-							});
-						}
 					}
 				}
 
@@ -238,17 +192,13 @@ async function manageTransaction(
 					status: "failed",
 					message: "Transaction failed",
 					error: error.message,
-					details: {
-						code: error.code,
-						type: error.name,
-						...(error.info && { info: error.info }),
-					},
 				});
 			}
 
 			if (rollbackOperation) {
 				await rollbackOperation(data);
 			}
+
 			throw error;
 		}
 	} catch (error) {

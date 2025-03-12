@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import BusinessForm from "../../Components/Business/BusinessForm";
-import { showSuccess, showError } from "../../utils/notifications";
+import { showSuccessMessage, showErrorNotification } from "../../utils/errors";
 
 const CreateBusiness = () => {
 	const navigate = useNavigate();
@@ -18,16 +18,16 @@ const CreateBusiness = () => {
 			const data = await response.json();
 
 			if (response.ok) {
-				showSuccess("Business created successfully");
+				showSuccessMessage("Business created successfully");
 				navigate(`/businesses/${data.data.id}`);
 			} else {
-				showError(data.message || "Failed to create business");
+				showErrorNotification(
+					new Error(data.message || "Failed to create business")
+				);
 			}
 		} catch (error) {
 			console.error("Error creating business:", error);
-			showError(
-				"An error occurred while creating the business. Please try again."
-			);
+			showErrorNotification(error);
 		}
 	};
 

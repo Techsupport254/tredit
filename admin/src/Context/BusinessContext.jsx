@@ -1,170 +1,268 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import {
+	createContext,
+	useContext,
+	useState,
+	useCallback,
+	useMemo,
+} from "react";
 import PropTypes from "prop-types";
 import axios from "axios";
-import { notification } from "antd";
 import { useAuth } from "./AuthContext";
 import { getStorageItem, STORAGE_KEYS } from "../utils/storage";
+import {
+	showErrorNotification,
+	showSuccessNotification,
+} from "../utils/errors";
 
-export const BusinessContext = createContext({
+// Configure axios defaults
+axios.defaults.baseURL = import.meta.env.VITE_PUBLIC_API_URL;
+axios.defaults.headers.common["Content-Type"] = "application/json";
+
+// Add auth token to requests if available
+axios.interceptors.request.use((config) => {
+	const token = localStorage.getItem("token");
+	if (token) {
+		config.headers.Authorization = `Bearer ${token}`;
+	}
+	return config;
+});
+
+const initialState = {
 	businesses: [],
 	selectedBusiness: null,
 	isLoading: false,
 	error: null,
-});
+	teamMembers: [],
+};
+
+export const BusinessContext = createContext(initialState);
 
 export const BusinessProvider = ({ children }) => {
 	const { user } = useAuth();
-	const storedUser = getStorageItem(STORAGE_KEYS.USER);
-	const [state, setState] = useState({
-		businesses: [],
-		selectedBusiness: null,
-		isLoading: false,
-		error: null,
-	});
+	const storedUser = useMemo(() => getStorageItem(STORAGE_KEYS.USER), []);
+	const [state, setState] = useState(initialState);
 
-	// Fetch user's businesses when user changes
-	useEffect(() => {
-		const currentUser = user || storedUser;
-		if (currentUser?.walletAddress) {
-			fetchUserBusinesses(currentUser.walletAddress);
-		}
-	}, [user?.walletAddress]);
-
-	const fetchUserBusinesses = async (walletAddress) => {
+	const fetchAllBusinesses = useCallback(async () => {
 		try {
-			setState((prev) => ({ ...prev, isLoading: true }));
-			const response = await axios.get(`/businesses/user/${walletAddress}`);
-
-			if (response.data?.success) {
-				setState((prev) => ({
-					...prev,
-					businesses: response.data.businesses,
-					isLoading: false,
-					error: null,
-				}));
-			}
-		} catch (error) {
-			console.error("Failed to fetch businesses:", error);
-			setState((prev) => ({
-				...prev,
-				error: "Failed to fetch businesses",
-				isLoading: false,
-			}));
-			notification.error({
-				message: "Error",
-				description: "Failed to fetch your businesses",
-			});
-		}
-	};
-
-	const createBusiness = async (businessData) => {
-		try {
-			setState((prev) => ({ ...prev, isLoading: true }));
+			setState((prev) => ({ ...prev, isLoading: true, error: null }));
 			const currentUser = user || storedUser;
 
-			// Prepare the business data with owner's wallet address
-			const data = {
-				...businessData,
-				walletAddress: currentUser.walletAddress,
-			};
+			if (!currentUser?.walletAddress) {
+				throw new Error("No wallet address found");
+			}
 
-			const response = await axios.post("/businesses", data);
+			const response = await axios.get(
+				`/businesses/wallet/${currentUser.walletAddress}`
+			);
 
 			if (response.data?.success) {
 				setState((prev) => ({
 					...prev,
-					businesses: [...prev.businesses, response.data.business],
-					selectedBusiness: response.data.business,
+					businesses: response.data.message || [],
 					isLoading: false,
-					error: null,
 				}));
-
-				notification.success({
-					message: "Success",
-					description: "Business created successfully!",
-				});
-
-				return response.data.business;
+				return response.data.message;
+			} else {
+				throw new Error(response.data?.data || "Failed to fetch businesses");
 			}
 		} catch (error) {
-			console.error("Failed to create business:", error);
 			setState((prev) => ({
 				...prev,
-				error: "Failed to create business",
+				businesses: [],
+				error: error.response?.data?.data || error.message,
 				isLoading: false,
 			}));
-			notification.error({
-				message: "Error",
-				description:
-					error.response?.data?.message || "Failed to create business",
-			});
-			throw error;
+			showErrorNotification(error.response?.data?.data || error.message);
+			return null;
 		}
-	};
+	}, [user, storedUser]);
 
-	const updateBusiness = async (businessId, updateData) => {
+	const fetchBusinessById = useCallback(async (businessId) => {
 		try {
-			setState((prev) => ({ ...prev, isLoading: true }));
+			setState((prev) => ({ ...prev, isLoading: true, error: null }));
+			const response = await axios.get(`/businesses/${businessId}`);
+
+			if (response.data?.success) {
+				const business = response.data.message;
+				setState((prev) => ({
+					...prev,
+					selectedBusiness: business,
+					teamMembers: business.teamMembers || [],
+					isLoading: false,
+				}));
+				return business;
+			} else {
+				throw new Error(response.data?.data || "Failed to fetch business");
+			}
+		} catch (error) {
+			setState((prev) => ({
+				...prev,
+				error: error.response?.data?.data || error.message,
+				isLoading: false,
+			}));
+			showErrorNotification(error.response?.data?.data || error.message);
+			return null;
+		}
+	}, []);
+
+	const createBusiness = useCallback(
+		async (businessData) => {
+			try {
+				setState((prev) => ({ ...prev, isLoading: true, error: null }));
+				const currentUser = user || storedUser;
+
+				if (!currentUser?.walletAddress) {
+					throw new Error("User not authenticated");
+				}
+
+				const requiredFields = [
+					"name",
+					"description",
+					"type",
+					"category",
+					"businessModel",
+					"operationMode",
+					"email",
+				];
+
+				const missingFields = requiredFields.filter(
+					(field) => !businessData[field]
+				);
+				if (missingFields.length > 0) {
+					throw new Error(
+						`Missing required fields: ${missingFields.join(", ")}`
+					);
+				}
+
+				const response = await axios.post("/businesses", {
+					...businessData,
+					walletAddress: currentUser.walletAddress,
+					status: businessData.status || "active",
+					verificationStatus: "pending",
+					paymentMethods: businessData.paymentMethods || [
+						"crypto",
+						"bank_transfer",
+					],
+					currency: businessData.currency || "USD",
+				});
+
+				if (response.data?.success) {
+					const newBusiness = response.data.message.business;
+					setState((prev) => ({
+						...prev,
+						businesses: [...prev.businesses, newBusiness],
+						selectedBusiness: newBusiness,
+						isLoading: false,
+					}));
+					showSuccessNotification("Business created successfully");
+					return response.data.message;
+				} else {
+					throw new Error(
+						response.data?.message || "Failed to create business"
+					);
+				}
+			} catch (error) {
+				setState((prev) => ({
+					...prev,
+					error: error.response?.data?.message || error.message,
+					isLoading: false,
+				}));
+				showErrorNotification(error.response?.data?.message || error.message);
+				throw error;
+			}
+		},
+		[user, storedUser]
+	);
+
+	const updateBusiness = useCallback(async (businessId, updateData) => {
+		try {
+			setState((prev) => ({ ...prev, isLoading: true, error: null }));
 			const response = await axios.patch(
 				`/businesses/${businessId}`,
 				updateData
 			);
 
 			if (response.data?.success) {
+				const updatedBusiness = response.data.data.business;
 				setState((prev) => ({
 					...prev,
 					businesses: prev.businesses.map((business) =>
-						business.id === businessId ? response.data.business : business
+						business.id === businessId ? updatedBusiness : business
 					),
 					selectedBusiness:
 						prev.selectedBusiness?.id === businessId
-							? response.data.business
+							? updatedBusiness
 							: prev.selectedBusiness,
 					isLoading: false,
-					error: null,
 				}));
-
-				notification.success({
-					message: "Success",
-					description: "Business updated successfully!",
-				});
-
-				return response.data.business;
+				showSuccessNotification("Business updated successfully");
+				return updatedBusiness;
+			} else {
+				throw new Error(response.data?.message || "Failed to update business");
 			}
 		} catch (error) {
-			console.error("Failed to update business:", error);
 			setState((prev) => ({
 				...prev,
-				error: "Failed to update business",
+				error: error.response?.data?.message || error.message,
 				isLoading: false,
 			}));
-			notification.error({
-				message: "Error",
-				description:
-					error.response?.data?.message || "Failed to update business",
-			});
+			showErrorNotification(error.response?.data?.message || error.message);
 			throw error;
 		}
-	};
+	}, []);
 
-	const selectBusiness = (businessId) => {
-		const business = state.businesses.find((b) => b.id === businessId);
-		setState((prev) => ({
-			...prev,
-			selectedBusiness: business || null,
-		}));
-	};
+	const deleteBusiness = useCallback(async (businessId) => {
+		try {
+			setState((prev) => ({ ...prev, isLoading: true, error: null }));
+			const response = await axios.delete(`/businesses/${businessId}`);
 
-	const value = {
-		...state,
-		createBusiness,
-		updateBusiness,
-		selectBusiness,
-		fetchUserBusinesses,
-	};
+			if (response.data?.success) {
+				setState((prev) => ({
+					...prev,
+					businesses: prev.businesses.filter((b) => b.id !== businessId),
+					selectedBusiness:
+						prev.selectedBusiness?.id === businessId
+							? null
+							: prev.selectedBusiness,
+					isLoading: false,
+				}));
+				showSuccessNotification("Business deleted successfully");
+				return true;
+			} else {
+				throw new Error(response.data?.message || "Failed to delete business");
+			}
+		} catch (error) {
+			setState((prev) => ({
+				...prev,
+				error: error.response?.data?.message || error.message,
+				isLoading: false,
+			}));
+			showErrorNotification(error.response?.data?.message || error.message);
+			return false;
+		}
+	}, []);
+
+	const contextValue = useMemo(
+		() => ({
+			...state,
+			createBusiness,
+			updateBusiness,
+			deleteBusiness,
+			fetchAllBusinesses,
+			fetchBusinessById,
+		}),
+		[
+			state,
+			createBusiness,
+			updateBusiness,
+			deleteBusiness,
+			fetchAllBusinesses,
+			fetchBusinessById,
+		]
+	);
 
 	return (
-		<BusinessContext.Provider value={value}>
+		<BusinessContext.Provider value={contextValue}>
 			{children}
 		</BusinessContext.Provider>
 	);

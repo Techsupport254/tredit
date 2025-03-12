@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 import { FaArrowLeft, FaArrowRight, FaSave } from "react-icons/fa";
+import { showErrorMessage, showSuccessMessage } from "../../utils/errors";
 
-const BusinessForm = ({ business, onSubmit, mode = "create" }) => {
+const BusinessForm = ({ business = null, onSubmit, mode = "create" }) => {
 	const navigate = useNavigate();
 	const [currentStep, setCurrentStep] = useState(1);
 	const [formData, setFormData] = useState({
@@ -16,7 +17,6 @@ const BusinessForm = ({ business, onSubmit, mode = "create" }) => {
 		website: "",
 		email: "",
 		phone: "",
-		walletAddress: "",
 		logo: "",
 		locations: [],
 		productCategories: [],
@@ -49,7 +49,7 @@ const BusinessForm = ({ business, onSubmit, mode = "create" }) => {
 		},
 		{
 			title: "Contact Information",
-			fields: ["website", "email", "phone", "walletAddress", "address"],
+			fields: ["website", "email", "phone", "address"],
 		},
 		{
 			title: "Additional Information",
@@ -68,12 +68,14 @@ const BusinessForm = ({ business, onSubmit, mode = "create" }) => {
 		currentFields.forEach((field) => {
 			if (!formData[field] && field !== "logo") {
 				stepErrors[field] = "This field is required";
+				showErrorMessage(new Error("This field is required"), field);
 			}
 
 			if (field === "email" && formData.email) {
 				const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 				if (!emailRegex.test(formData.email)) {
 					stepErrors.email = "Invalid email format";
+					showErrorMessage(new Error("Invalid email format"), field);
 				}
 			}
 
@@ -82,13 +84,7 @@ const BusinessForm = ({ business, onSubmit, mode = "create" }) => {
 					new URL(formData.website);
 				} catch {
 					stepErrors.website = "Invalid website URL";
-				}
-			}
-
-			if (field === "walletAddress" && formData.walletAddress) {
-				const walletRegex = /^0x[a-fA-F0-9]{40}$/;
-				if (!walletRegex.test(formData.walletAddress)) {
-					stepErrors.walletAddress = "Invalid wallet address";
+					showErrorMessage(new Error("Invalid website URL"), field);
 				}
 			}
 
@@ -96,6 +92,7 @@ const BusinessForm = ({ business, onSubmit, mode = "create" }) => {
 				const phoneRegex = /^\+?[1-9]\d{1,14}$/; // E.164 format
 				if (!phoneRegex.test(formData.phone)) {
 					stepErrors.phone = "Invalid phone number";
+					showErrorMessage(new Error("Invalid phone number"), field);
 				}
 			}
 
@@ -106,6 +103,10 @@ const BusinessForm = ({ business, onSubmit, mode = "create" }) => {
 			) {
 				stepErrors.address =
 					"Address is required for physical or hybrid businesses";
+				showErrorMessage(
+					new Error("Address is required for physical or hybrid businesses"),
+					field
+				);
 			}
 		});
 
@@ -509,11 +510,6 @@ BusinessForm.propTypes = {
 	business: PropTypes.object,
 	onSubmit: PropTypes.func.isRequired,
 	mode: PropTypes.oneOf(["create", "edit"]),
-};
-
-BusinessForm.defaultProps = {
-	business: null,
-	mode: "create",
 };
 
 export default BusinessForm;

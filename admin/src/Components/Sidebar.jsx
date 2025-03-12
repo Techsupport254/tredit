@@ -8,7 +8,6 @@ import { Avatar, Tag, Badge, Tooltip, Skeleton } from "antd";
 import {
 	UserOutlined,
 	AppstoreOutlined,
-	WalletOutlined,
 	LoadingOutlined,
 	CheckCircleFilled,
 	ExclamationCircleFilled,
@@ -17,10 +16,25 @@ import {
 const getEthToKesRate = async () => {
 	try {
 		const response = await fetch(
-			"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=kes"
+			"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=kes",
+			{
+				mode: "cors",
+				headers: {
+					Accept: "application/json",
+				},
+			}
 		);
+
+		if (!response.ok) {
+			if (response.status === 429) {
+				console.warn("Rate limit hit for CoinGecko API");
+				return null;
+			}
+			throw new Error(`HTTP error! status: ${response.status}`);
+		}
+
 		const data = await response.json();
-		return data.ethereum.kes; // Returns the current ETH to KES rate
+		return data.ethereum.kes;
 	} catch (error) {
 		console.error("Failed to fetch ETH to KES rate:", error);
 		return null;
@@ -143,8 +157,8 @@ const Sidebar = () => {
 	};
 
 	// Close sidebar on mobile when an item is clicked
-	const handleItemClick = () => {
-		if (window.innerWidth <= 768) {
+	const handleItemClick = (isDropdownToggle = false) => {
+		if (window.innerWidth <= 768 && !isDropdownToggle) {
 			closeSidebar();
 		}
 	};
@@ -286,20 +300,19 @@ const Sidebar = () => {
 							{item.pages ? (
 								<div>
 									<button
-										onClick={() => {
-											toggleSubmenu(item.category);
-											handleItemClick();
-										}}
+										onClick={() => toggleSubmenu(item.category)}
 										className={`flex items-center justify-between w-full p-3 text-left rounded-lg transition-all duration-300 
-                      ${
-												openMenu === item.category
-													? "text-blue-800"
-													: "text-gray-700 hover:text-blue-800"
-											}`}
+        ${
+					openMenu === item.category
+						? "text-blue-800"
+						: "text-gray-700 hover:text-blue-800"
+				}`}
 									>
 										<div className="flex items-center space-x-3">
 											<i
-												className={`${item.icon} w-5 h-5 flex-shrink-0 ${
+												className={`${
+													item.icon
+												} w-5 h-5 flex items-center justify-center aspect-square ${
 													openMenu === item.category
 														? "text-blue-800"
 														: "text-blue-400"
@@ -308,7 +321,7 @@ const Sidebar = () => {
 											<span className="whitespace-nowrap">{item.category}</span>
 										</div>
 										<i
-											className={`fas fa-chevron-down transform transition-transform duration-300 ${
+											className={`fas fa-chevron-down w-5 h-5 flex items-center justify-center aspect-square transform transition-transform duration-300 ${
 												openMenu === item.category ? "rotate-180" : "rotate-0"
 											}`}
 										></i>
@@ -329,7 +342,7 @@ const Sidebar = () => {
 											<li key={page.path}>
 												<Link
 													to={page.path}
-													onClick={handleItemClick}
+													onClick={() => handleItemClick(false)}
 													className={`flex items-center justify-between p-2 text-sm rounded-lg transition-all duration-300 hover:bg-blue-100 hover:text-blue-800 ${
 														location.pathname === page.path ||
 														(page.path !== "/" &&
@@ -375,21 +388,24 @@ const Sidebar = () => {
 							) : (
 								<Link
 									to={item.path}
-									onClick={handleItemClick}
+									onClick={() => handleItemClick(false)}
 									className={`flex items-center justify-between p-3 rounded-lg transition-all duration-300 hover:bg-blue-100 hover:text-blue-800 ${
 										location.pathname === item.path
 											? "!bg-blue-100 !text-blue-800"
 											: "text-gray-700"
 									}`}
 								>
-									<div className="flex items-center space-x-3">
+									<div className="flex items-center h-full w-full space-x-3 ">
 										<i
-											className={`${item.icon} w-5 h-5 flex-shrink-0 ${
+											className={`${
+												item.icon
+											} flex items-center justify-center aspect-square w-5 h-5 ${
 												location.pathname === item.path
 													? "!text-blue-800"
 													: "text-blue-400"
 											}`}
 										></i>
+
 										<span className="whitespace-nowrap">{item.category}</span>
 									</div>
 									{item.showBadge && missingFields.length > 0 && (
@@ -431,10 +447,24 @@ const Sidebar = () => {
 							size={48}
 							src={user.photoURL || user.profileImage}
 							icon={<UserOutlined />}
-							className="border border-gray-400"
+							className="border border-gray-400 shrink-0"
+							crossOrigin="anonymous"
+							referrerPolicy="no-referrer"
+							onError={(e) => {
+								if (e && e.target) {
+									e.target.style.display = "none";
+									// Add a small delay before showing the icon to prevent flickering
+									setTimeout(() => {
+										const avatarElement = e.target.parentElement;
+										if (avatarElement) {
+											avatarElement.style.backgroundColor = "#f5f5f5";
+										}
+									}, 100);
+								}
+							}}
 						/>
 						<div className="flex flex-col">
-							<span className="font-semibold text-gray-800 text-sm">
+							<span className="font-semibold text-gray-800 text-sm flex items-center gap-2">
 								{user.name || "User"}
 								{user.isVerified ? (
 									<Tooltip title="Verified Account">

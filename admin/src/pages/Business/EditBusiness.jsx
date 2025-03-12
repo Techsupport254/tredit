@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import BusinessForm from "../../Components/Business/BusinessForm";
 import LoadingSpinner from "../../Components/Common/LoadingSpinner";
 import ErrorMessage from "../../Components/Common/ErrorMessage";
-import { showSuccess, showError } from "../../utils/notifications";
+import { showSuccessMessage, showErrorNotification } from "../../utils/errors";
 
 const EditBusiness = () => {
 	const { id } = useParams();
@@ -24,12 +24,12 @@ const EditBusiness = () => {
 				const data = await response.json();
 				setBusiness(data.data);
 			} else {
-				showError("Failed to fetch business details");
+				showErrorNotification(new Error("Failed to fetch business details"));
 				navigate("/businesses");
 			}
 		} catch (error) {
 			console.error("Error fetching business:", error);
-			showError("An error occurred while fetching business details");
+			showErrorNotification(error);
 			navigate("/businesses");
 		} finally {
 			setLoading(false);
@@ -51,15 +51,17 @@ const EditBusiness = () => {
 
 			if (response.ok) {
 				const data = await response.json();
-				showSuccess("Business updated successfully");
+				showSuccessMessage("Business updated successfully");
 				navigate(`/businesses/${data.data.id}`);
 			} else {
 				const error = await response.json();
-				showError(error.message || "Failed to update business");
+				showErrorNotification(
+					new Error(error.message || "Failed to update business")
+				);
 			}
 		} catch (error) {
 			console.error("Error updating business:", error);
-			showError("An error occurred while updating the business");
+			showErrorNotification(error);
 		}
 	};
 

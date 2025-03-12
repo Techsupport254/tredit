@@ -2,7 +2,7 @@ const express = require("express");
 const userRoutes = require("./userRoutes");
 const googleRoutes = require("./googleRoutes");
 const authRoutes = require("./auth.routes");
-const businessRoutes = require("./business.routes");
+const businessRoutes = require("./businessRoutes");
 const AppError = require("../utils/appError");
 
 const router = express.Router();
@@ -17,10 +17,10 @@ router.get("/health", (req, res) => {
 });
 
 // API routes
-router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
+router.use("/auth", authRoutes);
+router.use("/google", googleRoutes);
 router.use("/businesses", businessRoutes);
-router.use("/auth/google", googleRoutes);
 
 // 404 handler for undefined routes
 router.use("*", (req, res, next) => {

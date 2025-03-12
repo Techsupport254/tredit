@@ -114,7 +114,6 @@ const ConnectWallet = ({ className = "" }) => {
 		connectionState,
 		connectionError,
 	} = useAccount();
-	const { fetchLoginHistory } = useAuth();
 
 	const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
 	const [status, setStatus] = useState(null);
@@ -199,11 +198,6 @@ const ConnectWallet = ({ className = "" }) => {
 					"MetaMask is not installed. Please install MetaMask to continue."
 				);
 			}
-
-			message.loading({
-				content: "Connecting to MetaMask...",
-				key: messageKey,
-			});
 
 			// Request account access
 			let accounts;
@@ -302,6 +296,7 @@ const ConnectWallet = ({ className = "" }) => {
 						content:
 							"Your wallet has 0 MATIC. You may need some MATIC for transactions.",
 						duration: 6,
+						key: messageKey,
 					});
 				}
 			} catch (err) {
@@ -325,11 +320,6 @@ const ConnectWallet = ({ className = "" }) => {
 			const timestamp = Date.now();
 			const signatureMessage =
 				`Welcome to Tredit!\n\nPlease sign this message to authenticate your wallet.\n\nWallet: ${account}\nChain ID: ${network.chainId}\nTimestamp: ${timestamp}\n\nThis signature will not trigger a blockchain transaction or cost any gas fees.`.trim();
-
-			message.loading({
-				content: "Please sign the message in MetaMask...",
-				key: messageKey,
-			});
 
 			// Request signature
 			let signature;
@@ -402,22 +392,19 @@ const ConnectWallet = ({ className = "" }) => {
 							"✓ Message signed",
 							"✓ Signature verified",
 							"✓ Wallet connected",
-							"Redirecting to registration...",
+							"Redirecting to profile setup...",
 						],
 					});
 
 					message.success({
-						content: "Please complete your registration to continue",
+						content: "Please complete your profile setup to continue",
 						key: messageKey,
 						duration: 3,
 					});
 
-					setTimeout(() => navigate("/register"), 1500);
+					setTimeout(() => navigate("/profile-setup"), 1500);
 					return;
 				}
-
-				// Fetch login history after successful connection
-				await fetchLoginHistory();
 
 				setStatus({
 					status: "success",
@@ -428,7 +415,6 @@ const ConnectWallet = ({ className = "" }) => {
 						"✓ Message signed",
 						"✓ Signature verified",
 						"✓ Wallet connected and authenticated",
-						"✓ Login history updated",
 					],
 					data: {
 						address: result.address,

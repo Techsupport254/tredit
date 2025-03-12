@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBusiness } from "../../Context/BusinessContext";
 import {
 	Form,
 	Input,
@@ -30,11 +31,43 @@ const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Step } = Steps;
 
+const PRODUCT_CATEGORIES = [
+	"Electronics",
+	"Clothing & Apparel",
+	"Home & Garden",
+	"Beauty & Personal Care",
+	"Sports & Outdoors",
+	"Toys & Games",
+	"Books & Media",
+	"Food & Beverage",
+	"Health & Wellness",
+	"Automotive",
+	"Art & Crafts",
+	"Other",
+];
+
+const SERVICE_CATEGORIES = [
+	"Consulting",
+	"Professional Services",
+	"Education & Training",
+	"Healthcare",
+	"Beauty & Wellness",
+	"Financial Services",
+	"Legal Services",
+	"Technology Services",
+	"Home Services",
+	"Event Services",
+	"Transportation",
+	"Other",
+];
+
 const CreateBusiness = () => {
 	const navigate = useNavigate();
+	const { createBusiness } = useBusiness();
 	const [form] = Form.useForm();
 	const [currentStep, setCurrentStep] = useState(0);
 	const [loading, setLoading] = useState(false);
+	const [businessType, setBusinessType] = useState(null);
 
 	const steps = [
 		{
@@ -58,22 +91,11 @@ const CreateBusiness = () => {
 	const handleSubmit = async (values) => {
 		try {
 			setLoading(true);
-			const response = await fetch("http://localhost:8000/api/businesses", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(values),
-			});
-
-			if (response.ok) {
-				message.success("Business created successfully!");
-				navigate("/businesses");
-			} else {
-				throw new Error("Failed to create business");
-			}
+			await createBusiness(values);
+			message.success("Business created successfully!");
+			navigate("/businesses");
 		} catch (error) {
-			message.error(error.message);
+			message.error(error.message || "Failed to create business");
 		} finally {
 			setLoading(false);
 		}
@@ -110,7 +132,10 @@ const CreateBusiness = () => {
 				name="type"
 				rules={[{ required: true, message: "Please select business type" }]}
 			>
-				<Select placeholder="Select business type">
+				<Select
+					placeholder="Select business type"
+					onChange={(value) => setBusinessType(value)}
+				>
 					<Select.Option value="product">Product-based</Select.Option>
 					<Select.Option value="service">Service-based</Select.Option>
 				</Select>
@@ -127,18 +152,36 @@ const CreateBusiness = () => {
 			</Form.Item>
 
 			<Form.Item
-				label="Category"
-				name="category"
-				rules={[{ required: true, message: "Please select business category" }]}
+				label={
+					businessType === "product"
+						? "Product Categories"
+						: "Service Categories"
+				}
+				name={
+					businessType === "product" ? "productCategories" : "serviceCategories"
+				}
+				rules={[
+					{
+						required: true,
+						message: `Please select ${
+							businessType === "product" ? "product" : "service"
+						} categories`,
+					},
+				]}
 			>
-				<Select placeholder="Select business category">
-					<Select.Option value="retail">Retail</Select.Option>
-					<Select.Option value="technology">Technology</Select.Option>
-					<Select.Option value="food">Food & Beverage</Select.Option>
-					<Select.Option value="health">Health & Wellness</Select.Option>
-					<Select.Option value="education">Education</Select.Option>
-					<Select.Option value="other">Other</Select.Option>
-				</Select>
+				<Select
+					mode="multiple"
+					placeholder={`Select ${
+						businessType === "product" ? "product" : "service"
+					} categories`}
+					options={(businessType === "product"
+						? PRODUCT_CATEGORIES
+						: SERVICE_CATEGORIES
+					).map((category) => ({
+						label: category,
+						value: category,
+					}))}
+				/>
 			</Form.Item>
 
 			<Form.Item label="Logo" name="logo">
@@ -178,59 +221,27 @@ const CreateBusiness = () => {
 				</Select>
 			</Form.Item>
 
-			<Form.Item
-				label="Product Categories"
-				name="productCategories"
-				rules={[{ required: false }]}
-			>
-				<Select mode="tags" placeholder="Add product categories">
-					<Select.Option value="electronics">Electronics</Select.Option>
-					<Select.Option value="clothing">Clothing</Select.Option>
-					<Select.Option value="food">Food</Select.Option>
-					<Select.Option value="furniture">Furniture</Select.Option>
-				</Select>
-			</Form.Item>
-
-			<Form.Item
-				label="Service Categories"
-				name="serviceCategories"
-				rules={[{ required: false }]}
-			>
-				<Select mode="tags" placeholder="Add service categories">
-					<Select.Option value="consulting">Consulting</Select.Option>
-					<Select.Option value="design">Design</Select.Option>
-					<Select.Option value="maintenance">Maintenance</Select.Option>
-					<Select.Option value="education">Education</Select.Option>
-				</Select>
-			</Form.Item>
-
-			<Form.Item
-				label="Inventory Management"
-				name="inventoryManagement"
-				valuePropName="checked"
-			>
-				<Switch />
-			</Form.Item>
+			{businessType === "product" && (
+				<Form.Item
+					label="Inventory Management"
+					name="inventoryManagement"
+					valuePropName="checked"
+				>
+					<Switch />
+				</Form.Item>
+			)}
 		</div>
 	);
 
 	const renderContactLocation = () => (
 		<div className="space-y-6">
 			<Form.Item
-				label="Website"
-				name="website"
-				rules={[{ type: "url", message: "Please enter a valid URL" }]}
-			>
-				<Input
-					prefix={<FaGlobe className="text-gray-400" />}
-					placeholder="https://example.com"
-				/>
-			</Form.Item>
-
-			<Form.Item
 				label="Email"
 				name="email"
-				rules={[{ type: "email", message: "Please enter a valid email" }]}
+				rules={[
+					{ required: true, message: "Please enter email" },
+					{ type: "email", message: "Please enter a valid email" },
+				]}
 			>
 				<Input
 					prefix={<FaEnvelope className="text-gray-400" />}
@@ -241,12 +252,7 @@ const CreateBusiness = () => {
 			<Form.Item
 				label="Phone"
 				name="phone"
-				rules={[
-					{
-						pattern: /^[0-9+\-\s()]*$/,
-						message: "Please enter a valid phone number",
-					},
-				]}
+				rules={[{ required: true, message: "Please enter phone number" }]}
 			>
 				<Input
 					prefix={<FaPhone className="text-gray-400" />}
@@ -254,18 +260,26 @@ const CreateBusiness = () => {
 				/>
 			</Form.Item>
 
-			<Form.Item label="Address" name="address">
+			<Form.Item
+				label="Address"
+				name="address"
+				rules={[{ required: true, message: "Please enter business address" }]}
+			>
 				<Input
 					prefix={<FaMapMarkerAlt className="text-gray-400" />}
 					placeholder="Business address"
 				/>
 			</Form.Item>
 
-			<Form.Item label="Locations" name="locations">
-				<Select mode="tags" placeholder="Add business locations">
-					<Select.Option value="main">Main Location</Select.Option>
-					<Select.Option value="branch">Branch Office</Select.Option>
-				</Select>
+			<Form.Item
+				label="Website"
+				name="website"
+				rules={[{ type: "url", message: "Please enter a valid URL" }]}
+			>
+				<Input
+					prefix={<FaGlobe className="text-gray-400" />}
+					placeholder="https://example.com"
+				/>
 			</Form.Item>
 		</div>
 	);

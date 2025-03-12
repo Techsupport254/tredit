@@ -1,21 +1,112 @@
 const AppError = require("./appError");
+const BUSINESS_CONSTANTS = require("../config/businessConstants");
 
 const validateBusinessData = (data) => {
-	const { name, description, category } = data;
+	const errors = [];
+	const {
+		name,
+		description,
+		type,
+		category,
+		businessModel,
+		operationMode,
+		walletAddress,
+		email,
+		paymentMethods = [],
+	} = data;
 
+	// Required fields
 	if (!name) {
-		throw new AppError("Business name is required", 400);
+		errors.push("Business name is required");
+	} else if (
+		name.length < BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MIN ||
+		name.length > BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MAX
+	) {
+		errors.push(
+			`Business name must be between ${BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MIN} and ${BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MAX} characters`
+		);
 	}
 
 	if (!description) {
-		throw new AppError("Business description is required", 400);
+		errors.push("Business description is required");
+	} else if (
+		description.length < BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MIN ||
+		description.length > BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MAX
+	) {
+		errors.push(
+			`Business description must be between ${BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MIN} and ${BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MAX} characters`
+		);
 	}
 
 	if (!category) {
-		throw new AppError("Business category is required", 400);
+		errors.push("Business category is required");
 	}
 
-	return true;
+	if (!type) {
+		errors.push("Business type is required");
+	} else if (
+		!Object.values(BUSINESS_CONSTANTS.TYPES).includes(type.toLowerCase())
+	) {
+		errors.push(
+			`Invalid business type. Must be one of: ${Object.values(
+				BUSINESS_CONSTANTS.TYPES
+			).join(", ")}`
+		);
+	}
+
+	if (!businessModel) {
+		errors.push("Business model is required");
+	} else if (
+		!Object.values(BUSINESS_CONSTANTS.MODELS).includes(businessModel)
+	) {
+		errors.push(
+			`Invalid business model. Must be one of: ${Object.values(
+				BUSINESS_CONSTANTS.MODELS
+			).join(", ")}`
+		);
+	}
+
+	if (!operationMode) {
+		errors.push("Operation mode is required");
+	} else if (
+		!Object.values(BUSINESS_CONSTANTS.OPERATION_MODES).includes(
+			operationMode.toLowerCase()
+		)
+	) {
+		errors.push(
+			`Invalid operation mode. Must be one of: ${Object.values(
+				BUSINESS_CONSTANTS.OPERATION_MODES
+			).join(", ")}`
+		);
+	}
+
+	if (!walletAddress) {
+		errors.push("Wallet address is required");
+	} else if (
+		!BUSINESS_CONSTANTS.VALIDATION.WALLET_ADDRESS_REGEX.test(walletAddress)
+	) {
+		errors.push("Invalid wallet address format");
+	}
+
+	// Optional fields with format validation
+	if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+		errors.push("Invalid email format");
+	}
+
+	if (paymentMethods.length > 0) {
+		const invalidMethods = paymentMethods.filter(
+			(method) => !BUSINESS_CONSTANTS.PAYMENT_METHODS.includes(method)
+		);
+		if (invalidMethods.length > 0) {
+			errors.push(
+				`Invalid payment methods: ${invalidMethods.join(
+					", "
+				)}. Must be one of: ${BUSINESS_CONSTANTS.PAYMENT_METHODS.join(", ")}`
+			);
+		}
+	}
+
+	return errors;
 };
 
 module.exports = {

@@ -147,3 +147,34 @@ export async function saveProfileToBlockchain(
 		throw new Error(error.message || "Failed to save profile to blockchain");
 	}
 }
+
+const pinJSONToIPFS = async (JSONBody) => {
+	const url = `${import.meta.env.VITE_PINATA_BASE_URL}/pinning/pinJSONToIPFS`;
+	const headers = {
+		pinata_api_key: import.meta.env.VITE_PINATA_API_KEY,
+		pinata_secret_api_key: import.meta.env.VITE_PINATA_API_SECRET,
+		"Content-Type": "application/json",
+	};
+
+	try {
+		const response = await axios.post(url, JSONBody, { headers });
+		const ipfsCid = response.data.IpfsHash;
+		const ipfsUrl = `${
+			import.meta.env.VITE_PINATA_GATEWAY_URL
+		}/ipfs/${ipfsCid}`;
+
+		return {
+			success: true,
+			data: {
+				cid: ipfsCid,
+				url: ipfsUrl,
+			},
+		};
+	} catch (error) {
+		console.error("Error uploading to IPFS:", error);
+		return {
+			success: false,
+			error: error.message,
+		};
+	}
+};

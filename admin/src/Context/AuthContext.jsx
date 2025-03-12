@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import {
 	signInWithGoogle as firebaseSignInWithGoogle,
@@ -6,34 +6,30 @@ import {
 	googleLogout,
 } from "../../firebaseConfig";
 import {
-	showToast,
-	showLoadingToast,
-	updateToast,
-	TOAST_IDS,
-	TOAST_TYPES,
-} from "../utils/toastManager";
-import {
 	setStorageItem,
 	getStorageItem,
-	removeStorageItem,
 	clearStorage,
 	STORAGE_KEYS,
 } from "../utils/storage";
 import axios from "axios";
-import { notification } from "antd";
 import { useAccount } from "./AccountContext";
+import {
+	showSuccessMessage,
+	showErrorNotification,
+	showInfoMessage,
+} from "../utils/errors";
 
 export const AuthContext = createContext({
 	user: null,
-	loginHistory: [],
 	isLoading: false,
 	error: null,
-	fetchLoginHistory: () => {},
 	// ... other existing context values ...
 });
 
 export const AuthProvider = ({ children }) => {
 	const { walletAddress } = useAccount();
+	const hasInitialized = useRef(false);
+	const currentFetchRef = useRef(null);
 	const [authState, setAuthState] = useState({
 		isInitialized: false,
 		isLoading: true,
@@ -44,7 +40,6 @@ export const AuthProvider = ({ children }) => {
 		error: null,
 		token: getStorageItem(STORAGE_KEYS.AUTH_TOKEN),
 		status: "idle",
-		loginHistory: getStorageItem(STORAGE_KEYS.LOGIN_HISTORY) || [],
 	});
 
 	// Update localStorage when relevant state changes
@@ -55,184 +50,7 @@ export const AuthProvider = ({ children }) => {
 		if (authState.token) {
 			setStorageItem(STORAGE_KEYS.AUTH_TOKEN, authState.token);
 		}
-		if (authState.loginHistory.length > 0) {
-			setStorageItem(STORAGE_KEYS.LOGIN_HISTORY, authState.loginHistory);
-		}
-	}, [authState.user, authState.token, authState.loginHistory]);
-
-	// Fetch user data when wallet address changes - Critical data
-	useEffect(() => {
-		const fetchInitialUserData = async () => {
-			if (walletAddress) {
-				try {
-					setAuthState((prev) => ({ ...prev, isFetchingCriticalData: true }));
-					const normalizedWalletAddress = walletAddress.toLowerCase();
-					const response = await axios.get(`/users/${normalizedWalletAddress}`);
-
-					if (response.data?.success && response.data.user) {
-						const mappedUser = {
-							...response.data.user,
-							photoURL: response.data.user.profileImage,
-							acceptBlockchainStorage:
-								response.data.user.acceptBlockchainStorage || false,
-							gender: response.data.user.gender || null,
-						};
-
-						setAuthState((prev) => ({
-							...prev,
-							user: mappedUser,
-							error: null,
-							isFetchingCriticalData: false,
-							isLoading: false,
-							isInitialized: true,
-						}));
-
-						// After critical data is loaded, fetch non-critical data
-						fetchLoginHistory();
-					} else {
-						setAuthState((prev) => ({
-							...prev,
-							user: null,
-							error: null,
-							isFetchingCriticalData: false,
-							isLoading: false,
-							isInitialized: true,
-						}));
-					}
-				} catch (error) {
-					console.error("Failed to fetch initial user data:", error);
-					setAuthState((prev) => ({
-						...prev,
-						error: error.message,
-						isFetchingCriticalData: false,
-						isLoading: false,
-						isInitialized: true,
-					}));
-				}
-			} else {
-				setAuthState((prev) => ({
-					...prev,
-					user: null,
-					error: null,
-					isFetchingCriticalData: false,
-					isLoading: false,
-					isInitialized: true,
-				}));
-			}
-		};
-
-		fetchInitialUserData();
-	}, [walletAddress]);
-
-	const fetchLoginHistory = async () => {
-		if (!walletAddress) {
-			console.log("No wallet address available, skipping login history fetch");
-			return;
-		}
-
-		try {
-			setAuthState((prev) => ({ ...prev, isFetchingNonCriticalData: true }));
-			const normalizedWalletAddress = walletAddress.toLowerCase();
-			const response = await axios.get(
-				`/users/${normalizedWalletAddress}/login-history`
-			);
-
-			if (response.data?.success && response.data.loginHistory) {
-				const formattedHistory = response.data.loginHistory.map((entry) => ({
-					...entry,
-					deviceInfo: {
-						browser: entry.browser,
-						browserVersion: entry.browserVersion,
-						os: entry.os,
-						osVersion: entry.osVersion,
-						device: entry.device,
-						deviceType: entry.deviceType,
-					},
-				}));
-
-				setAuthState((prev) => ({
-					...prev,
-					loginHistory: formattedHistory,
-					isFetchingNonCriticalData: false,
-				}));
-				return formattedHistory;
-			}
-
-			console.error("Invalid login history response format:", response.data);
-			setAuthState((prev) => ({ ...prev, isFetchingNonCriticalData: false }));
-			return [];
-		} catch (error) {
-			console.error("Failed to fetch login history:", error);
-			setAuthState((prev) => ({ ...prev, isFetchingNonCriticalData: false }));
-			return [];
-		}
-	};
-
-	// Initialize auth state and subscribe to changes
-	useEffect(() => {
-		let unsubscribe;
-
-		const initializeAuth = async () => {
-			unsubscribe = subscribeToUser(async (firebaseUser) => {
-				if (firebaseUser) {
-					const userData = {
-						uid: firebaseUser.uid,
-						name: firebaseUser.name,
-						email: firebaseUser.email,
-						photoURL: firebaseUser.photoURL,
-					};
-
-					setAuthState((prev) => ({
-						...prev,
-						isInitialized: true,
-						isLoading: true,
-						isFetchingCriticalData: true,
-						googleUser: userData,
-						token: firebaseUser.accessToken || null,
-					}));
-
-					if (firebaseUser.accessToken) {
-						localStorage.setItem("auth_token", firebaseUser.accessToken);
-						axios.defaults.headers.common[
-							"Authorization"
-						] = `Bearer ${firebaseUser.accessToken}`;
-
-						try {
-							await fetchUserData();
-						} catch (error) {
-							console.error("Failed to fetch user data:", error);
-						}
-					}
-
-					setAuthState((prev) => ({
-						...prev,
-						isLoading: false,
-						isFetchingCriticalData: false,
-					}));
-				} else {
-					localStorage.removeItem("auth_token");
-					localStorage.removeItem("google_user");
-					delete axios.defaults.headers.common["Authorization"];
-
-					setAuthState({
-						isInitialized: true,
-						isLoading: false,
-						isFetchingCriticalData: false,
-						isFetchingNonCriticalData: false,
-						googleUser: null,
-						user: null,
-						token: null,
-						error: null,
-						status: "idle",
-						loginHistory: [],
-					});
-				}
-			});
-		};
-
-		initializeAuth();
-		return () => unsubscribe?.();
-	}, []);
+	}, [authState.user, authState.token]);
 
 	const fetchUserData = async (retries = 3, delay = 1000) => {
 		if (!walletAddress) {
@@ -245,74 +63,169 @@ export const AuthProvider = ({ children }) => {
 			return null;
 		}
 
+		// If there's already a fetch in progress, don't start another one
+		if (currentFetchRef.current) {
+			return currentFetchRef.current;
+		}
+
 		const normalizedWalletAddress = walletAddress.toLowerCase();
 		console.log(
 			"Attempting to fetch user data with normalized wallet address:",
 			normalizedWalletAddress
 		);
 
-		for (let i = 0; i < retries; i++) {
-			try {
-				const response = await axios.get(`/users/${normalizedWalletAddress}`);
+		// Create a promise for the current fetch operation
+		currentFetchRef.current = (async () => {
+			for (let i = 0; i < retries; i++) {
+				try {
+					const response = await axios.get(`/users/${normalizedWalletAddress}`);
 
-				if (response.data?.success && response.data.user) {
-					const mappedUser = {
-						...response.data.user,
-						photoURL: response.data.user.profileImage,
-						acceptBlockchainStorage:
-							response.data.user.acceptBlockchainStorage || false,
-						gender: response.data.user.gender || null,
-					};
+					if (response.data?.success && response.data.user) {
+						const mappedUser = {
+							...response.data.user,
+							photoURL: (
+								response.data.user.profileImage || response.data.user.photoURL
+							)?.replace(/=s\d+-c/, "=s64-c"),
+							profileImage: (
+								response.data.user.profileImage || response.data.user.photoURL
+							)?.replace(/=s\d+-c/, "=s64-c"),
+							acceptBlockchainStorage:
+								response.data.user.acceptBlockchainStorage || false,
+							gender: response.data.user.gender || null,
+						};
 
-					console.log("Successfully mapped user data:", mappedUser);
+						console.log("Successfully mapped user data:", mappedUser);
 
-					setAuthState((prev) => ({
-						...prev,
-						user: mappedUser,
-						googleUser:
-							prev.googleUser?.email === mappedUser.email
-								? mappedUser
-								: prev.googleUser,
-						error: null,
-						isInitialized: true,
-					}));
+						setAuthState((prev) => ({
+							...prev,
+							user: mappedUser,
+							googleUser:
+								prev.googleUser?.email === mappedUser.email
+									? mappedUser
+									: prev.googleUser,
+							error: null,
+							isInitialized: true,
+							isFetchingCriticalData: false,
+							isLoading: false,
+						}));
 
-					return mappedUser;
-				}
+						hasInitialized.current = true;
+						return mappedUser;
+					}
 
-				console.log("No valid user data received from server");
-				setAuthState((prev) => ({
-					...prev,
-					user: null,
-					error: null,
-					isInitialized: true,
-				}));
-				return null;
-			} catch (error) {
-				console.error(
-					`Attempt ${i + 1} failed to fetch user data:`,
-					error.response || error
-				);
-				if (i === retries - 1) {
+					console.log("No valid user data received from server");
 					setAuthState((prev) => ({
 						...prev,
 						user: null,
-						error: error.message,
+						error: null,
 						isInitialized: true,
+						isFetchingCriticalData: false,
+						isLoading: false,
 					}));
-					throw error;
+					return null;
+				} catch (error) {
+					console.error(
+						`Attempt ${i + 1} failed to fetch user data:`,
+						error.response || error
+					);
+					if (i === retries - 1) {
+						setAuthState((prev) => ({
+							...prev,
+							user: null,
+							error: error.message,
+							isInitialized: true,
+							isFetchingCriticalData: false,
+							isLoading: false,
+						}));
+						throw error;
+					}
+					await new Promise((resolve) => setTimeout(resolve, delay));
 				}
-				await new Promise((resolve) => setTimeout(resolve, delay));
 			}
+		})();
+
+		try {
+			const result = await currentFetchRef.current;
+			return result;
+		} finally {
+			currentFetchRef.current = null;
 		}
 	};
 
-	const signInWithGoogle = async () => {
-		const toastId = showLoadingToast(
-			"Signing in with Google...",
-			TOAST_IDS.GOOGLE_SIGNIN
-		);
+	// Initialize auth state and subscribe to changes
+	useEffect(() => {
+		let unsubscribe;
 
+		const initializeAuth = async () => {
+			unsubscribe = subscribeToUser(async (firebaseUser) => {
+				if (firebaseUser) {
+					const userData = {
+						uid: firebaseUser.uid,
+						name: firebaseUser.name || firebaseUser.displayName,
+						email: firebaseUser.email,
+						photoURL: firebaseUser.photoURL?.replace(/=s\d+-c/, "=s64-c"),
+						profileImage: firebaseUser.photoURL?.replace(/=s\d+-c/, "=s64-c"),
+					};
+
+					if (firebaseUser.accessToken) {
+						localStorage.setItem("auth_token", firebaseUser.accessToken);
+						axios.defaults.headers.common[
+							"Authorization"
+						] = `Bearer ${firebaseUser.accessToken}`;
+					}
+
+					// Set initial state
+					setAuthState((prev) => ({
+						...prev,
+						isInitialized: true,
+						isLoading: true,
+						isFetchingCriticalData: true,
+						googleUser: userData,
+						token: firebaseUser.accessToken || null,
+					}));
+
+					// If we have a wallet address and haven't initialized yet, fetch user data
+					if (walletAddress && !hasInitialized.current) {
+						await fetchUserData();
+					} else {
+						setAuthState((prev) => ({
+							...prev,
+							isFetchingCriticalData: false,
+							isLoading: false,
+						}));
+					}
+				} else {
+					localStorage.removeItem("auth_token");
+					localStorage.removeItem("google_user");
+					delete axios.defaults.headers.common["Authorization"];
+					hasInitialized.current = false;
+
+					setAuthState({
+						isInitialized: true,
+						isLoading: false,
+						isFetchingCriticalData: false,
+						isFetchingNonCriticalData: false,
+						googleUser: null,
+						user: null,
+						token: null,
+						error: null,
+						status: "idle",
+					});
+				}
+			});
+		};
+
+		initializeAuth();
+		return () => unsubscribe?.();
+	}, [walletAddress]);
+
+	// Update the reset refs effect
+	useEffect(() => {
+		hasInitialized.current = false;
+		currentFetchRef.current = null;
+	}, [walletAddress]);
+
+	const signInWithGoogle = async () => {
 		try {
 			setAuthState((prev) => ({
 				...prev,
@@ -321,37 +234,36 @@ export const AuthProvider = ({ children }) => {
 				status: "pending",
 			}));
 
-			notification.info({
-				message: "Initializing Google Sign-in",
-				description: "Opening Google sign-in popup...",
-				duration: 3,
-			});
+			showInfoMessage("Initializing Google Sign-in...");
 
 			const result = await firebaseSignInWithGoogle();
+			console.log("Firebase sign-in result:", result);
 
 			if (!result?.userData) {
 				throw new Error("Failed to get Google user data");
 			}
 
-			notification.info({
-				message: "Verifying Google account",
-				description: "Please wait while we verify your account...",
-				duration: 3,
-			});
+			showInfoMessage("Verifying Google account...");
 
 			const { token, userData } = result;
+			console.log("Raw user data from Firebase:", userData);
 
 			const googleUser = {
 				uid: userData.uid,
-				name: userData.name,
+				name: userData.name || userData.displayName,
 				email: userData.email,
-				photoURL: userData.photoURL,
+				photoURL: userData.photoURL || null,
 			};
+
+			console.log("Processed Google user data with photo:", googleUser);
 
 			if (token) {
 				localStorage.setItem("auth_token", token);
 				axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 			}
+
+			// Store the complete user object
+			localStorage.setItem("google_user", JSON.stringify(googleUser));
 
 			setAuthState((prev) => ({
 				...prev,
@@ -362,20 +274,7 @@ export const AuthProvider = ({ children }) => {
 				status: "success",
 			}));
 
-			localStorage.setItem("google_user", JSON.stringify(googleUser));
-
-			notification.success({
-				message: "Successfully signed in!",
-				description: `Welcome back, ${googleUser.name}!`,
-				duration: 4,
-			});
-
-			updateToast(
-				toastId,
-				"Successfully signed in with Google!",
-				TOAST_TYPES.SUCCESS
-			);
-
+			showSuccessMessage(`Welcome back, ${googleUser.name}!`);
 			return { userData: googleUser, token };
 		} catch (error) {
 			let errorMessage = "";
@@ -397,13 +296,7 @@ export const AuthProvider = ({ children }) => {
 				status: "error",
 			}));
 
-			notification.error({
-				message: "Sign-in Failed",
-				description: errorMessage,
-				duration: 4,
-			});
-
-			updateToast(toastId, errorMessage, TOAST_TYPES.ERROR);
+			showErrorNotification(new Error(errorMessage));
 			throw error;
 		}
 	};
@@ -420,17 +313,16 @@ export const AuthProvider = ({ children }) => {
 				googleUser: null,
 				error: null,
 				token: null,
-				loginHistory: [],
 			});
 
-			showToast("👋 Logged out successfully", TOAST_TYPES.SUCCESS);
+			showSuccessMessage("Logged out successfully");
 		} catch (error) {
 			setAuthState((prev) => ({
 				...prev,
 				isLoading: false,
 				error: "Failed to logout",
 			}));
-			showToast("Failed to logout", TOAST_TYPES.ERROR);
+			showErrorNotification(error);
 		}
 	};
 
@@ -440,7 +332,6 @@ export const AuthProvider = ({ children }) => {
 		logout,
 		isAuthenticated: !!authState.googleUser,
 		fetchUserData,
-		fetchLoginHistory,
 	};
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -5,19 +5,20 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { subscribeToUser } from "../../firebaseConfig";
 import {
-	showWalletDisconnect,
-	showLoadingToast,
-	updateToast,
-	TOAST_IDS,
-	TOAST_TYPES,
-} from "../utils/toastManager";
-import {
 	setStorageItem,
 	getStorageItem,
 	removeStorageItem,
 	clearStorage,
 	STORAGE_KEYS,
 } from "../utils/storage";
+import {
+	showSuccessMessage,
+	showErrorNotification,
+	showBlockchainError,
+	showNetworkError,
+	showWarningMessage,
+	showInfoMessage,
+} from "../utils/errors";
 
 // Update API URL to use the correct environment variable and default value
 const API_URL =
@@ -68,10 +69,10 @@ export const AccountProvider = ({ children }) => {
 		isLoading: true,
 		isConnecting: false,
 		isFetchingBalance: false,
+		isFetchingUserData: false,
 		walletAddress: getStorageItem(STORAGE_KEYS.WALLET_ADDRESS),
 		networkName: getStorageItem(STORAGE_KEYS.NETWORK_NAME),
 		balance: getStorageItem(STORAGE_KEYS.BALANCE),
-		loginHistory: getStorageItem(STORAGE_KEYS.LOGIN_HISTORY) || [],
 		connectionState: CONNECTION_STATES.DISCONNECTED,
 		connectionError: null,
 		error: null,
@@ -92,15 +93,11 @@ export const AccountProvider = ({ children }) => {
 		if (accountState.user) {
 			setStorageItem(STORAGE_KEYS.USER, accountState.user);
 		}
-		if (accountState.loginHistory.length > 0) {
-			setStorageItem(STORAGE_KEYS.LOGIN_HISTORY, accountState.loginHistory);
-		}
 	}, [
 		accountState.walletAddress,
 		accountState.networkName,
 		accountState.balance,
 		accountState.user,
-		accountState.loginHistory,
 	]);
 
 	// Subscribe to Firebase auth changes
@@ -150,24 +147,53 @@ export const AccountProvider = ({ children }) => {
 					const chainId = Number(network.chainId);
 					const networkName = NETWORK_NAMES[chainId] || `Chain ${chainId}`;
 
-					setAccountState((prev) => ({ ...prev, isFetchingBalance: true }));
+					setAccountState((prev) => ({
+						...prev,
+						isFetchingBalance: true,
+						isFetchingUserData: true,
+					}));
 					const balance = await provider.getBalance(address);
 
 					// Check if user exists and get profile data in one call
 					try {
 						const response = await axios.get(`/users/${address.toLowerCase()}`);
 
+						const userData = response.data?.success
+							? {
+									...response.data.user,
+									photoURL: (
+										response.data.user.profileImage ||
+										response.data.user.photoURL
+									)?.replace("=s96-c", "=s400-c"),
+									profileImage: (
+										response.data.user.profileImage ||
+										response.data.user.photoURL
+									)?.replace("=s96-c", "=s400-c"),
+							  }
+							: null;
+
 						setAccountState((prev) => ({
 							...prev,
 							isInitialized: true,
 							isLoading: false,
 							isFetchingBalance: false,
+							isFetchingUserData: false,
 							walletAddress: address,
 							networkName,
 							balance: ethers.formatEther(balance),
 							connectionState: CONNECTION_STATES.CONNECTED,
-							user: response.data?.success ? response.data.user : null,
+							user: userData,
 						}));
+
+						// Only navigate to dashboard if we're on the connect or profile-setup page
+						const currentPath = window.location.pathname;
+						if (
+							response.data?.success &&
+							response.data.user &&
+							(currentPath === "/connect" || currentPath === "/profile-setup")
+						) {
+							navigate("/dashboard");
+						}
 					} catch (error) {
 						// If error is 404, user doesn't exist. Any other error is treated as a connection error
 						setAccountState((prev) => ({
@@ -175,6 +201,7 @@ export const AccountProvider = ({ children }) => {
 							isInitialized: true,
 							isLoading: false,
 							isFetchingBalance: false,
+							isFetchingUserData: false,
 							walletAddress: address,
 							networkName,
 							balance: ethers.formatEther(balance),
@@ -182,12 +209,21 @@ export const AccountProvider = ({ children }) => {
 							user: null,
 							error: error.response?.status === 404 ? null : error.message,
 						}));
+
+						// Only navigate to profile setup if we're on the connect page
+						if (
+							error.response?.status === 404 &&
+							window.location.pathname === "/connect"
+						) {
+							navigate("/profile-setup");
+						}
 					}
 				} else {
 					setAccountState((prev) => ({
 						...prev,
 						isInitialized: true,
 						isLoading: false,
+						isFetchingUserData: false,
 						walletAddress: null,
 						connectionState: CONNECTION_STATES.DISCONNECTED,
 					}));
@@ -197,6 +233,7 @@ export const AccountProvider = ({ children }) => {
 					...prev,
 					isInitialized: true,
 					isLoading: false,
+					isFetchingUserData: false,
 					error: error.message,
 					connectionState: CONNECTION_STATES.ERROR,
 					connectionError: error.message,
@@ -221,7 +258,7 @@ export const AccountProvider = ({ children }) => {
 				window.ethereum.removeListener("chainChanged", handleChainChanged);
 			}
 		};
-	}, []);
+	}, [navigate]);
 
 	const handleAccountsChanged = async (accounts) => {
 		if (accounts.length === 0) {
@@ -246,7 +283,17 @@ export const AccountProvider = ({ children }) => {
 
 			try {
 				const response = await axios.get(`/users/${address.toLowerCase()}`);
-				const userData = response.data?.success ? response.data.user : null;
+				const userData = response.data?.success
+					? {
+							...response.data.user,
+							photoURL: (
+								response.data.user.profileImage || response.data.user.photoURL
+							)?.replace("=s96-c", "=s400-c"),
+							profileImage: (
+								response.data.user.profileImage || response.data.user.photoURL
+							)?.replace("=s96-c", "=s400-c"),
+					  }
+					: null;
 
 				setAccountState((prev) => ({
 					...prev,
@@ -333,7 +380,6 @@ export const AccountProvider = ({ children }) => {
 				signature,
 				message,
 				chainId: chainId.toString(),
-				skipLoginHistory: false, // Ensure we create login history for actual authentication
 			});
 
 			if (!authResponse.data) {
@@ -341,15 +387,14 @@ export const AccountProvider = ({ children }) => {
 			}
 
 			if (authResponse.data?.success) {
-				const { token, user, loginHistory, exists, hasProfile } =
-					authResponse.data;
+				const { token, user, exists, hasProfile } = authResponse.data;
 
 				// Update axios headers
 				if (token) {
 					axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 				}
 
-				// Update state with login history if available
+				// Update state without login history
 				setAccountState((prev) => ({
 					...prev,
 					walletAddress: address,
@@ -364,7 +409,6 @@ export const AccountProvider = ({ children }) => {
 					isConnecting: false,
 					isFetchingBalance: false,
 					error: null,
-					loginHistory: loginHistory || [],
 				}));
 
 				return {
@@ -373,7 +417,6 @@ export const AccountProvider = ({ children }) => {
 					chainId: chainId.toString(),
 					balance,
 					user: user || null,
-					loginHistory,
 					exists,
 					hasProfile,
 				};
@@ -393,6 +436,12 @@ export const AccountProvider = ({ children }) => {
 				isFetchingBalance: false,
 				error: errorMsg,
 			}));
+
+			if (error.code) {
+				showBlockchainError(error);
+			} else {
+				showErrorNotification(error);
+			}
 			throw error;
 		}
 	};
@@ -419,7 +468,6 @@ export const AccountProvider = ({ children }) => {
 
 			// Emit custom event for wallet disconnection
 			window.dispatchEvent(new Event("walletDisconnected"));
-			showWalletDisconnect();
 		} catch (error) {
 			setAccountState((prev) => ({
 				...prev,
@@ -427,15 +475,11 @@ export const AccountProvider = ({ children }) => {
 				connectionState: CONNECTION_STATES.ERROR,
 				connectionError: "Failed to disconnect wallet",
 			}));
+			showErrorNotification(error);
 		}
 	};
 
 	const updateProfile = async (profileData) => {
-		const toastId = showLoadingToast(
-			"Updating profile...",
-			TOAST_IDS.PROFILE_UPDATE
-		);
-
 		try {
 			if (!accountState.walletAddress) {
 				throw new Error("Please connect your wallet first");
@@ -474,11 +518,6 @@ export const AccountProvider = ({ children }) => {
 				user: userResponse.data.user,
 			}));
 
-			updateToast(
-				toastId,
-				"Profile updated successfully!",
-				TOAST_TYPES.SUCCESS
-			);
 			return { success: true, user: userResponse.data.user };
 		} catch (error) {
 			console.error("Profile update error:", error);
@@ -487,7 +526,7 @@ export const AccountProvider = ({ children }) => {
 				error.message ||
 				"Failed to update profile";
 
-			updateToast(toastId, errorMessage, TOAST_TYPES.ERROR);
+			showErrorNotification(error);
 			throw error;
 		}
 	};
