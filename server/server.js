@@ -10,15 +10,13 @@ const {
 } = require("./config/config");
 const setupMiddleware = require("./middleware");
 const routes = require("./routes");
+const youtubeRoutes = require("./routes/youtube");
 const { errorResponse, ResponseCodes } = require("./utils/responseHelper");
 
 // Import models
 const { User, Business, BusinessTeamMember } = require("./models");
 
 const app = express();
-
-// Set NODE_ENV to development
-process.env.NODE_ENV = "development";
 
 // Middleware
 app.use(cors(corsConfig));
@@ -32,6 +30,7 @@ app.use(session(sessionConfig));
 setupMiddleware(app);
 
 // Mount routes
+app.use("/api/youtube", youtubeRoutes);
 app.use("/api", routes);
 
 // Global error handler

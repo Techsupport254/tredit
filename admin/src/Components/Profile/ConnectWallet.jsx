@@ -18,6 +18,7 @@ import {
 } from "@ant-design/icons";
 import metamaskIcon from "../../assets/metamask.svg";
 import PropTypes from "prop-types";
+import axios from "axios";
 
 const { Title, Text } = Typography;
 
@@ -136,50 +137,60 @@ const ConnectWallet = ({ className = "" }) => {
 		}
 	}, [connectionState, walletAddress]);
 
-	const checkWalletStatus = async (
-		account,
-		signature = null,
-		message = null,
-		chainId = null,
-		skipLoginHistory = false
-	) => {
+	const checkWalletStatus = async () => {
 		try {
-			const response = await fetch(
-				`${
-					import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:8000/api"
-				}/users/wallet-auth`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						walletAddress: account.toLowerCase(),
-						...(signature && { signature }),
-						...(message && { message }),
-						...(chainId && { chainId: chainId.toString() }),
-						skipLoginHistory,
-					}),
-				}
-			);
-			const data = await response.json();
+			setLoading(true);
+			setError(null);
 
-			if (!data.success) {
-				throw new Error(data.message || "Failed to authenticate");
-			}
+			const provider = new ethers.BrowserProvider(window.ethereum);
+			const signer = await provider.getSigner();
+			const address = await signer.getAddress();
+			const chainId = (await provider.getNetwork()).chainId;
 
-			if (!signature) {
-				// Just checking wallet status
-				if (data.exists && data.hasProfile) {
-					navigate("/dashboard");
-				} else if (data.exists) {
-					navigate("/profile-setup");
+			// Create message for signing
+			const message = `Welcome to Tredit!\n\nWallet: ${address}\nNonce: ${Date.now()}\n\nSign this message to verify your wallet ownership.`;
+
+			// Get signature
+			const signature = await signer.signMessage(message);
+
+			// Get authentication token
+			const response = await axios.post(`${API_URL}/users/wallet-auth`, {
+				walletAddress: address,
+				signature,
+				message,
+				chainId: chainId.toString(),
+				skipLoginHistory: true,
+			});
+
+			if (response.data?.success) {
+				console.log("Wallet status check response:", response.data);
+				const { token, user, exists, hasProfile } = response.data;
+
+				// Store token using storage utility
+				if (token) {
+					setStorageItem(STORAGE_KEYS.token, token);
+					axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 				}
+
+				// Update wallet info in account context
+				await updateWalletInfo(address);
+
+				// Return auth response data
+				return {
+					success: true,
+					exists,
+					hasProfile,
+					user,
+				};
+			} else {
+				throw new Error(response.data?.message || "Authentication failed");
 			}
-			return data;
 		} catch (error) {
-			console.error("Error checking wallet status:", error);
+			console.error("Wallet status check error:", error);
+			setError(error.message);
 			throw error;
+		} finally {
+			setLoading(false);
 		}
 	};
 

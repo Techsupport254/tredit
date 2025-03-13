@@ -13,9 +13,10 @@ const USE_SSL = process.env.DB_SSL === "true";
 // App Configuration
 const appConfig = {
 	port: process.env.PORT || 8000,
-	env: process.env.NODE_ENV || "development",
+	env: process.env.NODE_ENV || "production",
 	frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
 	jwtSecret: process.env.JWT_SECRET || "your-jwt-secret",
+	requireAuth: process.env.REQUIRE_AUTH === "true",
 };
 
 // CORS Configuration

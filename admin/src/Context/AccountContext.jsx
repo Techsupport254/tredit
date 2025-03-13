@@ -27,6 +27,7 @@ const API_URL =
 // Configure axios defaults
 axios.defaults.baseURL = API_URL;
 axios.defaults.timeout = 30000; // 30 seconds timeout
+axios.defaults.headers.common["Content-Type"] = "application/json";
 
 // Update network mapping object at the top of the file, after imports
 const NETWORK_NAMES = {
@@ -62,6 +63,27 @@ const CONNECTION_STATES = {
 
 const AccountContext = createContext();
 
+// Add interceptor setup
+const setupAxiosInterceptors = (token) => {
+	// Remove any existing interceptors
+	axios.interceptors.request.handlers = [];
+
+	// Add new interceptor
+	axios.interceptors.request.use((config) => {
+		if (token) {
+			config.headers.Authorization = `Bearer ${token}`;
+		}
+		return config;
+	});
+
+	// Set default headers
+	if (token) {
+		axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+	} else {
+		delete axios.defaults.headers.common["Authorization"];
+	}
+};
+
 export const AccountProvider = ({ children }) => {
 	const navigate = useNavigate();
 	const [accountState, setAccountState] = useState({
@@ -77,7 +99,25 @@ export const AccountProvider = ({ children }) => {
 		connectionError: null,
 		error: null,
 		user: getStorageItem(STORAGE_KEYS.USER),
+		token: getStorageItem(STORAGE_KEYS.token),
 	});
+
+	// Initialize token on mount and when it changes
+	useEffect(() => {
+		const token = getStorageItem(STORAGE_KEYS.token);
+		if (token) {
+			setupAxiosInterceptors(token);
+			setAccountState((prev) => ({ ...prev, token }));
+		}
+	}, []);
+
+	// Update localStorage and interceptors when token changes
+	useEffect(() => {
+		if (accountState.token) {
+			setStorageItem(STORAGE_KEYS.token, accountState.token);
+			setupAxiosInterceptors(accountState.token);
+		}
+	}, [accountState.token]);
 
 	// Update localStorage when relevant state changes
 	useEffect(() => {
@@ -374,7 +414,6 @@ export const AccountProvider = ({ children }) => {
 			}
 
 			console.log("Authenticating wallet:", address);
-			// Get authentication token with login history
 			const authResponse = await axios.post(`/users/wallet-auth`, {
 				walletAddress: address,
 				signature,
@@ -387,21 +426,23 @@ export const AccountProvider = ({ children }) => {
 			}
 
 			if (authResponse.data?.success) {
-				const { token, user, exists, hasProfile } = authResponse.data;
+				console.log("Authentication successful:", authResponse.data);
+				const { token, user, exists, hasProfile } = authResponse.data.data;
 
-				// Update axios headers
+				// Update token storage and axios interceptor
 				if (token) {
-					axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+					setStorageItem(STORAGE_KEYS.token, token);
+					setupAxiosInterceptors(token);
 				}
 
-				// Update state without login history
+				// Update state
 				setAccountState((prev) => ({
 					...prev,
 					walletAddress: address,
 					chainId: chainId.toString(),
 					balance,
 					user: user || null,
-					authToken: token,
+					token,
 					isConnected: true,
 					connectionState: CONNECTION_STATES.CONNECTED,
 					connectionError: null,
@@ -419,6 +460,7 @@ export const AccountProvider = ({ children }) => {
 					user: user || null,
 					exists,
 					hasProfile,
+					token,
 				};
 			} else {
 				const errorMsg = authResponse.data?.message || "Authentication failed";
@@ -435,7 +477,12 @@ export const AccountProvider = ({ children }) => {
 				isConnecting: false,
 				isFetchingBalance: false,
 				error: errorMsg,
+				token: null,
 			}));
+
+			// Clear token on error
+			setStorageItem(STORAGE_KEYS.token, null);
+			setupAxiosInterceptors(null);
 
 			if (error.code) {
 				showBlockchainError(error);
@@ -453,7 +500,8 @@ export const AccountProvider = ({ children }) => {
 				isLoading: true,
 			}));
 
-			delete axios.defaults.headers.common["Authorization"];
+			// Clear interceptor and token
+			setupAxiosInterceptors(null);
 			clearStorage();
 
 			setAccountState((prev) => ({
@@ -582,6 +630,7 @@ export const AccountProvider = ({ children }) => {
 		updateWalletInfo,
 		handleAccountsChanged,
 		handleChainChanged,
+		setupAxiosInterceptors,
 	};
 
 	return (

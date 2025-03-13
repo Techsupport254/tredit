@@ -18,6 +18,7 @@ import {
 	showErrorNotification,
 	showInfoMessage,
 } from "../utils/errors";
+import { ethers } from "ethers";
 
 export const AuthContext = createContext({
 	user: null,
@@ -27,7 +28,8 @@ export const AuthContext = createContext({
 });
 
 export const AuthProvider = ({ children }) => {
-	const { walletAddress } = useAccount();
+	const { walletAddress, provider, chainId, setupAxiosInterceptors } =
+		useAccount();
 	const hasInitialized = useRef(false);
 	const currentFetchRef = useRef(null);
 	const [authState, setAuthState] = useState({
@@ -38,32 +40,46 @@ export const AuthProvider = ({ children }) => {
 		googleUser: getStorageItem(STORAGE_KEYS.USER),
 		user: getStorageItem(STORAGE_KEYS.USER),
 		error: null,
-		token: getStorageItem(STORAGE_KEYS.AUTH_TOKEN),
+		token: getStorageItem(STORAGE_KEYS.token),
+		firebaseToken: getStorageItem(STORAGE_KEYS.FIREBASE_TOKEN),
 		status: "idle",
 	});
 
-	// Update localStorage when relevant state changes
+	// Initialize token on mount and when it changes
 	useEffect(() => {
-		if (authState.user) {
-			setStorageItem(STORAGE_KEYS.USER, authState.user);
+		const token = getStorageItem(STORAGE_KEYS.token);
+		if (token) {
+			setupAxiosInterceptors(token);
+			setAuthState((prev) => ({ ...prev, token }));
 		}
+	}, [setupAxiosInterceptors]);
+
+	// Update localStorage and axios interceptors when token changes
+	useEffect(() => {
 		if (authState.token) {
-			setStorageItem(STORAGE_KEYS.AUTH_TOKEN, authState.token);
+			setStorageItem(STORAGE_KEYS.token, authState.token);
+			setupAxiosInterceptors(authState.token);
 		}
-	}, [authState.user, authState.token]);
+	}, [authState.token, setupAxiosInterceptors]);
+
+	const generateSignatureMessage = (walletAddress) => {
+		return `Welcome to Tredit!\n\nWallet: ${walletAddress}\nNonce: ${Date.now()}\n\nSign this message to verify your wallet ownership.`;
+	};
 
 	const fetchUserData = async (retries = 3, delay = 1000) => {
-		if (!walletAddress) {
-			console.log("No wallet address available, skipping user data fetch");
+		if (!walletAddress || !provider) {
+			console.log(
+				"No wallet address or provider available, skipping user data fetch"
+			);
 			setAuthState((prev) => ({
 				...prev,
 				user: null,
 				isInitialized: true,
+				isLoading: false,
 			}));
 			return null;
 		}
 
-		// If there's already a fetch in progress, don't start another one
 		if (currentFetchRef.current) {
 			return currentFetchRef.current;
 		}
@@ -74,43 +90,42 @@ export const AuthProvider = ({ children }) => {
 			normalizedWalletAddress
 		);
 
-		// Create a promise for the current fetch operation
 		currentFetchRef.current = (async () => {
 			for (let i = 0; i < retries; i++) {
 				try {
-					const response = await axios.get(`/users/${normalizedWalletAddress}`);
+					const message = generateSignatureMessage(normalizedWalletAddress);
+					const signer = await provider.getSigner();
+					const signature = await signer.signMessage(message);
 
-					if (response.data?.success && response.data.user) {
-						const mappedUser = {
-							...response.data.user,
-							photoURL: (
-								response.data.user.profileImage || response.data.user.photoURL
-							)?.replace(/=s\d+-c/, "=s64-c"),
-							profileImage: (
-								response.data.user.profileImage || response.data.user.photoURL
-							)?.replace(/=s\d+-c/, "=s64-c"),
-							acceptBlockchainStorage:
-								response.data.user.acceptBlockchainStorage || false,
-							gender: response.data.user.gender || null,
-						};
+					console.log("Generated signature:", { message, signature, chainId });
 
-						console.log("Successfully mapped user data:", mappedUser);
+					const authResponse = await axios.post("/users/wallet-auth", {
+						walletAddress: normalizedWalletAddress,
+						signature,
+						message,
+						chainId,
+					});
 
-						setAuthState((prev) => ({
-							...prev,
-							user: mappedUser,
-							googleUser:
-								prev.googleUser?.email === mappedUser.email
-									? mappedUser
-									: prev.googleUser,
-							error: null,
-							isInitialized: true,
-							isFetchingCriticalData: false,
-							isLoading: false,
-						}));
+					if (authResponse.data?.success) {
+						console.log("Successfully fetched user data:", authResponse.data);
+						const { token, user: userData, hasProfile } = authResponse.data;
 
-						hasInitialized.current = true;
-						return mappedUser;
+						if (token) {
+							setStorageItem(STORAGE_KEYS.token, token);
+							setupAxiosInterceptors(token);
+
+							setAuthState((prev) => ({
+								...prev,
+								token,
+								user: hasProfile ? userData : null,
+								error: null,
+								isInitialized: true,
+								isFetchingCriticalData: false,
+								isLoading: false,
+							}));
+
+							return hasProfile ? userData : null;
+						}
 					}
 
 					console.log("No valid user data received from server");
@@ -167,37 +182,42 @@ export const AuthProvider = ({ children }) => {
 						profileImage: firebaseUser.photoURL?.replace(/=s\d+-c/, "=s64-c"),
 					};
 
+					// Store Firebase token directly
 					if (firebaseUser.accessToken) {
-						localStorage.setItem("auth_token", firebaseUser.accessToken);
-						axios.defaults.headers.common[
-							"Authorization"
-						] = `Bearer ${firebaseUser.accessToken}`;
+						setStorageItem(
+							STORAGE_KEYS.FIREBASE_TOKEN,
+							firebaseUser.accessToken
+						);
 					}
 
-					// Set initial state
+					// Set initial state with Google user data only
 					setAuthState((prev) => ({
 						...prev,
 						isInitialized: true,
 						isLoading: true,
 						isFetchingCriticalData: true,
 						googleUser: userData,
-						token: firebaseUser.accessToken || null,
+						firebaseToken: firebaseUser.accessToken,
 					}));
 
-					// If we have a wallet address and haven't initialized yet, fetch user data
+					// If we have a wallet address, fetch user data
 					if (walletAddress && !hasInitialized.current) {
 						await fetchUserData();
-					} else {
-						setAuthState((prev) => ({
-							...prev,
-							isFetchingCriticalData: false,
-							isLoading: false,
-						}));
 					}
+
+					setAuthState((prev) => ({
+						...prev,
+						isFetchingCriticalData: false,
+						isLoading: false,
+					}));
 				} else {
-					localStorage.removeItem("auth_token");
-					localStorage.removeItem("google_user");
-					delete axios.defaults.headers.common["Authorization"];
+					// Clear auth data but keep API token
+					const apiToken = getStorageItem(STORAGE_KEYS.token);
+					clearStorage();
+					if (apiToken) {
+						setStorageItem(STORAGE_KEYS.token, apiToken);
+						setupAxiosInterceptors(apiToken);
+					}
 					hasInitialized.current = false;
 
 					setAuthState({
@@ -207,7 +227,8 @@ export const AuthProvider = ({ children }) => {
 						isFetchingNonCriticalData: false,
 						googleUser: null,
 						user: null,
-						token: null,
+						token: apiToken || null,
+						firebaseToken: null,
 						error: null,
 						status: "idle",
 					});
@@ -243,39 +264,34 @@ export const AuthProvider = ({ children }) => {
 				throw new Error("Failed to get Google user data");
 			}
 
-			showInfoMessage("Verifying Google account...");
+			const { token: firebaseToken, userData } = result;
 
-			const { token, userData } = result;
-			console.log("Raw user data from Firebase:", userData);
+			// Store Firebase token using storage utility
+			if (firebaseToken) {
+				setStorageItem(STORAGE_KEYS.FIREBASE_TOKEN, firebaseToken);
 
-			const googleUser = {
-				uid: userData.uid,
-				name: userData.name || userData.displayName,
-				email: userData.email,
-				photoURL: userData.photoURL || null,
-			};
+				const googleUser = {
+					uid: userData.uid,
+					name: userData.name || userData.displayName,
+					email: userData.email,
+					photoURL: userData.photoURL || null,
+				};
 
-			console.log("Processed Google user data with photo:", googleUser);
+				setAuthState((prev) => ({
+					...prev,
+					firebaseToken,
+					googleUser,
+					isLoading: false,
+					error: null,
+					status: "success",
+				}));
 
-			if (token) {
-				localStorage.setItem("auth_token", token);
-				axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+				setStorageItem(STORAGE_KEYS.GOOGLE_USER, googleUser);
+				showSuccessMessage(`Welcome back, ${googleUser.name}!`);
+				return { userData: googleUser, firebaseToken };
 			}
 
-			// Store the complete user object
-			localStorage.setItem("google_user", JSON.stringify(googleUser));
-
-			setAuthState((prev) => ({
-				...prev,
-				googleUser,
-				token,
-				isLoading: false,
-				error: null,
-				status: "success",
-			}));
-
-			showSuccessMessage(`Welcome back, ${googleUser.name}!`);
-			return { userData: googleUser, token };
+			throw new Error("Failed to get Google user data");
 		} catch (error) {
 			let errorMessage = "";
 
@@ -293,6 +309,7 @@ export const AuthProvider = ({ children }) => {
 				isLoading: false,
 				googleUser: null,
 				token: null,
+				firebaseToken: null,
 				status: "error",
 			}));
 
@@ -305,6 +322,9 @@ export const AuthProvider = ({ children }) => {
 		try {
 			setAuthState((prev) => ({ ...prev, isLoading: true }));
 			await googleLogout();
+
+			// Clear token and interceptor
+			setupAxiosInterceptors(null);
 			clearStorage();
 
 			setAuthState({

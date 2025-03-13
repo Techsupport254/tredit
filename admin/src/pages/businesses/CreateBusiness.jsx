@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useBusiness } from "../../Context/BusinessContext";
+import { BUSINESS_CONSTANTS } from "../../constants/businessConstants";
 import {
 	Form,
 	Input,
@@ -30,36 +31,6 @@ import {
 const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Step } = Steps;
-
-const PRODUCT_CATEGORIES = [
-	"Electronics",
-	"Clothing & Apparel",
-	"Home & Garden",
-	"Beauty & Personal Care",
-	"Sports & Outdoors",
-	"Toys & Games",
-	"Books & Media",
-	"Food & Beverage",
-	"Health & Wellness",
-	"Automotive",
-	"Art & Crafts",
-	"Other",
-];
-
-const SERVICE_CATEGORIES = [
-	"Consulting",
-	"Professional Services",
-	"Education & Training",
-	"Healthcare",
-	"Beauty & Wellness",
-	"Financial Services",
-	"Legal Services",
-	"Technology Services",
-	"Home Services",
-	"Event Services",
-	"Transportation",
-	"Other",
-];
 
 const CreateBusiness = () => {
 	const navigate = useNavigate();
@@ -167,6 +138,30 @@ const CreateBusiness = () => {
 							businessType === "product" ? "product" : "service"
 						} categories`,
 					},
+					{
+						validator: (_, value) => {
+							if (!value || value.length === 0) {
+								return Promise.reject(
+									`Please select at least one ${businessType} category`
+								);
+							}
+							const categories =
+								businessType === "product"
+									? BUSINESS_CONSTANTS.PRODUCT_CATEGORIES
+									: BUSINESS_CONSTANTS.SERVICE_CATEGORIES;
+							const invalidCategories = value.filter(
+								(category) => !categories.includes(category)
+							);
+							if (invalidCategories.length > 0) {
+								return Promise.reject(
+									`Invalid ${businessType} categories: ${invalidCategories.join(
+										", "
+									)}`
+								);
+							}
+							return Promise.resolve();
+						},
+					},
 				]}
 			>
 				<Select
@@ -175,8 +170,8 @@ const CreateBusiness = () => {
 						businessType === "product" ? "product" : "service"
 					} categories`}
 					options={(businessType === "product"
-						? PRODUCT_CATEGORIES
-						: SERVICE_CATEGORIES
+						? BUSINESS_CONSTANTS.PRODUCT_CATEGORIES
+						: BUSINESS_CONSTANTS.SERVICE_CATEGORIES
 					).map((category) => ({
 						label: category,
 						value: category,

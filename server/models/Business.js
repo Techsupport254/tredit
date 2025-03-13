@@ -31,6 +31,53 @@ const BUSINESS_CONSTANTS = {
 		"Other",
 	],
 
+	// Service Categories
+	SERVICE_CATEGORIES: [
+		"Web Development",
+		"Mobile Apps",
+		"Cloud Solutions",
+		"IT Consulting",
+		"Software Development",
+		"Digital Marketing",
+		"Consulting",
+		"Legal Services",
+		"Financial Services",
+		"Healthcare Services",
+		"Education & Training",
+		"Creative Services",
+		"Business Services",
+		"Technical Support",
+		"Customer Service",
+		"Marketing & Advertising",
+		"Real Estate Services",
+		"Transportation Services",
+		"Installation Services",
+		"Maintenance & Repair",
+		"Event Planning",
+		"Personal Services",
+		"Other Services",
+	],
+
+	// Product Categories
+	PRODUCT_CATEGORIES: [
+		"Electronics",
+		"Clothing & Apparel",
+		"Home & Garden",
+		"Beauty & Personal Care",
+		"Sports & Outdoors",
+		"Toys & Games",
+		"Books & Media",
+		"Food & Beverage",
+		"Health & Wellness",
+		"Automotive",
+		"Art & Crafts",
+		"Office Supplies",
+		"Pet Supplies",
+		"Jewelry & Accessories",
+		"Industrial Equipment",
+		"Other Products",
+	],
+
 	// Models
 	MODELS: {
 		B2B: "B2B",
@@ -120,142 +167,51 @@ const socialMediaSchema = {
 			properties: {
 				accessToken: { type: "string", nullable: true },
 				refreshToken: { type: "string", nullable: true },
-				expiresAt: { type: "string", format: "date-time", nullable: true },
-				username: { type: "string", nullable: true },
-				profileId: { type: "string", nullable: true },
-				pageId: { type: "string", nullable: true },
-				isConnected: { type: "boolean", default: false },
-				lastSyncedAt: { type: "string", format: "date-time", nullable: true },
-				permissions: {
-					type: "array",
-					items: { type: "string" },
-					default: [],
-				},
-				metadata: {
-					type: "object",
-					properties: {
-						pageName: { type: "string", nullable: true },
-						pageUrl: { type: "string", nullable: true },
-						pageCategory: { type: "string", nullable: true },
-						followerCount: { type: "number", default: 0 },
-						pageVerified: { type: "boolean", default: false },
-					},
-					default: {},
-				},
+				tokenExpiry: { type: "string", format: "date-time", nullable: true },
+				isConnected: { type: "boolean" },
+				metadata: { type: "object" }
 			},
-			default: {
-				isConnected: false,
-				permissions: [],
-				metadata: {},
-			},
+			required: ["isConnected"],
+			additionalProperties: true
 		},
 		instagram: {
 			type: "object",
 			properties: {
 				accessToken: { type: "string", nullable: true },
 				refreshToken: { type: "string", nullable: true },
-				expiresAt: { type: "string", format: "date-time", nullable: true },
-				username: { type: "string", nullable: true },
-				profileId: { type: "string", nullable: true },
-				businessAccountId: { type: "string", nullable: true },
-				isConnected: { type: "boolean", default: false },
-				lastSyncedAt: { type: "string", format: "date-time", nullable: true },
-				permissions: {
-					type: "array",
-					items: { type: "string" },
-					default: [],
-				},
-				metadata: {
-					type: "object",
-					properties: {
-						accountType: { type: "string", nullable: true },
-						accountUrl: { type: "string", nullable: true },
-						followerCount: { type: "number", default: 0 },
-						mediaCount: { type: "number", default: 0 },
-						isBusinessAccount: { type: "boolean", default: false },
-						isPrivate: { type: "boolean", default: false },
-					},
-					default: {},
-				},
+				tokenExpiry: { type: "string", format: "date-time", nullable: true },
+				isConnected: { type: "boolean" },
+				metadata: { type: "object" }
 			},
-			default: {
-				isConnected: false,
-				permissions: [],
-				metadata: {},
-			},
+			required: ["isConnected"],
+			additionalProperties: true
 		},
 		tiktok: {
 			type: "object",
 			properties: {
 				accessToken: { type: "string", nullable: true },
 				refreshToken: { type: "string", nullable: true },
-				expiresAt: { type: "string", format: "date-time", nullable: true },
-				username: { type: "string", nullable: true },
-				profileId: { type: "string", nullable: true },
-				isConnected: { type: "boolean", default: false },
-				lastSyncedAt: { type: "string", format: "date-time", nullable: true },
-				permissions: {
-					type: "array",
-					items: { type: "string" },
-					default: [],
-				},
-				metadata: {
-					type: "object",
-					properties: {
-						displayName: { type: "string", nullable: true },
-						profileUrl: { type: "string", nullable: true },
-						followerCount: { type: "number", default: 0 },
-						videoCount: { type: "number", default: 0 },
-						isVerified: { type: "boolean", default: false },
-						bio: { type: "string", nullable: true },
-					},
-					default: {},
-				},
+				tokenExpiry: { type: "string", format: "date-time", nullable: true },
+				isConnected: { type: "boolean" },
+				metadata: { type: "object" }
 			},
-			default: {
-				isConnected: false,
-				permissions: [],
-				metadata: {},
-			},
+			required: ["isConnected"],
+			additionalProperties: true
 		},
 		youtube: {
 			type: "object",
 			properties: {
 				accessToken: { type: "string", nullable: true },
 				refreshToken: { type: "string", nullable: true },
-				expiresAt: { type: "string", format: "date-time", nullable: true },
-				username: { type: "string", nullable: true },
-				profileId: { type: "string", nullable: true },
-				channelId: { type: "string", nullable: true },
-				isConnected: { type: "boolean", default: false },
-				lastSyncedAt: { type: "string", format: "date-time", nullable: true },
-				permissions: {
-					type: "array",
-					items: { type: "string" },
-					default: [],
-				},
-				metadata: {
-					type: "object",
-					properties: {
-						channelName: { type: "string", nullable: true },
-						channelUrl: { type: "string", nullable: true },
-						subscriberCount: { type: "number", default: 0 },
-						videoCount: { type: "number", default: 0 },
-						isVerified: { type: "boolean", default: false },
-						customUrl: { type: "string", nullable: true },
-					},
-					default: {},
-				},
+				tokenExpiry: { type: "string", format: "date-time", nullable: true },
+				isConnected: { type: "boolean" },
+				metadata: { type: "object" }
 			},
-			default: {
-				isConnected: false,
-				permissions: [],
-				metadata: {},
-			},
-		},
+			required: ["isConnected"],
+			additionalProperties: true
+		}
 	},
-	additionalProperties: false,
-	default: {},
+	additionalProperties: false
 };
 
 class Business extends Model {
@@ -400,6 +356,24 @@ class Business extends Model {
 									"Service businesses cannot have product categories"
 								);
 							}
+							if (this.type === BUSINESS_CONSTANTS.TYPES.PRODUCT) {
+								if (!value || value.length === 0) {
+									throw new Error(
+										"Product businesses must have at least one product category"
+									);
+								}
+								value.forEach((category) => {
+									if (
+										!BUSINESS_CONSTANTS.PRODUCT_CATEGORIES.includes(category)
+									) {
+										throw new Error(
+											`Invalid product category: ${category}. Must be one of: ${BUSINESS_CONSTANTS.PRODUCT_CATEGORIES.join(
+												", "
+											)}`
+										);
+									}
+								});
+							}
 						},
 					},
 				},
@@ -415,6 +389,24 @@ class Business extends Model {
 								throw new Error(
 									"Product businesses cannot have service categories"
 								);
+							}
+							if (this.type === BUSINESS_CONSTANTS.TYPES.SERVICE) {
+								if (!value || value.length === 0) {
+									throw new Error(
+										"Service businesses must have at least one service category"
+									);
+								}
+								value.forEach((category) => {
+									if (
+										!BUSINESS_CONSTANTS.SERVICE_CATEGORIES.includes(category)
+									) {
+										throw new Error(
+											`Invalid service category: ${category}. Must be one of: ${BUSINESS_CONSTANTS.SERVICE_CATEGORIES.join(
+												", "
+											)}`
+										);
+									}
+								});
 							}
 						},
 					},

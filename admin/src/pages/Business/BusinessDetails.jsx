@@ -35,6 +35,20 @@ import {
 	FaAlignLeft,
 	FaClipboard,
 	FaChartBar,
+	FaStar,
+	FaCrown,
+	FaUserShield,
+	FaUserTie,
+	FaUser,
+	FaEye,
+	FaInfoCircle,
+	FaBox,
+	FaShoppingCart,
+	FaUserFriends,
+	FaUserPlus,
+	FaSync,
+	FaExternalLinkAlt,
+	FaVideo,
 } from "react-icons/fa";
 import {
 	Typography,
@@ -57,6 +71,17 @@ import {
 	Layout,
 	theme,
 	Grid,
+	Form,
+	TimePicker,
+	Checkbox,
+	Radio,
+	Space,
+	Drawer,
+	Steps,
+	Popconfirm,
+	Segmented,
+	InputNumber,
+	Empty,
 } from "antd";
 import LoadingSpinner from "../../Components/Common/LoadingSpinner";
 import ErrorMessage from "../../Components/Common/ErrorMessage";
@@ -71,6 +96,9 @@ import {
 	MenuFoldOutlined,
 	MenuUnfoldOutlined,
 } from "@ant-design/icons";
+import dayjs from "dayjs";
+import { BUSINESS_CONSTANTS } from "../../constants/businessConstants";
+import axios from "axios";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -131,29 +159,77 @@ const SOCIAL_ACCOUNTS = [
 			subscriberCount: "Subscribers",
 			videoCount: "Videos",
 			customUrl: "Custom URL",
+			viewCount: "Total Views",
+			thumbnailUrl: "Thumbnail URL",
+			description: "Description",
 		},
 	},
 ];
 
-const BUSINESS_TYPES = ["service", "product", "hybrid"];
-const BUSINESS_MODELS = ["B2B", "B2C", "B2B2C", "C2C"];
-const OPERATION_MODES = ["online", "offline", "hybrid"];
-const CATEGORIES = [
-	"Development",
-	"Design",
-	"Marketing",
-	"Electronics",
-	"Fashion",
-	"Food",
-	"Health",
-	"Education",
-	"Other",
+const BUSINESS_TYPES = Object.values(BUSINESS_CONSTANTS.TYPES);
+const BUSINESS_MODELS = Object.values(BUSINESS_CONSTANTS.MODELS);
+const OPERATION_MODES = Object.values(BUSINESS_CONSTANTS.OPERATION_MODES);
+const CATEGORIES = BUSINESS_CONSTANTS.CATEGORIES;
+
+const DAYS_ORDER = [
+	"monday",
+	"tuesday",
+	"wednesday",
+	"thursday",
+	"friday",
+	"saturday",
+	"sunday",
+];
+
+const EDITABLE_SECTIONS = {
+	BASIC: "basic",
+	CONTACT: "contact",
+	OPERATIONS: "operations",
+	HOURS: "hours",
+	SOCIAL: "social",
+	PAYMENT: "payment",
+	CATEGORIES: "categories",
+};
+
+// Add this after the EDITABLE_SECTIONS constant
+const TEAM_MEMBER_ROLES = [
+	{
+		value: "owner",
+		label: "Owner",
+		description: "Full access to all features and settings",
+		icon: <FaCrown className="text-yellow-500" />,
+	},
+	{
+		value: "admin",
+		label: "Administrator",
+		description: "Can manage most features except critical settings",
+		icon: <FaUserShield className="text-blue-500" />,
+	},
+	{
+		value: "manager",
+		label: "Manager",
+		description: "Can manage day-to-day operations",
+		icon: <FaUserTie className="text-purple-500" />,
+	},
+	{
+		value: "staff",
+		label: "Staff",
+		description: "Basic access to daily tasks",
+		icon: <FaUser className="text-green-500" />,
+	},
+	{
+		value: "viewer",
+		label: "Viewer",
+		description: "Can only view information",
+		icon: <FaEye className="text-gray-500" />,
+	},
 ];
 
 const BusinessDetails = () => {
 	const { id } = useParams();
 	const navigate = useNavigate();
-	const { fetchBusinessById, updateBusiness, deleteBusiness } = useBusiness();
+	const { fetchBusinessById, updateBusiness, deleteBusiness, connectYouTube } =
+		useBusiness();
 	const [business, setBusiness] = useState(null);
 	const [loading, setLoading] = useState(true);
 	const [selectedMenu, setSelectedMenu] = useState("overview");
@@ -169,6 +245,14 @@ const BusinessDetails = () => {
 	const {
 		token: { colorBgContainer, borderRadiusLG },
 	} = theme.useToken();
+	const [editSection, setEditSection] = useState(null);
+	const [editForm] = Form.useForm();
+	const [editDrawerVisible, setEditDrawerVisible] = useState(false);
+	const [editingHours, setEditingHours] = useState(false);
+	const [addMemberDrawerVisible, setAddMemberDrawerVisible] = useState(false);
+	const [addMemberForm] = Form.useForm();
+	const [selectedPermissions, setSelectedPermissions] = useState({});
+	const [inviteStep, setInviteStep] = useState(0);
 
 	useEffect(() => {
 		loadBusinessDetails();
@@ -181,13 +265,36 @@ const BusinessDetails = () => {
 			if (data) {
 				setBusiness(data);
 				setEditedBusiness(data);
+			} else {
+				showError("Business not found");
+				navigate("/businesses");
 			}
 		} catch (error) {
+			console.error("Error loading business details:", error);
 			showError("Failed to load business details");
+			navigate("/businesses");
 		} finally {
 			setLoading(false);
 		}
 	};
+
+	// Return loading state
+	if (loading) {
+		return (
+			<div className="min-h-screen bg-gray-50 p-4">
+				<LoadingSpinner message="Loading business details..." />
+			</div>
+		);
+	}
+
+	// Return error state if no business found
+	if (!business) {
+		return (
+			<div className="min-h-screen bg-gray-50 p-4">
+				<ErrorMessage message="Business not found" />
+			</div>
+		);
+	}
 
 	const handleVerification = async (status) => {
 		try {
@@ -234,8 +341,16 @@ const BusinessDetails = () => {
 		}
 	};
 
-	const handleConnect = (platform) => {
-		showInfo(`${platform} connection coming soon!`);
+	const handleConnect = async (platform) => {
+		if (platform === "YouTube") {
+			try {
+				await connectYouTube(business.id);
+			} catch (error) {
+				showError("Failed to connect YouTube account");
+			}
+		} else {
+			showInfo(`${platform} connection coming soon!`);
+		}
 	};
 
 	const handleEdit = () => {
@@ -353,9 +468,196 @@ const BusinessDetails = () => {
 	const renderTeamMembers = () => {
 		const teamMembers = business.teamMembers || [];
 
+		const renderAddMemberDrawer = () => (
+			<Drawer
+				title="Add Team Member"
+				placement="right"
+				width={720}
+				onClose={() => {
+					setAddMemberDrawerVisible(false);
+					setInviteStep(0);
+					addMemberForm.resetFields();
+					setSelectedPermissions({});
+				}}
+				open={addMemberDrawerVisible}
+				extra={
+					<Space>
+						<Button onClick={() => setAddMemberDrawerVisible(false)}>
+							Cancel
+						</Button>
+						{inviteStep === 1 ? (
+							<Button type="primary" onClick={handleAddTeamMember}>
+								Send Invitation
+							</Button>
+						) : (
+							<Button type="primary" onClick={() => setInviteStep(1)}>
+								Next
+							</Button>
+						)}
+					</Space>
+				}
+			>
+				<Steps
+					current={inviteStep}
+					items={[
+						{
+							title: "Basic Info",
+							description: "Member details",
+						},
+						{
+							title: "Permissions",
+							description: "Access control",
+						},
+					]}
+					className="mb-8"
+				/>
+
+				<Form form={addMemberForm} layout="vertical">
+					{inviteStep === 0 ? (
+						<>
+							<Form.Item
+								name="email"
+								label="Email Address"
+								rules={[
+									{ required: true, message: "Please enter email address" },
+									{ type: "email", message: "Please enter a valid email" },
+								]}
+							>
+								<Input placeholder="Enter team member's email" />
+							</Form.Item>
+
+							<Form.Item
+								name="role"
+								label="Role"
+								rules={[{ required: true, message: "Please select a role" }]}
+							>
+								<Radio.Group className="space-y-4 w-full">
+									{TEAM_MEMBER_ROLES.map((role) => (
+										<Radio
+											key={role.value}
+											value={role.value}
+											className="w-full"
+										>
+											<div className="flex items-start p-4 hover:bg-gray-50 rounded-lg transition-colors duration-200">
+												<div className="flex-shrink-0 mt-1">{role.icon}</div>
+												<div className="ml-4">
+													<div className="font-medium text-gray-900">
+														{role.label}
+													</div>
+													<div className="text-sm text-gray-500">
+														{role.description}
+													</div>
+												</div>
+											</div>
+										</Radio>
+									))}
+								</Radio.Group>
+							</Form.Item>
+
+							<Form.Item name="position" label="Position">
+								<Input placeholder="e.g. Senior Developer" />
+							</Form.Item>
+
+							<Form.Item name="department" label="Department">
+								<Input placeholder="e.g. Engineering" />
+							</Form.Item>
+						</>
+					) : (
+						<div className="space-y-6">
+							<div className="bg-blue-50 rounded-lg p-4 mb-6">
+								<div className="flex items-center gap-3">
+									<FaInfoCircle className="text-blue-500" />
+									<div>
+										<h4 className="font-medium text-blue-900">Permissions</h4>
+										<p className="text-sm text-blue-700">
+											Select the permissions for this team member. These can be
+											modified later.
+										</p>
+									</div>
+								</div>
+							</div>
+
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								{[
+									{
+										key: "manage_team",
+										label: "Manage Team",
+										description: "Add, remove, and manage team members",
+										icon: <FaUsers className="text-purple-500" />,
+									},
+									{
+										key: "manage_products",
+										label: "Manage Products",
+										description: "Create and manage products",
+										icon: <FaBox className="text-orange-500" />,
+									},
+									{
+										key: "manage_orders",
+										label: "Manage Orders",
+										description: "Process and manage orders",
+										icon: <FaShoppingCart className="text-green-500" />,
+									},
+									{
+										key: "manage_customers",
+										label: "Manage Customers",
+										description: "Access customer information",
+										icon: <FaUserFriends className="text-blue-500" />,
+									},
+									{
+										key: "view_analytics",
+										label: "View Analytics",
+										description: "Access business analytics",
+										icon: <FaChartBar className="text-indigo-500" />,
+									},
+									{
+										key: "manage_settings",
+										label: "Manage Settings",
+										description: "Change business settings",
+										icon: <FaCog className="text-gray-500" />,
+									},
+								].map((permission) => (
+									<div
+										key={permission.key}
+										className={`p-4 rounded-lg border-2 transition-all duration-200 cursor-pointer ${
+											selectedPermissions[permission.key]
+												? "border-blue-500 bg-blue-50"
+												: "border-gray-200 hover:border-blue-200"
+										}`}
+										onClick={() =>
+											setSelectedPermissions((prev) => ({
+												...prev,
+												[permission.key]: !prev[permission.key],
+											}))
+										}
+									>
+										<div className="flex items-start gap-3">
+											<div className="flex-shrink-0 mt-1">
+												{permission.icon}
+											</div>
+											<div>
+												<div className="font-medium text-gray-900">
+													{permission.label}
+												</div>
+												<div className="text-sm text-gray-500">
+													{permission.description}
+												</div>
+											</div>
+											<Checkbox
+												checked={selectedPermissions[permission.key]}
+												className="ml-auto mt-1"
+											/>
+										</div>
+									</div>
+								))}
+							</div>
+						</div>
+					)}
+				</Form>
+			</Drawer>
+		);
+
 		return (
 			<div className="space-y-6">
-				{/* Header with Add Button */}
 				<div className="flex items-center justify-between">
 					<div>
 						<h3 className="text-lg font-semibold text-gray-900">
@@ -367,27 +669,26 @@ const BusinessDetails = () => {
 					</div>
 					<Button
 						type="primary"
-						icon={<FaUsers className="mr-2" />}
-						className="flex items-center"
-						onClick={() => console.log("Add team member")}
+						icon={<FaUserPlus />}
+						onClick={() => setAddMemberDrawerVisible(true)}
+						className="flex items-center gap-2"
 					>
 						Add Team Member
 					</Button>
 				</div>
 
-				{/* Team Members List */}
 				{teamMembers.length === 0 ? (
 					<div className="text-center py-12 bg-white rounded-2xl">
-						<div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-							<FaUsers className="text-gray-400 text-2xl" />
+						<div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+							<FaUsers className="text-blue-500 text-2xl" />
 						</div>
 						<Text className="text-gray-500 block mb-4">
-							No team members added yet
+							Build your team by adding members
 						</Text>
 						<Button
 							type="primary"
-							icon={<FaUsers className="mr-2" />}
-							onClick={() => console.log("Add team member")}
+							icon={<FaUserPlus />}
+							onClick={() => setAddMemberDrawerVisible(true)}
 						>
 							Add Your First Team Member
 						</Button>
@@ -425,34 +726,44 @@ const BusinessDetails = () => {
 												<div className="flex items-center">
 													<Avatar
 														size={40}
-														src={member.user.profileImage}
+														src={member.user?.profileImage}
 														icon={<FaUserCircle />}
 														className="bg-blue-100"
+														style={{ marginLeft: "16px" }}
 													/>
 													<div className="ml-4">
 														<div className="text-sm font-medium text-gray-900">
-															{member.user.name}
+															{member.user?.name}
 														</div>
 														<div className="text-sm text-gray-500">
 															<a
-																href={`mailto:${member.user.email}`}
+																href={`mailto:${member.user?.email}`}
 																className="hover:text-blue-600"
 															>
-																{member.user.email}
+																{member.user?.email}
 															</a>
 														</div>
 													</div>
 												</div>
 											</td>
 											<td className="px-6 py-4 whitespace-nowrap">
-												<div className="text-sm text-gray-900 capitalize">
-													{member.role}
-												</div>
-												{member.department && (
-													<div className="text-sm text-gray-500">
-														{member.department}
+												<div className="flex items-center gap-2">
+													{
+														TEAM_MEMBER_ROLES.find(
+															(role) => role.value === member.role
+														)?.icon
+													}
+													<div>
+														<div className="text-sm text-gray-900 capitalize">
+															{member.role}
+														</div>
+														{member.position && (
+															<div className="text-xs text-gray-500">
+																{member.position}
+															</div>
+														)}
 													</div>
-												)}
+												</div>
 											</td>
 											<td className="px-6 py-4 whitespace-nowrap">
 												<Tag
@@ -466,7 +777,7 @@ const BusinessDetails = () => {
 											</td>
 											<td className="px-6 py-4">
 												<div className="flex flex-wrap gap-1">
-													{Object.entries(member.permissions)
+													{Object.entries(member.permissions || {})
 														.filter(([_, value]) => value)
 														.slice(0, 3)
 														.map(([key]) => (
@@ -474,7 +785,7 @@ const BusinessDetails = () => {
 																{key.replace(/_/g, " ")}
 															</Tag>
 														))}
-													{Object.entries(member.permissions).filter(
+													{Object.entries(member.permissions || {}).filter(
 														([_, value]) => value
 													).length > 3 && (
 														<Tooltip
@@ -494,24 +805,31 @@ const BusinessDetails = () => {
 													)}
 												</div>
 											</td>
-											<td className="px-6 py-4 whitespace-nowrap text-sm">
+											<td className="px-6 py-4 whitespace-nowrap">
 												<div className="flex items-center gap-2">
-													<Button
-														type="text"
-														icon={<FaEdit />}
-														className="text-blue-600 hover:text-blue-700"
-														onClick={() =>
-															console.log("Edit member", member.id)
-														}
-													/>
-													<Button
-														type="text"
-														icon={<FaTrash />}
-														className="text-red-600 hover:text-red-700"
-														onClick={() =>
-															console.log("Delete member", member.id)
-														}
-													/>
+													<Tooltip title="Edit Member">
+														<Button
+															type="text"
+															icon={<FaEdit />}
+															className="text-blue-600 hover:text-blue-700"
+															onClick={() => handleEditMember(member)}
+														/>
+													</Tooltip>
+													<Tooltip title="Remove Member">
+														<Popconfirm
+															title="Remove Team Member"
+															description="Are you sure you want to remove this team member?"
+															onConfirm={() => handleRemoveMember(member.id)}
+															okText="Yes"
+															cancelText="No"
+														>
+															<Button
+																type="text"
+																icon={<FaTrash />}
+																className="text-red-600 hover:text-red-700"
+															/>
+														</Popconfirm>
+													</Tooltip>
 												</div>
 											</td>
 										</tr>
@@ -521,8 +839,49 @@ const BusinessDetails = () => {
 						</div>
 					</div>
 				)}
+
+				{renderAddMemberDrawer()}
 			</div>
 		);
+	};
+
+	// Add these functions to handle team member actions
+	const handleEditMember = (member) => {
+		// Implement edit functionality
+		console.log("Edit member:", member);
+	};
+
+	const handleRemoveMember = async (memberId) => {
+		try {
+			// Implement remove functionality
+			console.log("Remove member:", memberId);
+			showSuccess("Team member removed successfully");
+			loadBusinessDetails();
+		} catch (error) {
+			showError("Failed to remove team member");
+		}
+	};
+
+	const handleRefreshChannelData = async (businessId) => {
+		try {
+			message.loading({
+				content: "Refreshing channel data...",
+				key: "refresh",
+			});
+			await axios.post(`/youtube/${businessId}/refresh`);
+			await loadBusinessDetails();
+			message.success({
+				content: "Channel data refreshed successfully",
+				key: "refresh",
+			});
+		} catch (error) {
+			console.error("Error refreshing channel data:", error);
+			message.error({
+				content:
+					error.response?.data?.message || "Failed to refresh channel data",
+				key: "refresh",
+			});
+		}
 	};
 
 	const renderSocialMedia = () => {
@@ -669,6 +1028,196 @@ const BusinessDetails = () => {
 				);
 			}
 
+			// Enhanced YouTube data display
+			if (account.key === "youtube") {
+				return (
+					<div className="space-y-6">
+						{/* Channel Banner */}
+						{metadata.bannerImageUrl && (
+							<div className="w-full h-32 md:h-48 rounded-xl overflow-hidden">
+								<img
+									src={metadata.bannerImageUrl}
+									alt="Channel Banner"
+									className="w-full h-full object-cover"
+								/>
+							</div>
+						)}
+
+						{/* Channel Header */}
+						<div className="bg-gradient-to-r from-red-50 to-red-100 rounded-xl p-6">
+							<div className="flex items-start gap-6">
+								{/* Channel Thumbnail */}
+								{metadata.thumbnails && (
+									<div className="flex-shrink-0">
+										<img
+											src={
+												metadata.thumbnails.default?.url ||
+												metadata.thumbnails.medium?.url
+											}
+											alt={metadata.channelName}
+											className="w-24 h-24 rounded-xl object-cover"
+										/>
+									</div>
+								)}
+
+								{/* Channel Info */}
+								<div className="flex-grow">
+									<h3 className="text-xl font-bold text-gray-900 mb-2">
+										{metadata.channelName}
+									</h3>
+									<div className="flex items-center gap-2 mb-2">
+										{metadata.customUrl && (
+											<a
+												href={`https://youtube.com/${metadata.customUrl}`}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="text-red-600 hover:text-red-700 flex items-center gap-1"
+											>
+												<FaYoutube />
+												{metadata.customUrl}
+											</a>
+										)}
+									</div>
+									{metadata.description && (
+										<p className="text-gray-600 text-sm line-clamp-2 mb-3">
+											{metadata.description}
+										</p>
+									)}
+									<div className="flex flex-wrap items-center gap-4">
+										<div className="flex items-center gap-1 text-gray-600">
+											<FaUsers className="text-gray-400" />
+											<span>
+												{Number(metadata.subscriberCount).toLocaleString()}{" "}
+												subscribers
+											</span>
+										</div>
+										<div className="flex items-center gap-1 text-gray-600">
+											<FaVideo className="text-gray-400" />
+											<span>
+												{Number(metadata.videoCount).toLocaleString()} videos
+											</span>
+										</div>
+										<div className="flex items-center gap-1 text-gray-600">
+											<FaEye className="text-gray-400" />
+											<span>
+												{Number(metadata.viewCount).toLocaleString()} views
+											</span>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						{/* Channel Statistics */}
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center gap-3 mb-2">
+									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
+										<FaUsers className="text-xl" />
+									</div>
+									<div>
+										<p className="text-sm text-gray-500">Subscribers</p>
+										<p className="text-xl font-bold text-gray-900">
+											{Number(metadata.subscriberCount).toLocaleString()}
+										</p>
+									</div>
+								</div>
+							</div>
+							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center gap-3 mb-2">
+									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
+										<FaVideo className="text-xl" />
+									</div>
+									<div>
+										<p className="text-sm text-gray-500">Videos</p>
+										<p className="text-xl font-bold text-gray-900">
+											{Number(metadata.videoCount).toLocaleString()}
+										</p>
+									</div>
+								</div>
+							</div>
+							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center gap-3 mb-2">
+									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
+										<FaEye className="text-xl" />
+									</div>
+									<div>
+										<p className="text-sm text-gray-500">Total Views</p>
+										<p className="text-xl font-bold text-gray-900">
+											{Number(metadata.viewCount).toLocaleString()}
+										</p>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						{/* Additional Channel Info */}
+						<div className="bg-white rounded-xl p-6 border border-gray-100">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Channel Details
+							</h4>
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								{metadata.publishedAt && (
+									<div className="flex items-center gap-2">
+										<FaCalendar className="text-gray-400" />
+										<div>
+											<p className="text-sm text-gray-500">Created On</p>
+											<p className="text-gray-900">
+												{new Date(metadata.publishedAt).toLocaleDateString()}
+											</p>
+										</div>
+									</div>
+								)}
+								{metadata.country && (
+									<div className="flex items-center gap-2">
+										<FaGlobe className="text-gray-400" />
+										<div>
+											<p className="text-sm text-gray-500">Country</p>
+											<p className="text-gray-900">{metadata.country}</p>
+										</div>
+									</div>
+								)}
+							</div>
+							{metadata.keywords && (
+								<div className="mt-4">
+									<p className="text-sm text-gray-500 mb-2">Keywords</p>
+									<div className="flex flex-wrap gap-2">
+										{metadata.keywords.split(",").map((keyword, index) => (
+											<Tag key={index} className="rounded-full">
+												{keyword.trim()}
+											</Tag>
+										))}
+									</div>
+								</div>
+							)}
+						</div>
+
+						{/* Channel Actions */}
+						<div className="flex items-center justify-end gap-4 mt-6">
+							<Button
+								type="default"
+								icon={<FaSync />}
+								onClick={() => handleRefreshChannelData(business.id)}
+							>
+								Refresh Data
+							</Button>
+							{metadata.channelUrl && (
+								<Button
+									type="primary"
+									icon={<FaExternalLinkAlt />}
+									href={metadata.channelUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									View Channel
+								</Button>
+							)}
+						</div>
+					</div>
+				);
+			}
+
+			// Default display for other platforms
 			return (
 				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 					{Object.entries(account.metadataLabels).map(([key, label]) => {
@@ -789,6 +1338,429 @@ const BusinessDetails = () => {
 		);
 	};
 
+	const handleEditSection = (section) => {
+		setEditSection(section);
+		editForm.setFieldsValue({
+			...business,
+			address: business.address || {},
+			businessHours: business.businessHours || {},
+			serviceCategories:
+				business.type === "service" ? business.serviceCategories : [],
+			productCategories:
+				business.type === "product" ? business.productCategories : [],
+		});
+		setEditDrawerVisible(true);
+	};
+
+	const handleEditSave = async () => {
+		const hide = message.loading("Saving changes...", 0);
+		try {
+			const values = await editForm.validateFields();
+
+			// Convert dayjs objects back to string format for API
+			if (values.businessHours) {
+				Object.entries(values.businessHours).forEach(([day, hours]) => {
+					if (hours.start) {
+						values.businessHours[day].start = hours.start.format("HH:mm");
+					}
+					if (hours.end) {
+						values.businessHours[day].end = hours.end.format("HH:mm");
+					}
+				});
+			}
+
+			await updateBusiness(id, {
+				...values,
+				id: business.id,
+			});
+			hide();
+			message.success("Changes saved successfully!");
+			setEditDrawerVisible(false);
+			setEditSection(null);
+			loadBusinessDetails();
+		} catch (error) {
+			hide();
+			if (error.message) {
+				try {
+					const validationErrors = JSON.parse(error.message);
+					Object.entries(validationErrors).forEach(([field, message]) => {
+						editForm.setFields([
+							{
+								name: field,
+								errors: [message],
+							},
+						]);
+					});
+					message.error("Please check the form for errors");
+				} catch {
+					message.error(error.message || "Failed to update business");
+				}
+			} else {
+				message.error("Failed to update business");
+			}
+		}
+	};
+
+	const renderEditDrawer = () => (
+		<Drawer
+			title="Edit Business Information"
+			placement="right"
+			width={720}
+			onClose={handleCancel}
+			open={editDrawerVisible}
+			extra={
+				<Space>
+					<Button onClick={handleCancel}>Cancel</Button>
+					<Button type="primary" onClick={handleEditSave} loading={loading}>
+						Save Changes
+					</Button>
+				</Space>
+			}
+		>
+			<Form
+				form={editForm}
+				layout="vertical"
+				className="px-4"
+				initialValues={{
+					...business,
+					address: business.address || {},
+					businessHours: business.businessHours || {},
+					serviceCategories:
+						business.type === "service" ? business.serviceCategories : [],
+					productCategories:
+						business.type === "product" ? business.productCategories : [],
+				}}
+			>
+				{editSection === EDITABLE_SECTIONS.CATEGORIES && (
+					<>
+						{business.type === "service" && (
+							<Form.Item
+								name="serviceCategories"
+								label="Service Categories"
+								rules={[
+									{
+										required: true,
+										message: "Please select at least one service category",
+									},
+								]}
+							>
+								<Select
+									mode="multiple"
+									placeholder="Select service categories"
+									className="w-full"
+								>
+									{BUSINESS_CONSTANTS.SERVICE_CATEGORIES.map((category) => (
+										<Option key={category} value={category}>
+											{category}
+										</Option>
+									))}
+								</Select>
+							</Form.Item>
+						)}
+						{business.type === "product" && (
+							<Form.Item
+								name="productCategories"
+								label="Product Categories"
+								rules={[
+									{
+										required: true,
+										message: "Please select at least one product category",
+									},
+								]}
+							>
+								<Select
+									mode="multiple"
+									placeholder="Select product categories"
+									className="w-full"
+								>
+									{BUSINESS_CONSTANTS.PRODUCT_CATEGORIES.map((category) => (
+										<Option key={category} value={category}>
+											{category}
+										</Option>
+									))}
+								</Select>
+							</Form.Item>
+						)}
+					</>
+				)}
+				{editSection === EDITABLE_SECTIONS.BASIC && (
+					<>
+						<Form.Item
+							name="name"
+							label="Business Name"
+							rules={[
+								{ required: true, message: "Please enter business name" },
+								{
+									min: BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MIN,
+									max: BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MAX,
+									message: `Name must be between ${BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MIN}-${BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MAX} characters`,
+								},
+							]}
+						>
+							<Input />
+						</Form.Item>
+						<Form.Item
+							name="description"
+							label="Description"
+							rules={[
+								{ required: true, message: "Please enter description" },
+								{
+									min: BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MIN,
+									max: BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MAX,
+									message: `Description must be between ${BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MIN}-${BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MAX} characters`,
+								},
+							]}
+						>
+							<Input.TextArea rows={4} />
+						</Form.Item>
+						<Form.Item
+							name="type"
+							label="Business Type"
+							rules={[
+								{ required: true, message: "Please select business type" },
+							]}
+						>
+							<Select>
+								{Object.entries(BUSINESS_CONSTANTS.TYPES).map(
+									([key, value]) => (
+										<Option key={value} value={value}>
+											{key.charAt(0) + key.slice(1).toLowerCase()}
+										</Option>
+									)
+								)}
+							</Select>
+						</Form.Item>
+						<Form.Item
+							name="category"
+							label="Category"
+							rules={[{ required: true, message: "Please select category" }]}
+						>
+							<Select>
+								{BUSINESS_CONSTANTS.CATEGORIES.map((category) => (
+									<Option key={category} value={category}>
+										{category}
+									</Option>
+								))}
+							</Select>
+						</Form.Item>
+					</>
+				)}
+
+				{editSection === EDITABLE_SECTIONS.CONTACT && (
+					<>
+						<Form.Item
+							name="email"
+							label="Email"
+							rules={[
+								{ type: "email", message: "Please enter valid email" },
+								{
+									pattern: BUSINESS_CONSTANTS.VALIDATION.EMAIL_REGEX,
+									message: "Invalid email format",
+								},
+							]}
+						>
+							<Input />
+						</Form.Item>
+						<Form.Item
+							name="phone"
+							label="Phone"
+							rules={[
+								{
+									pattern: BUSINESS_CONSTANTS.VALIDATION.PHONE_REGEX,
+									message: "Invalid phone number format",
+								},
+							]}
+						>
+							<Input />
+						</Form.Item>
+						<Form.Item name={["address", "street"]} label="Street Address">
+							<Input />
+						</Form.Item>
+						<Form.Item name={["address", "city"]} label="City">
+							<Input />
+						</Form.Item>
+						<Form.Item name={["address", "state"]} label="State">
+							<Input />
+						</Form.Item>
+						<Form.Item name={["address", "country"]} label="Country">
+							<Input />
+						</Form.Item>
+						<Form.Item name={["address", "postalCode"]} label="Postal Code">
+							<Input />
+						</Form.Item>
+					</>
+				)}
+
+				{editSection === EDITABLE_SECTIONS.OPERATIONS && (
+					<>
+						<Form.Item
+							name="businessModel"
+							label="Business Model"
+							rules={[
+								{ required: true, message: "Please select business model" },
+							]}
+						>
+							<Radio.Group buttonStyle="solid">
+								{Object.values(BUSINESS_CONSTANTS.MODELS).map((model) => (
+									<Radio.Button key={model} value={model}>
+										{model}
+									</Radio.Button>
+								))}
+							</Radio.Group>
+						</Form.Item>
+						<Form.Item
+							name="operationMode"
+							label="Operation Mode"
+							rules={[
+								{ required: true, message: "Please select operation mode" },
+							]}
+						>
+							<Segmented
+								options={Object.values(BUSINESS_CONSTANTS.OPERATION_MODES).map(
+									(mode) => ({
+										label: mode.charAt(0).toUpperCase() + mode.slice(1),
+										value: mode,
+										icon:
+											mode === "digital" ? (
+												<FaGlobe />
+											) : mode === "physical" ? (
+												<FaStore />
+											) : (
+												<FaBuilding />
+											),
+									})
+								)}
+							/>
+						</Form.Item>
+					</>
+				)}
+
+				{editSection === EDITABLE_SECTIONS.PAYMENT && (
+					<>
+						<Form.Item
+							name="paymentMethods"
+							label="Payment Methods"
+							rules={[
+								{
+									required: true,
+									message: "Please select at least one payment method",
+								},
+							]}
+						>
+							<Select mode="multiple" placeholder="Select payment methods">
+								{BUSINESS_CONSTANTS.PAYMENT_METHODS.map((method) => (
+									<Option key={method} value={method}>
+										{method
+											.replace(/_/g, " ")
+											.split(" ")
+											.map(
+												(word) => word.charAt(0).toUpperCase() + word.slice(1)
+											)
+											.join(" ")}
+									</Option>
+								))}
+							</Select>
+						</Form.Item>
+						<Form.Item
+							name="currency"
+							label="Currency"
+							rules={[{ required: true, message: "Please select currency" }]}
+						>
+							<Select>
+								{BUSINESS_CONSTANTS.CURRENCIES.map((currency) => (
+									<Option key={currency} value={currency}>
+										{currency}
+									</Option>
+								))}
+							</Select>
+						</Form.Item>
+						<Form.Item name="revenue" label="Revenue">
+							<InputNumber
+								className="w-full"
+								formatter={(value) =>
+									`${business.currency} ${value}`.replace(
+										/\B(?=(\d{3})+(?!\d))/g,
+										","
+									)
+								}
+								parser={(value) => value.replace(/[^\d.]/g, "")}
+							/>
+						</Form.Item>
+					</>
+				)}
+
+				{editSection === EDITABLE_SECTIONS.HOURS && (
+					<div className="space-y-6">
+						{BUSINESS_CONSTANTS.BUSINESS_DAYS.map((day) => (
+							<div key={day} className="border-b pb-4">
+								<div className="flex items-center justify-between mb-4">
+									<Text strong className="capitalize">
+										{day}
+									</Text>
+									<Form.Item
+										name={["businessHours", day, "closed"]}
+										valuePropName="checked"
+										className="mb-0"
+									>
+										<Checkbox>Closed</Checkbox>
+									</Form.Item>
+								</div>
+								<Form.Item
+									shouldUpdate={(prevValues, currentValues) => {
+										return (
+											prevValues?.businessHours?.[day]?.closed !==
+											currentValues?.businessHours?.[day]?.closed
+										);
+									}}
+									noStyle
+								>
+									{({ getFieldValue }) => {
+										const isClosed = getFieldValue([
+											"businessHours",
+											day,
+											"closed",
+										]);
+										if (isClosed) return null;
+										return (
+											<div className="flex gap-4">
+												<Form.Item
+													name={["businessHours", day, "start"]}
+													label="Open"
+													className="mb-0 flex-1"
+													rules={[
+														{
+															required: !isClosed,
+															message: "Please select opening time",
+														},
+													]}
+												>
+													<TimePicker format="HH:mm" className="w-full" />
+												</Form.Item>
+												<Form.Item
+													name={["businessHours", day, "end"]}
+													label="Close"
+													className="mb-0 flex-1"
+													rules={[
+														{
+															required: !isClosed,
+															message: "Please select closing time",
+														},
+													]}
+												>
+													<TimePicker format="HH:mm" className="w-full" />
+												</Form.Item>
+											</div>
+										);
+									}}
+								</Form.Item>
+							</div>
+						))}
+					</div>
+				)}
+			</Form>
+		</Drawer>
+	);
+
 	const renderBusinessHeader = () => {
 		if (!business) return null;
 
@@ -813,78 +1785,44 @@ const BusinessDetails = () => {
 							<div className="flex-1">
 								<div className="flex flex-wrap items-center gap-2 mb-2">
 									<Title level={4} className="!mb-0 !text-xl sm:!text-2xl">
-										{business.name}
+										{business.name || "Unnamed Business"}
 									</Title>
 									{business.status === "active" && (
-										<Tag
-											color="success"
-											className="uppercase text-xs font-semibold"
-										>
-											Active
-										</Tag>
+										<div className="flex items-center gap-2 px-3 py-1 bg-green-50 rounded-full">
+											<span className="text-green-600 text-sm font-medium">
+												Active
+											</span>
+										</div>
 									)}
 								</div>
 								<div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-									<div className="flex items-center gap-2 text-gray-600">
-										<FaMapMarkerAlt className="text-gray-400" />
-										<span className="text-sm">
-											{business.address?.city}, {business.address?.country}
-										</span>
-									</div>
-									<div className="flex items-center gap-2 text-gray-600">
-										<FaGlobe className="text-gray-400" />
-										<span className="text-sm capitalize">
-											{business.operationMode} Business
-										</span>
-									</div>
-									<div className="flex items-center gap-2 text-gray-600">
-										<FaTag className="text-gray-400" />
-										<span className="text-sm">{business.category}</span>
-									</div>
+									{business.address &&
+										(business.address.city || business.address.country) && (
+											<div className="flex items-center gap-2 text-gray-600">
+												<FaMapMarkerAlt className="text-gray-400" />
+												<span className="text-sm">
+													{[business.address.city, business.address.country]
+														.filter(Boolean)
+														.join(", ")}
+												</span>
+											</div>
+										)}
+									{business.operationMode && (
+										<div className="flex items-center gap-2 text-gray-600">
+											<FaGlobe className="text-gray-400" />
+											<span className="text-sm capitalize">
+												{business.operationMode} Business
+											</span>
+										</div>
+									)}
+									{business.category && (
+										<div className="flex items-center gap-2 text-gray-600">
+											<FaTag className="text-gray-400" />
+											<span className="text-sm">{business.category}</span>
+										</div>
+									)}
 								</div>
 							</div>
-						</div>
-
-						<div className="flex flex-wrap gap-2 sm:gap-3 mt-4 sm:mt-0">
-							{editMode ? (
-								<>
-									<Button
-										onClick={handleCancel}
-										icon={<FaTimes />}
-										className="flex items-center gap-2 hover:bg-gray-50 border border-gray-200"
-									>
-										Cancel
-									</Button>
-									<Button
-										type="primary"
-										onClick={handleSave}
-										icon={<FaSave />}
-										className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 border-blue-500"
-									>
-										Save Changes
-									</Button>
-								</>
-							) : (
-								<>
-									<Button
-										onClick={handleEdit}
-										icon={<FaEdit />}
-										className="flex items-center gap-2 hover:bg-gray-50 border border-gray-200"
-									>
-										Edit
-									</Button>
-									{business.verificationStatus === "pending" && (
-										<Button
-											type="primary"
-											onClick={() => setShowVerifyModal(true)}
-											icon={<FaShieldAlt />}
-											className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 border-blue-500"
-										>
-											Verify Business
-										</Button>
-									)}
-								</>
-							)}
 						</div>
 					</div>
 				</div>
@@ -952,18 +1890,27 @@ const BusinessDetails = () => {
 			{/* Business Information */}
 			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
 				<div className="border-b border-gray-100">
-					<div className="flex items-center gap-4 p-6">
-						<div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
-							<FaBriefcase className="text-xl" />
+					<div className="flex items-center justify-between p-6">
+						<div className="flex items-center gap-4">
+							<div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
+								<FaBriefcase className="text-xl" />
+							</div>
+							<div>
+								<h3 className="text-lg font-semibold text-gray-900">
+									Business Information
+								</h3>
+								<p className="text-sm text-gray-500">
+									Overview of your business details
+								</p>
+							</div>
 						</div>
-						<div>
-							<h3 className="text-lg font-semibold text-gray-900">
-								Business Information
-							</h3>
-							<p className="text-sm text-gray-500">
-								Overview of your business details
-							</p>
-						</div>
+						<Button
+							onClick={() => handleEditSection(EDITABLE_SECTIONS.BASIC)}
+							icon={<FaEdit />}
+							className="flex items-center gap-2"
+						>
+							Edit Basic Info
+						</Button>
 					</div>
 				</div>
 				<div className="p-6">
@@ -1016,23 +1963,162 @@ const BusinessDetails = () => {
 				</div>
 			</div>
 
-			{/* Contact Information */}
+			{/* Service Categories */}
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<div className="border-b border-gray-100">
+					<div className="flex items-center justify-between p-6">
+						<div className="flex items-center gap-4">
+							<div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-500">
+								<FaTag className="text-xl" />
+							</div>
+							<div>
+								<h3 className="text-lg font-semibold text-gray-900">
+									Service Categories
+								</h3>
+								<p className="text-sm text-gray-500">
+									Available services and categories
+								</p>
+							</div>
+						</div>
+						<Button
+							onClick={() => handleEditSection(EDITABLE_SECTIONS.CATEGORIES)}
+							icon={<FaEdit />}
+							className="flex items-center gap-2"
+						>
+							Edit Categories
+						</Button>
+					</div>
+				</div>
+				<div className="p-6">
+					{business.serviceCategories &&
+					business.serviceCategories.length > 0 ? (
+						<div className="flex flex-wrap gap-2">
+							{business.serviceCategories.map((category, index) => (
+								<Tag
+									key={index}
+									color="blue"
+									className="rounded-full px-4 py-1.5 text-sm font-medium mb-2"
+								>
+									{category}
+								</Tag>
+							))}
+						</div>
+					) : (
+						<Empty description="No service categories added" className="my-4" />
+					)}
+				</div>
+			</div>
+
+			{/* Tags */}
 			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
 				<div className="border-b border-gray-100">
 					<div className="flex items-center gap-4 p-6">
 						<div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
-							<FaEnvelope className="text-xl" />
+							<FaTag className="text-xl" />
 						</div>
 						<div>
-							<h3 className="text-lg font-semibold text-gray-900">
-								Contact Information
-							</h3>
-							<p className="text-sm text-gray-500">Business contact details</p>
+							<h3 className="text-lg font-semibold text-gray-900">Tags</h3>
+							<p className="text-sm text-gray-500">
+								Business tags and keywords
+							</p>
 						</div>
 					</div>
 				</div>
 				<div className="p-6">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div className="flex flex-wrap gap-2">
+						{business.tags?.map((tag, index) => (
+							<Tag
+								key={index}
+								color="purple"
+								className="rounded-full px-4 py-1"
+							>
+								{tag}
+							</Tag>
+						))}
+					</div>
+				</div>
+			</div>
+
+			{/* Business Hours */}
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<div className="border-b border-gray-100">
+					<div className="flex items-center justify-between p-6">
+						<div className="flex items-center gap-4">
+							<div className="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500">
+								<FaClock className="text-xl" />
+							</div>
+							<div>
+								<h3 className="text-lg font-semibold text-gray-900">
+									Business Hours
+								</h3>
+								<p className="text-sm text-gray-500">Operating hours</p>
+							</div>
+						</div>
+						<Button
+							onClick={() => handleEditSection(EDITABLE_SECTIONS.HOURS)}
+							icon={<FaEdit />}
+							className="flex items-center gap-2"
+						>
+							Edit Hours
+						</Button>
+					</div>
+				</div>
+				<div className="p-6">
+					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+						{DAYS_ORDER.map((day) => {
+							const hours = business.businessHours?.[day] || {
+								start: "N/A",
+								end: "N/A",
+							};
+							return (
+								<div
+									key={day}
+									className="bg-gray-50 p-4 rounded-xl flex flex-col"
+								>
+									<span className="text-gray-900 font-medium capitalize mb-2">
+										{day}
+									</span>
+									<div className="flex items-center gap-2 text-gray-600">
+										<FaClock className="text-gray-400 text-sm" />
+										<span>
+											{hours.start} - {hours.end}
+										</span>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				</div>
+			</div>
+
+			{/* Contact Information */}
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<div className="border-b border-gray-100">
+					<div className="flex items-center justify-between p-6">
+						<div className="flex items-center gap-4">
+							<div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
+								<FaEnvelope className="text-xl" />
+							</div>
+							<div>
+								<h3 className="text-lg font-semibold text-gray-900">
+									Contact Information
+								</h3>
+								<p className="text-sm text-gray-500">
+									Business contact details
+								</p>
+							</div>
+						</div>
+						<Button
+							onClick={() => handleEditSection(EDITABLE_SECTIONS.CONTACT)}
+							icon={<FaEdit />}
+							className="flex items-center gap-2"
+						>
+							Edit Contact
+						</Button>
+					</div>
+				</div>
+				<div className="p-6">
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
 						{[
 							{
 								label: "Email",
@@ -1067,7 +2153,7 @@ const BusinessDetails = () => {
 										{contact.label}
 									</div>
 								</div>
-								<div className="text-gray-900 font-semibold pl-11">
+								<div className="text-gray-900 font-semibold pl-11 break-all">
 									{contact.link ? (
 										<a
 											href={contact.link}
@@ -1090,7 +2176,7 @@ const BusinessDetails = () => {
 								</div>
 								<h4 className="font-medium text-gray-900">Address</h4>
 							</div>
-							<p className="text-gray-600 font-medium pl-11">
+							<p className="text-gray-600 font-medium pl-11 break-words">
 								{[
 									business.address.street,
 									business.address.city,
@@ -1109,18 +2195,27 @@ const BusinessDetails = () => {
 			{/* Payment Information */}
 			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
 				<div className="border-b border-gray-100">
-					<div className="flex items-center gap-4 p-6">
-						<div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
-							<FaWallet className="text-xl" />
+					<div className="flex items-center justify-between p-6">
+						<div className="flex items-center gap-4">
+							<div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
+								<FaWallet className="text-xl" />
+							</div>
+							<div>
+								<h3 className="text-lg font-semibold text-gray-900">
+									Payment Information
+								</h3>
+								<p className="text-sm text-gray-500">
+									Payment methods and currency
+								</p>
+							</div>
 						</div>
-						<div>
-							<h3 className="text-lg font-semibold text-gray-900">
-								Payment Information
-							</h3>
-							<p className="text-sm text-gray-500">
-								Payment methods and currency
-							</p>
-						</div>
+						<Button
+							onClick={() => handleEditSection(EDITABLE_SECTIONS.PAYMENT)}
+							icon={<FaEdit />}
+							className="flex items-center gap-2"
+						>
+							Edit Payment Info
+						</Button>
 					</div>
 				</div>
 				<div className="p-6 space-y-8">
@@ -1242,93 +2337,424 @@ const BusinessDetails = () => {
 					)}
 				</div>
 			</div>
+
+			{/* Add edit buttons to each section */}
+			<div className="flex justify-end gap-4">
+				<Button
+					onClick={() => handleEditSection(EDITABLE_SECTIONS.HOURS)}
+					icon={<FaClock />}
+					className="flex items-center gap-2"
+				>
+					Edit Hours
+				</Button>
+				<Button
+					onClick={() => handleEditSection(EDITABLE_SECTIONS.PAYMENT)}
+					icon={<FaWallet />}
+					className="flex items-center gap-2"
+				>
+					Edit Payment Info
+				</Button>
+			</div>
 		</div>
 	);
 
+	const renderLocation = () => {
+		// Early return if business or address is not available
+		if (!business?.address) {
+			return (
+				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+					<div className="p-6 text-center">
+						<Empty description="No location information available" />
+					</div>
+				</div>
+			);
+		}
+
+		return (
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<div className="border-b border-gray-100">
+					<div className="flex items-center gap-4 p-6">
+						<div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
+							<FaMapMarkerAlt className="text-xl" />
+						</div>
+						<div>
+							<h3 className="text-lg font-semibold text-gray-900">Location</h3>
+							<p className="text-sm text-gray-500">
+								Business address and location details
+							</p>
+						</div>
+					</div>
+				</div>
+				<div className="p-6">
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div className="bg-gray-50 p-6 rounded-xl">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Address Details
+							</h4>
+							<div className="space-y-3">
+								{business.address.street && (
+									<div className="flex items-center gap-2">
+										<FaMapMarkerAlt className="text-gray-400" />
+										<span className="text-gray-600">
+											{business.address.street}
+										</span>
+									</div>
+								)}
+								{(business.address.city || business.address.state) && (
+									<div className="flex items-center gap-2">
+										<FaBuilding className="text-gray-400" />
+										<span className="text-gray-600">
+											{[business.address.city, business.address.state]
+												.filter(Boolean)
+												.join(", ")}
+										</span>
+									</div>
+								)}
+								{business.address.country && (
+									<div className="flex items-center gap-2">
+										<FaGlobe className="text-gray-400" />
+										<span className="text-gray-600">
+											{business.address.country}
+										</span>
+									</div>
+								)}
+								{business.address.postalCode && (
+									<div className="flex items-center gap-2">
+										<FaEnvelope className="text-gray-400" />
+										<span className="text-gray-600">
+											{business.address.postalCode}
+										</span>
+									</div>
+								)}
+							</div>
+						</div>
+						<div className="bg-gray-50 p-6 rounded-xl">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Contact Information
+							</h4>
+							<div className="space-y-3">
+								{business.email && (
+									<div className="flex items-center gap-2">
+										<FaEnvelope className="text-gray-400" />
+										<span className="text-gray-600">{business.email}</span>
+									</div>
+								)}
+								{business.phone && (
+									<div className="flex items-center gap-2">
+										<FaPhone className="text-gray-400" />
+										<span className="text-gray-600">{business.phone}</span>
+									</div>
+								)}
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	};
+
+	const renderFinancials = () => {
+		return (
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<div className="border-b border-gray-100">
+					<div className="flex items-center gap-4 p-6">
+						<div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
+							<FaWallet className="text-xl" />
+						</div>
+						<div>
+							<h3 className="text-lg font-semibold text-gray-900">
+								Financial Information
+							</h3>
+							<p className="text-sm text-gray-500">
+								Business financial details and transactions
+							</p>
+						</div>
+					</div>
+				</div>
+				<div className="p-6">
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div className="bg-gray-50 p-6 rounded-xl">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Revenue & Currency
+							</h4>
+							<div className="space-y-3">
+								<div className="flex items-center justify-between">
+									<span className="text-gray-600">Revenue</span>
+									<span className="text-lg font-semibold text-gray-900">
+										{business.currency} {business.revenue}
+									</span>
+								</div>
+								<div className="flex items-center justify-between">
+									<span className="text-gray-600">Currency</span>
+									<span className="text-lg font-semibold text-gray-900">
+										{business.currency}
+									</span>
+								</div>
+							</div>
+						</div>
+						<div className="bg-gray-50 p-6 rounded-xl">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Payment Methods
+							</h4>
+							<div className="flex flex-wrap gap-2">
+								{business.paymentMethods?.map((method, index) => (
+									<Tag
+										key={index}
+										color="blue"
+										className="rounded-full px-4 py-1"
+									>
+										{method.replace(/_/g, " ")}
+									</Tag>
+								))}
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	};
+
+	const renderReviews = () => {
+		return (
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<div className="border-b border-gray-100">
+					<div className="flex items-center gap-4 p-6">
+						<div className="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center text-yellow-500">
+							<FaUsers className="text-xl" />
+						</div>
+						<div>
+							<h3 className="text-lg font-semibold text-gray-900">
+								Reviews & Ratings
+							</h3>
+							<p className="text-sm text-gray-500">
+								Customer reviews and ratings
+							</p>
+						</div>
+					</div>
+				</div>
+				<div className="p-6">
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div className="bg-gray-50 p-6 rounded-xl">
+							<h4 className="font-medium text-gray-900 mb-4">Overall Rating</h4>
+							<div className="flex items-center gap-4">
+								<div className="text-4xl font-bold text-gray-900">
+									{business.averageRating.toFixed(1)}
+								</div>
+								<div className="flex-1">
+									<div className="flex items-center gap-1">
+										{[1, 2, 3, 4, 5].map((star) => (
+											<FaStar
+												key={star}
+												className={`${
+													star <= business.averageRating
+														? "text-yellow-400"
+														: "text-gray-300"
+												}`}
+											/>
+										))}
+									</div>
+									<div className="text-sm text-gray-600 mt-1">
+										{business.reviewCount} reviews
+									</div>
+								</div>
+							</div>
+						</div>
+						<div className="bg-gray-50 p-6 rounded-xl">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Review Statistics
+							</h4>
+							<div className="space-y-3">
+								<div className="flex items-center justify-between">
+									<span className="text-gray-600">Total Reviews</span>
+									<span className="font-semibold text-gray-900">
+										{business.reviewCount}
+									</span>
+								</div>
+								<div className="flex items-center justify-between">
+									<span className="text-gray-600">Average Rating</span>
+									<span className="font-semibold text-gray-900">
+										{business.averageRating.toFixed(1)} / 5.0
+									</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	};
+
+	const renderCompliance = () => {
+		return (
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<div className="border-b border-gray-100">
+					<div className="flex items-center gap-4 p-6">
+						<div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-500">
+							<FaShieldAlt className="text-xl" />
+						</div>
+						<div>
+							<h3 className="text-lg font-semibold text-gray-900">
+								Compliance
+							</h3>
+							<p className="text-sm text-gray-500">
+								Business compliance and verification status
+							</p>
+						</div>
+					</div>
+				</div>
+				<div className="p-6">
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div className="bg-gray-50 p-6 rounded-xl">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Verification Status
+							</h4>
+							<div className="space-y-3">
+								<div className="flex items-center justify-between">
+									<span className="text-gray-600">Status</span>
+									<Tag
+										color={
+											business.verificationStatus === "verified"
+												? "success"
+												: business.verificationStatus === "rejected"
+												? "error"
+												: "warning"
+										}
+									>
+										{business.verificationStatus}
+									</Tag>
+								</div>
+								{business.verificationNote && (
+									<div className="mt-4">
+										<span className="text-gray-600">Note:</span>
+										<p className="text-gray-600 mt-1">
+											{business.verificationNote}
+										</p>
+									</div>
+								)}
+							</div>
+						</div>
+						<div className="bg-gray-50 p-6 rounded-xl">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Business Status
+							</h4>
+							<div className="space-y-3">
+								<div className="flex items-center justify-between">
+									<span className="text-gray-600">Status</span>
+									<Tag
+										color={
+											business.status === "active"
+												? "success"
+												: business.status === "inactive"
+												? "error"
+												: "warning"
+										}
+									>
+										{business.status}
+									</Tag>
+								</div>
+								<div className="flex items-center justify-between">
+									<span className="text-gray-600">Operation Mode</span>
+									<span className="font-semibold text-gray-900 capitalize">
+										{business.operationMode}
+									</span>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	};
+
+	const renderBlockchain = () => {
+		return (
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<div className="border-b border-gray-100">
+					<div className="flex items-center gap-4 p-6">
+						<div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
+							<FaWallet className="text-xl" />
+						</div>
+						<div>
+							<h3 className="text-lg font-semibold text-gray-900">
+								Blockchain Information
+							</h3>
+							<p className="text-sm text-gray-500">
+								Blockchain and IPFS details
+							</p>
+						</div>
+					</div>
+				</div>
+				<div className="p-6">
+					<div className="space-y-3">
+						<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+							<span className="text-gray-600">IPFS CID</span>
+							<span className="font-mono text-sm text-gray-900 break-all">
+								{business.ipfsCid}
+							</span>
+						</div>
+						<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+							<span className="text-gray-600">IPFS URL</span>
+							<a
+								href={business.ipfsUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								className="text-indigo-600 hover:text-indigo-800 break-all"
+							>
+								{business.ipfsUrl}
+							</a>
+						</div>
+						<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+							<span className="text-gray-600">Transaction Hash</span>
+							<span className="font-mono text-sm text-gray-900 break-all">
+								{business.metadata?.blockchainTxHash}
+							</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	};
+
 	const renderContent = () => {
-		if (loading) {
-			return <LoadingSpinner />;
-		}
-
-		if (!business) {
-			return <ErrorMessage message="Business not found" />;
-		}
-
 		switch (selectedMenu) {
 			case "overview":
 				return renderOverview();
 			case "team":
 				return renderTeamMembers();
+			case "locations":
+				return renderLocation();
+			case "financial":
+				return renderFinancials();
 			case "social_media":
 				return renderSocialMedia();
-			case "locations":
-				return (
-					<div className="text-center py-12">
-						<div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-							<FaMapMarkerAlt className="text-gray-400 text-2xl" />
-						</div>
-						<Text className="text-gray-500 block">No locations added yet</Text>
-						<Button type="primary" className="mt-4">
-							Add Location
-						</Button>
-					</div>
-				);
-			case "financial":
-				return (
-					<div className="text-center py-12">
-						<div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-							<FaWallet className="text-gray-400 text-2xl" />
-						</div>
-						<Text className="text-gray-500 block">
-							No financial data available
-						</Text>
-						<Button type="primary" className="mt-4">
-							Add Financial Data
-						</Button>
-					</div>
-				);
 			case "reviews":
-				return (
-					<div className="text-center py-12">
-						<div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-							<FaUsers className="text-gray-400 text-2xl" />
-						</div>
-						<Text className="text-gray-500 block">No reviews yet</Text>
-						<Button type="primary" className="mt-4">
-							Add Review
-						</Button>
-					</div>
-				);
+				return renderReviews();
 			case "compliance":
-				return (
-					<div className="text-center py-12">
-						<div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-							<FaShieldAlt className="text-gray-400 text-2xl" />
-						</div>
-						<Text className="text-gray-500 block">
-							No compliance data available
-						</Text>
-						<Button type="primary" className="mt-4">
-							Add Compliance Data
-						</Button>
-					</div>
-				);
+				return renderCompliance();
 			case "blockchain":
-				return (
-					<div className="text-center py-12">
-						<div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-							<FaWallet className="text-gray-400 text-2xl" />
-						</div>
-						<Text className="text-gray-500 block">
-							No blockchain data available
-						</Text>
-						<Button type="primary" className="mt-4">
-							Connect Blockchain
-						</Button>
-					</div>
-				);
+				return renderBlockchain();
 			default:
 				return renderOverview();
+		}
+	};
+
+	// Add this function to handle team member addition
+	const handleAddTeamMember = async () => {
+		try {
+			const values = await addMemberForm.validateFields();
+			// Add the selected permissions to the form values
+			values.permissions = selectedPermissions;
+
+			// Here you would typically make an API call to add the team member
+			// For now, we'll just show a success message
+			showSuccess("Team member invited successfully");
+			setAddMemberDrawerVisible(false);
+			setInviteStep(0);
+			addMemberForm.resetFields();
+			setSelectedPermissions({});
+			loadBusinessDetails();
+		} catch (error) {
+			showError("Failed to add team member");
 		}
 	};
 
@@ -1475,6 +2901,8 @@ const BusinessDetails = () => {
 					}
 				}
 			`}</style>
+
+			{renderEditDrawer()}
 		</div>
 	);
 };

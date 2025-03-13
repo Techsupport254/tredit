@@ -76,15 +76,16 @@ const updateAxiosAuth = async (user) => {
 				currentToken = tokenResult.token;
 			}
 
-			axios.defaults.headers.common["Authorization"] = `Bearer ${currentToken}`;
+			// Store Firebase token separately
+			localStorage.setItem("firebase_token", currentToken);
 		} catch (error) {
 			console.error("Error updating auth token:", error);
 			currentToken = null;
-			delete axios.defaults.headers.common["Authorization"];
+			localStorage.removeItem("firebase_token");
 		}
 	} else {
 		currentToken = null;
-		delete axios.defaults.headers.common["Authorization"];
+		localStorage.removeItem("firebase_token");
 	}
 };
 
@@ -109,7 +110,7 @@ onAuthStateChanged(auth, async (firebaseUser) => {
 	} else {
 		currentUser = null;
 		currentToken = null;
-		delete axios.defaults.headers.common["Authorization"];
+		localStorage.removeItem("firebase_token");
 		notifyUserListeners(null);
 		console.log("User logged out");
 	}
@@ -180,7 +181,7 @@ const googleLogout = async () => {
 		await signOut(auth);
 		currentUser = null;
 		currentToken = null;
-		delete axios.defaults.headers.common["Authorization"];
+		localStorage.removeItem("firebase_token");
 		notifyUserListeners(null);
 		console.log("User logged out successfully");
 	} catch (error) {

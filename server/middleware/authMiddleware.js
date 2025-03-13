@@ -1,10 +1,18 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { errorResponse, ResponseCodes } = require("../utils/responseHelper");
+const { appConfig } = require("../config/config");
 
 const protect = async (req, res, next) => {
+	// Skip authentication if not required
+	if (!appConfig.requireAuth) {
+		console.log("Authentication bypassed: requireAuth is false");
+		return next();
+	}
+
 	// Bypass authentication during development
 	if (process.env.NODE_ENV === "development") {
+		console.log("Authentication bypassed: development mode");
 		const user = await User.findOne({
 			where: { walletAddress: "0xe91388a436659f2c0b42bcea6f7a9b7004f2f265" },
 		});
@@ -58,16 +66,19 @@ const protect = async (req, res, next) => {
 		}
 	}
 
-	if (!token) {
-		return res
-			.status(401)
-			.json(
-				errorResponse("Not authorized, no token", ResponseCodes.UNAUTHORIZED)
-			);
-	}
+	return res
+		.status(401)
+		.json(
+			errorResponse("Not authorized, no token", ResponseCodes.UNAUTHORIZED)
+		);
 };
 
 const adminProtect = async (req, res, next) => {
+	// Skip authentication if not required
+	if (!appConfig.requireAuth) {
+		return next();
+	}
+
 	// Bypass authentication during development
 	if (process.env.NODE_ENV === "development") {
 		req.user = {

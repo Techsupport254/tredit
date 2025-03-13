@@ -11,8 +11,10 @@ import {
 	FaTag,
 	FaUser,
 	FaCalendar,
-	FaCreditCard,
+	FaPhone,
+	FaMapMarkerAlt,
 } from "react-icons/fa";
+import { Avatar, Tag } from "antd";
 
 const BusinessCard = ({ business, view = "grid" }) => {
 	const getStatusIcon = () => {
@@ -46,25 +48,15 @@ const BusinessCard = ({ business, view = "grid" }) => {
 			<div
 				className={`relative ${imageClass} bg-gradient-to-br from-indigo-500 to-purple-600`}
 			>
-				{business.logo ? (
-					<img
+				<div className="w-full h-full flex items-center justify-center">
+					<Avatar
 						src={business.logo}
 						alt={business.name}
-						className="w-full h-full object-cover"
+						icon={<FaStore className="text-2xl sm:text-3xl" />}
+						className="w-24 h-24 sm:w-32 sm:h-32 border-4 border-white/20 shadow-lg bg-white/10 backdrop-blur-sm"
+						size={view === "grid" ? 96 : 128}
 					/>
-				) : business.owner?.profileImage ? (
-					<div className="w-full h-full flex items-center justify-center p-4">
-						<img
-							src={business.owner.profileImage}
-							alt={business.owner.name}
-							className="w-16 h-16 rounded-full border-2 border-white shadow-md"
-						/>
-					</div>
-				) : (
-					<div className="w-full h-full flex items-center justify-center">
-						<FaStore className="text-white text-4xl" />
-					</div>
-				)}
+				</div>
 
 				{/* Status Badge */}
 				<div className="absolute top-2 right-2 flex gap-2">
@@ -100,29 +92,18 @@ const BusinessCard = ({ business, view = "grid" }) => {
 						{business.description}
 					</p>
 
-					{/* Tags & Categories */}
-					<div className="flex flex-wrap gap-2">
-						<span className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">
-							{business.category}
-						</span>
-						<span className="px-2 py-1 bg-purple-50 text-purple-700 rounded-full text-xs font-medium">
-							{business.businessModel}
-						</span>
-						<span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium capitalize">
-							{business.operationMode}
-						</span>
+					{/* Category */}
+					<div className="flex items-center gap-2 text-sm text-gray-600">
+						<FaTag className="w-3 h-3" />
+						<span>{business.category}</span>
 					</div>
 
-					{/* Business Info */}
-					<div className="grid grid-cols-2 gap-2 text-sm text-gray-600">
-						<div className="flex items-center gap-1">
-							<FaEnvelope className="w-3 h-3" />
-							<span className="truncate">{business.email}</span>
-						</div>
-						<div className="flex items-center gap-1">
-							<FaCreditCard className="w-3 h-3" />
-							<span>{business.currency}</span>
-						</div>
+					{/* Location */}
+					<div className="flex items-center gap-2 text-sm text-gray-600">
+						<FaMapMarkerAlt className="w-3 h-3" />
+						<span>
+							{business.address?.city}, {business.address?.country}
+						</span>
 					</div>
 
 					{/* Footer */}

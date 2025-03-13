@@ -438,7 +438,7 @@ router.post(
 // Protected Routes (Need Authentication)
 
 // Get user profile by wallet address
-router.get("/:walletAddress", async (req, res) => {
+router.get("/:walletAddress", protect, async (req, res) => {
 	try {
 		const { walletAddress } = req.params;
 

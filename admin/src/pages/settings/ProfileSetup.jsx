@@ -365,8 +365,11 @@ const ProfileSetup = () => {
 			const response = await axios.post("/users/register", profileData);
 
 			if (response.data?.success) {
-				const token = response.data.token;
+				const { token, user } = response.data;
+
+				// Store token using storage utility
 				if (token) {
+					setStorageItem(STORAGE_KEYS.token, token);
 					axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 				}
 
@@ -378,7 +381,7 @@ const ProfileSetup = () => {
 				});
 
 				// Update user data in auth context
-				if (response.data.user && fetchUserData) {
+				if (user && fetchUserData) {
 					await fetchUserData();
 				}
 

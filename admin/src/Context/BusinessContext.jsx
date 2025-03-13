@@ -13,19 +13,10 @@ import {
 	showErrorNotification,
 	showSuccessNotification,
 } from "../utils/errors";
+import { BUSINESS_CONSTANTS } from "../constants/businessConstants";
 
 // Configure axios defaults
 axios.defaults.baseURL = import.meta.env.VITE_PUBLIC_API_URL;
-axios.defaults.headers.common["Content-Type"] = "application/json";
-
-// Add auth token to requests if available
-axios.interceptors.request.use((config) => {
-	const token = localStorage.getItem("token");
-	if (token) {
-		config.headers.Authorization = `Bearer ${token}`;
-	}
-	return config;
-});
 
 const initialState = {
 	businesses: [],
@@ -56,12 +47,26 @@ export const BusinessProvider = ({ children }) => {
 			);
 
 			if (response.data?.success) {
+				const businesses = response.data.message || [];
 				setState((prev) => ({
 					...prev,
-					businesses: response.data.message || [],
+					businesses: businesses.map((business) => ({
+						...business,
+						serviceCategories: business.serviceCategories || [],
+						tags: business.tags || [],
+						businessHours: business.businessHours || {},
+						socialMedia: business.socialMedia || {
+							tiktok: { isConnected: false, permissions: [], metadata: {} },
+							youtube: { isConnected: false, permissions: [], metadata: {} },
+							facebook: { isConnected: false, permissions: [], metadata: {} },
+							instagram: { isConnected: false, permissions: [], metadata: {} },
+						},
+						teamMembers: business.teamMembers || [],
+						owner: business.owner || null,
+					})),
 					isLoading: false,
 				}));
-				return response.data.message;
+				return businesses;
 			} else {
 				throw new Error(response.data?.data || "Failed to fetch businesses");
 			}
@@ -84,13 +89,28 @@ export const BusinessProvider = ({ children }) => {
 
 			if (response.data?.success) {
 				const business = response.data.message;
+				const processedBusiness = {
+					...business,
+					serviceCategories: business.serviceCategories || [],
+					tags: business.tags || [],
+					businessHours: business.businessHours || {},
+					socialMedia: business.socialMedia || {
+						tiktok: { isConnected: false, permissions: [], metadata: {} },
+						youtube: { isConnected: false, permissions: [], metadata: {} },
+						facebook: { isConnected: false, permissions: [], metadata: {} },
+						instagram: { isConnected: false, permissions: [], metadata: {} },
+					},
+					teamMembers: business.teamMembers || [],
+					owner: business.owner || null,
+				};
+
 				setState((prev) => ({
 					...prev,
-					selectedBusiness: business,
-					teamMembers: business.teamMembers || [],
+					selectedBusiness: processedBusiness,
+					teamMembers: processedBusiness.teamMembers,
 					isLoading: false,
 				}));
-				return business;
+				return processedBusiness;
 			} else {
 				throw new Error(response.data?.data || "Failed to fetch business");
 			}
@@ -174,9 +194,132 @@ export const BusinessProvider = ({ children }) => {
 		[user, storedUser]
 	);
 
+	const validateBusinessData = (data) => {
+		const errors = {};
+
+		// Name validation
+		if (data.name) {
+			if (
+				data.name.length < BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MIN ||
+				data.name.length > BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MAX
+			) {
+				errors.name = `Name must be between ${BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MIN} and ${BUSINESS_CONSTANTS.VALIDATION.NAME_LENGTH.MAX} characters`;
+			}
+		}
+
+		// Description validation
+		if (data.description) {
+			if (
+				data.description.length <
+					BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MIN ||
+				data.description.length >
+					BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MAX
+			) {
+				errors.description = `Description must be between ${BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MIN} and ${BUSINESS_CONSTANTS.VALIDATION.DESCRIPTION_LENGTH.MAX} characters`;
+			}
+		}
+
+		// Email validation
+		if (
+			data.email &&
+			!BUSINESS_CONSTANTS.VALIDATION.EMAIL_REGEX.test(data.email)
+		) {
+			errors.email = "Invalid email format";
+		}
+
+		// Phone validation
+		if (
+			data.phone &&
+			!BUSINESS_CONSTANTS.VALIDATION.PHONE_REGEX.test(data.phone)
+		) {
+			errors.phone = "Invalid phone number format";
+		}
+
+		// Type validation
+		if (
+			data.type &&
+			!Object.values(BUSINESS_CONSTANTS.TYPES).includes(data.type)
+		) {
+			errors.type = "Invalid business type";
+		}
+
+		// Category validation
+		if (
+			data.category &&
+			!BUSINESS_CONSTANTS.CATEGORIES.includes(data.category)
+		) {
+			errors.category = "Invalid business category";
+		}
+
+		// Business model validation
+		if (
+			data.businessModel &&
+			!Object.values(BUSINESS_CONSTANTS.MODELS).includes(data.businessModel)
+		) {
+			errors.businessModel = "Invalid business model";
+		}
+
+		// Operation mode validation
+		if (
+			data.operationMode &&
+			!Object.values(BUSINESS_CONSTANTS.OPERATION_MODES).includes(
+				data.operationMode
+			)
+		) {
+			errors.operationMode = "Invalid operation mode";
+		}
+
+		// Payment methods validation
+		if (data.paymentMethods) {
+			const invalidMethods = data.paymentMethods.filter(
+				(method) => !BUSINESS_CONSTANTS.PAYMENT_METHODS.includes(method)
+			);
+			if (invalidMethods.length > 0) {
+				errors.paymentMethods = `Invalid payment methods: ${invalidMethods.join(
+					", "
+				)}`;
+			}
+		}
+
+		// Currency validation
+		if (
+			data.currency &&
+			!BUSINESS_CONSTANTS.CURRENCIES.includes(data.currency)
+		) {
+			errors.currency = "Invalid currency";
+		}
+
+		// Business hours validation
+		if (data.businessHours) {
+			Object.entries(data.businessHours).forEach(([day, hours]) => {
+				if (!BUSINESS_CONSTANTS.BUSINESS_DAYS.includes(day)) {
+					errors.businessHours = errors.businessHours || {};
+					errors.businessHours[day] = "Invalid day";
+				}
+				if (!hours.closed && (!hours.start || !hours.end)) {
+					errors.businessHours = errors.businessHours || {};
+					errors.businessHours[day] =
+						"Start and end times are required when not closed";
+				}
+			});
+		}
+
+		return {
+			isValid: Object.keys(errors).length === 0,
+			errors,
+		};
+	};
+
 	const updateBusiness = useCallback(async (businessId, updateData) => {
 		try {
 			setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+			// Validate the update data
+			const validation = validateBusinessData(updateData);
+			if (!validation.isValid) {
+				throw new Error(JSON.stringify(validation.errors));
+			}
+
 			const response = await axios.patch(
 				`/businesses/${businessId}`,
 				updateData
@@ -250,6 +393,45 @@ export const BusinessProvider = ({ children }) => {
 			deleteBusiness,
 			fetchAllBusinesses,
 			fetchBusinessById,
+			connectYouTube: async (businessId) => {
+				console.log("Connecting YouTube");
+				try {
+					setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+					// Get the current token
+					const token = localStorage.getItem("token");
+					if (!token) {
+						throw new Error("Authentication token not found");
+					}
+
+					// Ensure the token is in the headers
+					axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+					const response = await axios.get(`/youtube/auth-url`, {
+						params: { businessId },
+						headers: {
+							Authorization: `Bearer ${token}`,
+						},
+					});
+
+					if (response.data?.success) {
+						window.location.href = response.data.data.authUrl;
+						return true;
+					} else {
+						throw new Error(
+							response.data?.message || "Failed to get YouTube auth URL"
+						);
+					}
+				} catch (error) {
+					setState((prev) => ({
+						...prev,
+						error: error.response?.data?.message || error.message,
+						isLoading: false,
+					}));
+					showErrorNotification(error.response?.data?.message || error.message);
+					return false;
+				}
+			},
 		}),
 		[
 			state,

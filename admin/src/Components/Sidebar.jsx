@@ -43,14 +43,23 @@ const getEthToKesRate = async () => {
 
 const Sidebar = () => {
 	const location = useLocation();
-	const { user } = useAuth();
-	const { walletAddress } = useAccount();
+	const { user: authUser, isLoading: authLoading } = useAuth();
+	const {
+		walletAddress,
+		networkName,
+		balance,
+		user: accountUser,
+		connectionState,
+	} = useAccount();
 	const { isSidebarOpen, closeSidebar, toggleSidebar } = useLayoutContext();
 	const [ethToKesRate, setEthToKesRate] = useState(null);
 	const [isRateLoading, setIsRateLoading] = useState(false);
 
 	// Track the currently open menu
 	const [openMenu, setOpenMenu] = useState(null);
+
+	// Combine user data from both contexts
+	const user = authUser || accountUser;
 
 	// Find active category based on current path
 	const findActiveCategory = (path) => {
@@ -278,6 +287,9 @@ const Sidebar = () => {
 
 	const missingFields = getMissingFields();
 
+	const [isAccountDetailsOpen, setIsAccountDetailsOpen] = useState(false);
+	const [isWalletOpen, setIsWalletOpen] = useState(false);
+
 	return (
 		<div
 			className={`absolute md:relative z-50 bg-gradient-to-b from-blue-50 to-white px-4 py-6 overflow-y-auto transition-transform duration-300 ease-in-out sidebar-container w-80 md:w-1/5 h-full shadow-lg flex flex-col ${
@@ -440,94 +452,184 @@ const Sidebar = () => {
 			</div>
 
 			{/* User Info Section */}
-			<div className="mt-auto border-t border-gray-300 pt-4">
+			<div className="mt-auto border-t border-gray-200 pt-4 bg-white">
 				{user ? (
-					<div className="flex items-center gap-3 p-3">
-						<Avatar
-							size={48}
-							src={user.photoURL || user.profileImage}
-							icon={<UserOutlined />}
-							className="border border-gray-400 shrink-0"
-							crossOrigin="anonymous"
-							referrerPolicy="no-referrer"
-							onError={(e) => {
-								if (e && e.target) {
-									e.target.style.display = "none";
-									// Add a small delay before showing the icon to prevent flickering
-									setTimeout(() => {
-										const avatarElement = e.target.parentElement;
-										if (avatarElement) {
-											avatarElement.style.backgroundColor = "#f5f5f5";
-										}
-									}, 100);
-								}
-							}}
-						/>
-						<div className="flex flex-col">
-							<span className="font-semibold text-gray-800 text-sm flex items-center gap-2">
-								{user.name || "User"}
-								{user.isVerified ? (
-									<Tooltip title="Verified Account">
-										<CheckCircleFilled className="text-green-500" />
-									</Tooltip>
-								) : (
-									<Tooltip title="Unverified Account">
-										<ExclamationCircleFilled className="text-yellow-500" />
-									</Tooltip>
-								)}
-							</span>
-							<div className="flex items-center gap-2">
-								<Tooltip title={walletAddress}>
-									<span className="text-xs text-gray-500">
-										{walletAddress
-											? `${walletAddress.slice(0, 6)}...${walletAddress.slice(
-													-4
-											  )}`
-											: "No Wallet"}
-									</span>
-									{user.networkName && (
-										<Tag color="blue" className="text-xs">
-											{user.networkName === "Polygon Amoy Testnet"
-												? "Amoy"
-												: user.networkName}
+					<div className="px-4 py-3">
+						{/* Main User Info - Always Visible */}
+						<div className="bg-white rounded-xl p-3">
+							<div className="flex items-center gap-3">
+								<Avatar
+									size={40}
+									src={user.photoURL || user.profileImage}
+									icon={<UserOutlined />}
+									className="flex-shrink-0"
+									crossOrigin="anonymous"
+									referrerPolicy="no-referrer"
+								/>
+								<div className="flex-1 min-w-0">
+									<div className="flex items-center gap-2">
+										<h3 className="text-sm font-medium text-gray-900 truncate">
+											{user.name || "User"}
+										</h3>
+										<Tag className="text-[10px] px-1.5 py-0 uppercase border-0 bg-gray-100 text-gray-600">
+											{user.role || "USER"}
 										</Tag>
+									</div>
+									<p className="text-xs text-gray-500 truncate">{user.email}</p>
+								</div>
+							</div>
+						</div>
+
+						{/* Collapsible Details Section */}
+						<div className="mt-3">
+							<button
+								onClick={() => setIsAccountDetailsOpen(!isAccountDetailsOpen)}
+								className="flex items-center justify-between w-full p-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
+							>
+								<span className="font-medium">Account Details</span>
+								<i
+									className={`fas fa-chevron-${
+										isAccountDetailsOpen ? "up" : "down"
+									} text-gray-400`}
+								></i>
+							</button>
+							<div
+								className={`overflow-hidden transition-all duration-300 ${
+									isAccountDetailsOpen
+										? "max-h-[500px] opacity-100"
+										: "max-h-0 opacity-0"
+								}`}
+							>
+								<div className="space-y-3 pt-2">
+									{/* Verification Status */}
+									{!user.isVerified && (
+										<div className="flex items-center gap-1.5 text-amber-600 bg-amber-50 px-3 py-2 rounded-lg text-xs">
+											<ExclamationCircleFilled className="text-xs" />
+											<span>Unverified Account</span>
+										</div>
 									)}
-								</Tooltip>
+
+									{/* Wallet Section */}
+									{walletAddress && (
+										<div className="bg-gray-50 rounded-lg p-3">
+											<div className="flex items-center justify-between mb-3">
+												<div className="flex items-center gap-2">
+													<i className="fas fa-wallet text-blue-500"></i>
+													<span className="text-sm">Wallet</span>
+												</div>
+												<div className="flex items-center gap-1.5">
+													<div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+													<span className="text-xs text-emerald-600">
+														Connected
+													</span>
+												</div>
+											</div>
+
+											<div className="space-y-3">
+												{/* Wallet Address */}
+												<div className="flex items-center justify-between">
+													<span className="text-sm font-mono text-gray-600">
+														{`${walletAddress.slice(
+															0,
+															6
+														)}...${walletAddress.slice(-4)}`}
+													</span>
+													<i
+														className="fas fa-copy text-gray-400 cursor-pointer hover:text-blue-500 transition-colors"
+														onClick={() =>
+															navigator.clipboard.writeText(walletAddress)
+														}
+													></i>
+												</div>
+
+												{/* Network & Balance */}
+												<div className="space-y-2">
+													<div className="flex items-center justify-between">
+														<span className="text-sm text-gray-600">
+															Network
+														</span>
+														<Tag className="m-0 border-0 bg-blue-50 text-blue-600">
+															{networkName === "Polygon Amoy Testnet"
+																? "Amoy"
+																: networkName}
+														</Tag>
+													</div>
+
+													{balance && (
+														<div>
+															<div className="flex items-center justify-between">
+																<span className="text-sm text-gray-600">
+																	Balance
+																</span>
+																<span className="text-sm font-medium">
+																	{parseFloat(balance).toFixed(4)} ETH
+																</span>
+															</div>
+															<div className="flex justify-end">
+																<span className="text-xs text-gray-500">
+																	≈ {formatBalance(balance)}
+																</span>
+															</div>
+														</div>
+													)}
+												</div>
+											</div>
+										</div>
+									)}
+
+									{/* Missing Fields Warning */}
+									{missingFields.length > 0 && (
+										<div className="bg-red-50 rounded-lg p-3">
+											<div className="text-xs font-medium text-red-600 mb-2">
+												Missing Profile Data:
+											</div>
+											<div className="space-y-1 max-h-32 overflow-y-auto">
+												{missingFields.map((field, index) => (
+													<div
+														key={index}
+														className="text-xs text-red-500 flex items-center gap-1"
+													>
+														<span>•</span> {field}
+													</div>
+												))}
+											</div>
+										</div>
+									)}
+								</div>
 							</div>
 						</div>
 					</div>
 				) : (
-					<div className="p-3 flex items-center gap-2">
-						<Skeleton.Avatar size={50} active />
-						<Skeleton
-							active
-							paragraph={{
-								rows: 2,
-								gap: 0,
-								width: ["80%", "60%"],
-							}}
-						/>
+					<div className="p-4">
+						<div className="animate-pulse space-y-3">
+							<div className="bg-white rounded-xl p-3">
+								<div className="flex items-center gap-3">
+									<div className="w-10 h-10 rounded-full bg-gray-100"></div>
+									<div className="flex-1 space-y-2">
+										<div className="h-4 bg-gray-100 rounded w-3/4"></div>
+										<div className="h-3 bg-gray-100 rounded w-1/2"></div>
+									</div>
+								</div>
+							</div>
+						</div>
 					</div>
 				)}
 
-				{/* Footer Links */}
-				<div className="text-center text-xs text-gray-500 mt-4">
-					<Link to="/privacy-policy" className="hover:underline text-blue-500">
-						Privacy Policy
-					</Link>
-					{" | "}
-					<Link
-						to="/terms-of-service"
-						className="hover:underline text-blue-500"
-					>
-						Terms of Service
-					</Link>
+				{/* Footer */}
+				<div className="px-4 py-3 border-t border-gray-100">
+					<div className="flex items-center justify-center gap-3 text-xs text-gray-400 mb-2">
+						<Link to="/privacy-policy" className="hover:text-gray-600">
+							Privacy Policy
+						</Link>
+						<span>•</span>
+						<Link to="/terms-of-service" className="hover:text-gray-600">
+							Terms of Service
+						</Link>
+					</div>
+					<p className="text-center text-xs text-gray-400">
+						© {new Date().getFullYear()} Vendor Panel
+					</p>
 				</div>
-
-				{/* Copyright */}
-				<p className="text-center text-xs text-gray-400 mt-4">
-					&copy; {new Date().getFullYear()} Vendor Panel
-				</p>
 			</div>
 		</div>
 	);

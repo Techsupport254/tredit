@@ -88,6 +88,9 @@ const ApiKeys = lazy(() => import("./pages/settings/ApiKeys.jsx"));
 
 const Logout = lazy(() => import("./pages/Logout"));
 
+// Add YouTube callback component
+const YouTubeCallback = lazy(() => import("./pages/youtube/Callback"));
+
 // Route-based code splitting wrapper
 const RouteWrapper = ({ children }) => {
 	return (
@@ -129,6 +132,9 @@ const ProtectedRoute = ({ children }) => {
 	const location = useLocation();
 	const navigate = useNavigate();
 
+	const token = getStorageItem(STORAGE_KEYS.token);
+	console.log("Token: ", token);
+
 	// Check if we're still loading anything
 	const isLoading =
 		!authInitialized ||
@@ -145,16 +151,22 @@ const ProtectedRoute = ({ children }) => {
 	// Check if we got a 404 error indicating no user exists
 	const userNotFound = authError?.response?.status === 404;
 
+	// Special case for YouTube callback - check if we're on the callback route
+	const isYouTubeCallback = location.pathname === "/youtube/callback";
+
 	useEffect(() => {
 		if (!isLoading) {
+			// Allow YouTube callback to proceed if we have a token
+			if (isYouTubeCallback && token) {
+				return;
+			}
+
 			if (!walletAddress) {
-				// If wallet is not connected, redirect to connect page
 				navigate("/connect", { state: { from: location }, replace: true });
 			} else if (
 				(!hasProfile || userNotFound) &&
 				location.pathname !== "/profile-setup"
 			) {
-				// If wallet is connected but no profile exists or we got a 404, redirect to profile setup
 				console.log("Redirecting to profile setup - No profile found");
 				navigate("/profile-setup", {
 					state: { from: location },
@@ -162,7 +174,16 @@ const ProtectedRoute = ({ children }) => {
 				});
 			}
 		}
-	}, [isLoading, walletAddress, hasProfile, userNotFound, location, navigate]);
+	}, [
+		isLoading,
+		walletAddress,
+		hasProfile,
+		userNotFound,
+		location,
+		navigate,
+		token,
+		isYouTubeCallback,
+	]);
 
 	const loadingMessage = authLoading
 		? "Loading authentication..."
@@ -176,13 +197,17 @@ const ProtectedRoute = ({ children }) => {
 		? "Loading profile..."
 		: "Loading...";
 
-	// Show loading state while checking conditions
 	if (isLoading) {
 		return (
 			<ContentLoadingWrapper isLoading={true} message={loadingMessage}>
 				<RouteWrapper>{children}</RouteWrapper>
 			</ContentLoadingWrapper>
 		);
+	}
+
+	// Allow YouTube callback to proceed if we have a token
+	if (isYouTubeCallback && token) {
+		return <RouteWrapper>{children}</RouteWrapper>;
 	}
 
 	// Only render children if we have a wallet address and either a profile or we're on the profile setup page
@@ -261,6 +286,14 @@ const App = () => {
 					element={
 						<RouteWrapper>
 							<ProfileSetup />
+						</RouteWrapper>
+					}
+				/>
+				<Route
+					path="/youtube/callback"
+					element={
+						<RouteWrapper>
+							<YouTubeCallback />
 						</RouteWrapper>
 					}
 				/>

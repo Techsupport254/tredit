@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { Business, BusinessTeamMember, User } = require("../models");
+const { Business, BusinessTeamMember, User, sequelize } = require("../models");
 const { uploadToIPFS } = require("../utils/blockchainHelper");
 const { createOrUpdateBusinessProfile } = require("../utils/blockchainHelper");
 const { protect } = require("../middleware/authMiddleware");
@@ -12,7 +12,6 @@ const {
 	ResponseCodes,
 } = require("../utils/responseHelper");
 const { createBusinessOnChain } = require("../utils/blockchainHelper");
-const { sequelize } = require("../models");
 
 // Create a new business
 router.post("/", protect, async (req, res) => {
@@ -358,31 +357,11 @@ router.get("/:id", protect, async (req, res) => {
 });
 
 // Update a business
-router.patch("/:id", protect, async (req, res) => {
-	const transaction = await req.db.sequelize.transaction();
+router.patch("/:id", async (req, res) => {
+	const transaction = await sequelize.transaction();
 
 	try {
 		const { id } = req.params;
-		const { walletAddress, user } = req;
-
-		// Check if user has permission to update
-		const teamMember = await BusinessTeamMember.findOne({
-			where: {
-				businessId: id,
-				userId: user.id,
-				status: "active",
-			},
-		});
-
-		if (
-			!teamMember ||
-			(!teamMember.isOwner() && !teamMember.canManageSettings())
-		) {
-			return res.status(403).json({
-				success: false,
-				message: "Access denied",
-			});
-		}
 
 		const business = await Business.findByPk(id);
 		if (!business) {
@@ -398,28 +377,34 @@ router.patch("/:id", protect, async (req, res) => {
 		};
 
 		// Upload to IPFS
-		const { cid: ipfsCid, url: ipfsUrl } = await uploadToIPFS({
+		const ipfsResult = await uploadToIPFS({
 			...business.toJSON(),
 			...updateData,
 		});
 
+		if (!ipfsResult.success || !ipfsResult.ipfsUrl) {
+			throw new Error("Failed to upload to IPFS");
+		}
+
 		// Store on blockchain
-		const blockchainResult = await createOrUpdateBusinessProfile(
-			walletAddress,
-			ipfsUrl,
+		const blockchainResult = await createBusinessOnChain(
+			business.walletAddress,
+			ipfsResult.ipfsUrl,
 			updateData
 		);
 
-		if (!blockchainResult?.success) {
-			throw new Error("Failed to update business on blockchain");
+		if (!blockchainResult.success) {
+			throw new Error(
+				`Failed to update business on blockchain: ${blockchainResult.error}`
+			);
 		}
 
 		// Update in database
 		await business.update(
 			{
 				...updateData,
-				ipfsCid,
-				ipfsUrl,
+				ipfsCid: ipfsResult.ipfsCid,
+				ipfsUrl: ipfsResult.ipfsUrl,
 				lastBlockchainUpdate: new Date(),
 				metadata: {
 					...business.metadata,
@@ -437,7 +422,7 @@ router.patch("/:id", protect, async (req, res) => {
 			message: "Business updated successfully",
 			data: {
 				business,
-				ipfs: { cid: ipfsCid, url: ipfsUrl },
+				ipfs: { cid: ipfsResult.ipfsCid, url: ipfsResult.ipfsUrl },
 				blockchain: { txHash: blockchainResult.hash },
 			},
 		});
@@ -454,7 +439,7 @@ router.patch("/:id", protect, async (req, res) => {
 
 // Delete a business
 router.delete("/:id", protect, async (req, res) => {
-	const transaction = await req.db.sequelize.transaction();
+	const transaction = await sequelize.transaction();
 
 	try {
 		const { id } = req.params;
