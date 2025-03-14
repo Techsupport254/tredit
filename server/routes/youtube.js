@@ -7,7 +7,7 @@ const { authenticateToken } = require("../middleware/auth");
 router.get("/auth-url", authenticateToken, youtubeController.getAuthUrl);
 
 // Handle OAuth callback
-router.get("/callback", authenticateToken, youtubeController.handleCallback);
+router.get("/callback", youtubeController.handleCallback);
 
 // Disconnect YouTube account
 router.delete(

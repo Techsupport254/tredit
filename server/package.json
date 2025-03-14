@@ -13,7 +13,10 @@
 		"compile": "hardhat compile --config hardhat.config.cjs",
 		"deploy": "hardhat run scripts/deploy.cjs --network polygonAmoy --config hardhat.config.cjs",
 		"test:hardhat": "hardhat test --config hardhat.config.cjs",
-		"verify": "hardhat verify --config hardhat.config.cjs"
+		"verify": "hardhat verify --config hardhat.config.cjs",
+		"migrate": "sequelize-cli db:migrate",
+		"migrate:undo": "sequelize-cli db:migrate:undo",
+		"migrate:undo:all": "sequelize-cli db:migrate:undo:all"
 	},
 	"keywords": [],
 	"author": "",
@@ -44,6 +47,7 @@
 		"pg": "^8.13.3",
 		"pg-hstore": "^2.3.4",
 		"sequelize": "^6.37.6",
+		"sequelize-cli": "^6.6.2",
 		"ua-parser-js": "^2.0.2"
 	},
 	"devDependencies": {

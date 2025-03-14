@@ -49,6 +49,12 @@ import {
 	FaSync,
 	FaExternalLinkAlt,
 	FaVideo,
+	FaPlus,
+	FaFileAlt,
+	FaDownload,
+	FaTrophy,
+	FaKey,
+	FaHistory,
 } from "react-icons/fa";
 import {
 	Typography,
@@ -82,6 +88,9 @@ import {
 	Segmented,
 	InputNumber,
 	Empty,
+	Dropdown,
+	Table,
+	Timeline,
 } from "antd";
 import LoadingSpinner from "../../Components/Common/LoadingSpinner";
 import ErrorMessage from "../../Components/Common/ErrorMessage";
@@ -95,10 +104,39 @@ import {
 	LinkOutlined,
 	MenuFoldOutlined,
 	MenuUnfoldOutlined,
+	UserAddOutlined,
+	EllipsisOutlined,
+	IdcardOutlined,
+	TeamOutlined,
+	SafetyCertificateOutlined,
+	AccountBookOutlined,
+	InboxOutlined,
+	ShoppingCartOutlined,
+	UserSwitchOutlined,
+	DollarOutlined,
+	GlobalOutlined,
+	FundOutlined,
+	CustomerServiceOutlined,
+	UsergroupAddOutlined,
+	EditOutlined,
+	DeleteOutlined,
+	KeyOutlined,
+	AppstoreOutlined,
+	BarChartOutlined,
+	SettingOutlined,
+	MailOutlined,
+	PhoneOutlined,
+	ClockCircleOutlined,
+	UserOutlined,
+	CheckCircleOutlined,
+	CrownOutlined,
+	TrophyOutlined,
+	InfoCircleOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 import { BUSINESS_CONSTANTS } from "../../constants/businessConstants";
 import axios from "axios";
+import { TEAM_MEMBER_CONSTANTS } from "../../constants/businessConstants";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -228,10 +266,17 @@ const TEAM_MEMBER_ROLES = [
 const BusinessDetails = () => {
 	const { id } = useParams();
 	const navigate = useNavigate();
-	const { fetchBusinessById, updateBusiness, deleteBusiness, connectYouTube } =
-		useBusiness();
+	const {
+		fetchBusinessById,
+		updateBusiness,
+		deleteBusiness,
+		connectYouTube,
+		addTeamMember,
+		removeTeamMember,
+	} = useBusiness();
 	const [business, setBusiness] = useState(null);
 	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState(null);
 	const [selectedMenu, setSelectedMenu] = useState("overview");
 	const [showVerifyModal, setShowVerifyModal] = useState(false);
 	const [verificationNote, setVerificationNote] = useState("");
@@ -253,6 +298,90 @@ const BusinessDetails = () => {
 	const [addMemberForm] = Form.useForm();
 	const [selectedPermissions, setSelectedPermissions] = useState({});
 	const [inviteStep, setInviteStep] = useState(0);
+	const [showEditDrawer, setShowEditDrawer] = useState(false);
+	const [showAddLocationModal, setShowAddLocationModal] = useState(false);
+	const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+	const [newMember, setNewMember] = useState({
+		email: "",
+		role: "staff",
+		permissions: {},
+	});
+	const [errors, setErrors] = useState({});
+	const [currentStep, setCurrentStep] = useState(0);
+	const [isAddingMember, setIsAddingMember] = useState(false);
+
+	const tableStyles = {
+		".custom-table": {
+			".ant-table": {
+				borderRadius: "0 !important",
+				overflow: "auto !important",
+			},
+			".ant-table-container": {
+				borderRadius: "0 !important",
+			},
+			".ant-table-thead > tr > th": {
+				background: "#f9fafb",
+				color: "#374151",
+				fontWeight: "600",
+				fontSize: "0.875rem",
+				padding: "12px 16px",
+				borderBottom: "1px solid #e5e7eb",
+				whiteSpace: "nowrap",
+			},
+			".ant-table-tbody > tr > td": {
+				padding: "12px 16px",
+				borderBottom: "1px solid #f3f4f6",
+				fontSize: "0.875rem",
+			},
+			".ant-table-tbody > tr:hover > td": {
+				background: "#f9fafb",
+			},
+			".ant-tag": {
+				borderRadius: "6px",
+				padding: "2px 8px",
+				fontSize: "0.75rem",
+				lineHeight: "1.5",
+				display: "inline-flex",
+				alignItems: "center",
+				gap: "4px",
+				whiteSpace: "nowrap",
+			},
+			"@media (max-width: 640px)": {
+				".ant-table-thead > tr > th": {
+					padding: "8px",
+				},
+				".ant-table-tbody > tr > td": {
+					padding: "8px",
+				},
+			},
+		},
+	};
+
+	useEffect(() => {
+		// Add custom styles to head
+		const styleElement = document.createElement("style");
+		styleElement.textContent = Object.entries(tableStyles)
+			.map(([selector, styles]) => {
+				const cssRules = Object.entries(styles)
+					.map(([key, value]) => {
+						if (typeof value === "object") {
+							const nestedRules = Object.entries(value)
+								.map(([k, v]) => `${k}: ${v};`)
+								.join("\n");
+							return `${key} {\n${nestedRules}\n}`;
+						}
+						return `${key}: ${value};`;
+					})
+					.join("\n");
+				return `${selector} {\n${cssRules}\n}`;
+			})
+			.join("\n\n");
+		document.head.appendChild(styleElement);
+
+		return () => {
+			document.head.removeChild(styleElement);
+		};
+	}, []);
 
 	useEffect(() => {
 		loadBusinessDetails();
@@ -356,17 +485,26 @@ const BusinessDetails = () => {
 	const handleEdit = () => {
 		setEditMode(true);
 		setEditedBusiness({ ...business });
+		setShowEditDrawer(true);
 	};
 
 	const handleCancel = () => {
+		editForm.resetFields();
+		setEditSection(null);
 		setEditMode(false);
-		setEditedBusiness(business);
+		setEditDrawerVisible(false);
+		setShowEditDrawer(false);
+		setAddMemberDrawerVisible(false);
+		setInviteStep(0);
+		addMemberForm.resetFields();
+		setSelectedPermissions({});
 	};
 
 	const handleSave = async () => {
 		try {
 			await updateBusiness(id, editedBusiness);
 			setEditMode(false);
+
 			loadBusinessDetails();
 			showSuccess("Business updated successfully");
 		} catch (error) {
@@ -465,891 +603,385 @@ const BusinessDetails = () => {
 		);
 	};
 
-	const renderTeamMembers = () => {
-		const teamMembers = business.teamMembers || [];
-
-		const renderAddMemberDrawer = () => (
-			<Drawer
-				title="Add Team Member"
-				placement="right"
-				width={720}
-				onClose={() => {
-					setAddMemberDrawerVisible(false);
-					setInviteStep(0);
-					addMemberForm.resetFields();
-					setSelectedPermissions({});
-				}}
-				open={addMemberDrawerVisible}
-				extra={
-					<Space>
-						<Button onClick={() => setAddMemberDrawerVisible(false)}>
-							Cancel
-						</Button>
-						{inviteStep === 1 ? (
-							<Button type="primary" onClick={handleAddTeamMember}>
-								Send Invitation
-							</Button>
-						) : (
-							<Button type="primary" onClick={() => setInviteStep(1)}>
-								Next
-							</Button>
-						)}
-					</Space>
-				}
-			>
-				<Steps
-					current={inviteStep}
-					items={[
-						{
-							title: "Basic Info",
-							description: "Member details",
-						},
-						{
-							title: "Permissions",
-							description: "Access control",
-						},
-					]}
-					className="mb-8"
-				/>
-
-				<Form form={addMemberForm} layout="vertical">
-					{inviteStep === 0 ? (
-						<>
-							<Form.Item
-								name="email"
-								label="Email Address"
-								rules={[
-									{ required: true, message: "Please enter email address" },
-									{ type: "email", message: "Please enter a valid email" },
-								]}
-							>
-								<Input placeholder="Enter team member's email" />
-							</Form.Item>
-
-							<Form.Item
-								name="role"
-								label="Role"
-								rules={[{ required: true, message: "Please select a role" }]}
-							>
-								<Radio.Group className="space-y-4 w-full">
-									{TEAM_MEMBER_ROLES.map((role) => (
-										<Radio
-											key={role.value}
-											value={role.value}
-											className="w-full"
-										>
-											<div className="flex items-start p-4 hover:bg-gray-50 rounded-lg transition-colors duration-200">
-												<div className="flex-shrink-0 mt-1">{role.icon}</div>
-												<div className="ml-4">
-													<div className="font-medium text-gray-900">
-														{role.label}
-													</div>
-													<div className="text-sm text-gray-500">
-														{role.description}
-													</div>
-												</div>
-											</div>
-										</Radio>
-									))}
-								</Radio.Group>
-							</Form.Item>
-
-							<Form.Item name="position" label="Position">
-								<Input placeholder="e.g. Senior Developer" />
-							</Form.Item>
-
-							<Form.Item name="department" label="Department">
-								<Input placeholder="e.g. Engineering" />
-							</Form.Item>
-						</>
-					) : (
-						<div className="space-y-6">
-							<div className="bg-blue-50 rounded-lg p-4 mb-6">
-								<div className="flex items-center gap-3">
-									<FaInfoCircle className="text-blue-500" />
-									<div>
-										<h4 className="font-medium text-blue-900">Permissions</h4>
-										<p className="text-sm text-blue-700">
-											Select the permissions for this team member. These can be
-											modified later.
-										</p>
-									</div>
-								</div>
-							</div>
-
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								{[
-									{
-										key: "manage_team",
-										label: "Manage Team",
-										description: "Add, remove, and manage team members",
-										icon: <FaUsers className="text-purple-500" />,
-									},
-									{
-										key: "manage_products",
-										label: "Manage Products",
-										description: "Create and manage products",
-										icon: <FaBox className="text-orange-500" />,
-									},
-									{
-										key: "manage_orders",
-										label: "Manage Orders",
-										description: "Process and manage orders",
-										icon: <FaShoppingCart className="text-green-500" />,
-									},
-									{
-										key: "manage_customers",
-										label: "Manage Customers",
-										description: "Access customer information",
-										icon: <FaUserFriends className="text-blue-500" />,
-									},
-									{
-										key: "view_analytics",
-										label: "View Analytics",
-										description: "Access business analytics",
-										icon: <FaChartBar className="text-indigo-500" />,
-									},
-									{
-										key: "manage_settings",
-										label: "Manage Settings",
-										description: "Change business settings",
-										icon: <FaCog className="text-gray-500" />,
-									},
-								].map((permission) => (
-									<div
-										key={permission.key}
-										className={`p-4 rounded-lg border-2 transition-all duration-200 cursor-pointer ${
-											selectedPermissions[permission.key]
-												? "border-blue-500 bg-blue-50"
-												: "border-gray-200 hover:border-blue-200"
-										}`}
-										onClick={() =>
-											setSelectedPermissions((prev) => ({
-												...prev,
-												[permission.key]: !prev[permission.key],
-											}))
-										}
-									>
-										<div className="flex items-start gap-3">
-											<div className="flex-shrink-0 mt-1">
-												{permission.icon}
-											</div>
-											<div>
-												<div className="font-medium text-gray-900">
-													{permission.label}
-												</div>
-												<div className="text-sm text-gray-500">
-													{permission.description}
-												</div>
-											</div>
-											<Checkbox
-												checked={selectedPermissions[permission.key]}
-												className="ml-auto mt-1"
-											/>
-										</div>
-									</div>
-								))}
-							</div>
-						</div>
-					)}
-				</Form>
-			</Drawer>
-		);
-
-		return (
-			<div className="space-y-6">
-				<div className="flex items-center justify-between">
-					<div>
-						<h3 className="text-lg font-semibold text-gray-900">
-							Team Members
-						</h3>
-						<p className="text-sm text-gray-500">
-							Manage your business team members and their permissions
-						</p>
-					</div>
-					<Button
-						type="primary"
-						icon={<FaUserPlus />}
-						onClick={() => setAddMemberDrawerVisible(true)}
-						className="flex items-center gap-2"
-					>
-						Add Team Member
-					</Button>
-				</div>
-
-				{teamMembers.length === 0 ? (
-					<div className="text-center py-12 bg-white rounded-2xl">
-						<div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-							<FaUsers className="text-blue-500 text-2xl" />
-						</div>
-						<Text className="text-gray-500 block mb-4">
-							Build your team by adding members
-						</Text>
-						<Button
-							type="primary"
-							icon={<FaUserPlus />}
-							onClick={() => setAddMemberDrawerVisible(true)}
-						>
-							Add Your First Team Member
-						</Button>
-					</div>
-				) : (
-					<div className="bg-white rounded-2xl overflow-hidden">
-						<div className="overflow-x-auto">
-							<table className="min-w-full divide-y divide-gray-200">
-								<thead className="bg-gray-50">
-									<tr>
-										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-											Member
-										</th>
-										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-											Role
-										</th>
-										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-											Status
-										</th>
-										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-											Permissions
-										</th>
-										<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-											Actions
-										</th>
-									</tr>
-								</thead>
-								<tbody className="bg-white divide-y divide-gray-200">
-									{teamMembers.map((member) => (
-										<tr
-											key={member.id}
-											className="hover:bg-gray-50 transition-colors duration-200"
-										>
-											<td className="px-6 py-4 whitespace-nowrap">
-												<div className="flex items-center">
-													<Avatar
-														size={40}
-														src={member.user?.profileImage}
-														icon={<FaUserCircle />}
-														className="bg-blue-100"
-														style={{ marginLeft: "16px" }}
-													/>
-													<div className="ml-4">
-														<div className="text-sm font-medium text-gray-900">
-															{member.user?.name}
-														</div>
-														<div className="text-sm text-gray-500">
-															<a
-																href={`mailto:${member.user?.email}`}
-																className="hover:text-blue-600"
-															>
-																{member.user?.email}
-															</a>
-														</div>
-													</div>
-												</div>
-											</td>
-											<td className="px-6 py-4 whitespace-nowrap">
-												<div className="flex items-center gap-2">
-													{
-														TEAM_MEMBER_ROLES.find(
-															(role) => role.value === member.role
-														)?.icon
-													}
-													<div>
-														<div className="text-sm text-gray-900 capitalize">
-															{member.role}
-														</div>
-														{member.position && (
-															<div className="text-xs text-gray-500">
-																{member.position}
-															</div>
-														)}
-													</div>
-												</div>
-											</td>
-											<td className="px-6 py-4 whitespace-nowrap">
-												<Tag
-													color={
-														member.status === "active" ? "success" : "default"
-													}
-													className="uppercase text-xs"
-												>
-													{member.status}
-												</Tag>
-											</td>
-											<td className="px-6 py-4">
-												<div className="flex flex-wrap gap-1">
-													{Object.entries(member.permissions || {})
-														.filter(([_, value]) => value)
-														.slice(0, 3)
-														.map(([key]) => (
-															<Tag key={key} className="capitalize text-xs">
-																{key.replace(/_/g, " ")}
-															</Tag>
-														))}
-													{Object.entries(member.permissions || {}).filter(
-														([_, value]) => value
-													).length > 3 && (
-														<Tooltip
-															title={Object.entries(member.permissions)
-																.filter(([_, value]) => value)
-																.slice(3)
-																.map(([key]) => key.replace(/_/g, " "))
-																.join(", ")}
-														>
-															<Tag className="cursor-help">
-																+
-																{Object.entries(member.permissions).filter(
-																	([_, value]) => value
-																).length - 3}
-															</Tag>
-														</Tooltip>
-													)}
-												</div>
-											</td>
-											<td className="px-6 py-4 whitespace-nowrap">
-												<div className="flex items-center gap-2">
-													<Tooltip title="Edit Member">
-														<Button
-															type="text"
-															icon={<FaEdit />}
-															className="text-blue-600 hover:text-blue-700"
-															onClick={() => handleEditMember(member)}
-														/>
-													</Tooltip>
-													<Tooltip title="Remove Member">
-														<Popconfirm
-															title="Remove Team Member"
-															description="Are you sure you want to remove this team member?"
-															onConfirm={() => handleRemoveMember(member.id)}
-															okText="Yes"
-															cancelText="No"
-														>
-															<Button
-																type="text"
-																icon={<FaTrash />}
-																className="text-red-600 hover:text-red-700"
-															/>
-														</Popconfirm>
-													</Tooltip>
-												</div>
-											</td>
-										</tr>
-									))}
-								</tbody>
-							</table>
-						</div>
-					</div>
-				)}
-
-				{renderAddMemberDrawer()}
-			</div>
-		);
+	const validateForm = () => {
+		const newErrors = {};
+		if (!newMember.email) newErrors.email = "Email is required";
+		if (!newMember.email.includes("@"))
+			newErrors.email = "Please enter a valid email address";
+		if (!newMember.role) newErrors.role = "Role is required";
+		return newErrors;
 	};
 
-	// Add these functions to handle team member actions
-	const handleEditMember = (member) => {
-		// Implement edit functionality
-		console.log("Edit member:", member);
+	const handleAddMember = async () => {
+		try {
+			const formErrors = validateForm();
+			if (Object.keys(formErrors).length > 0) {
+				setErrors(formErrors);
+				return;
+			}
+
+			setIsAddingMember(true);
+			setErrors({});
+
+			const response = await addTeamMember(business.id, {
+				email: newMember.email.trim().toLowerCase(),
+				role: newMember.role,
+			});
+
+			if (response.success) {
+				showSuccess(response.data.message || "Team member added successfully");
+				setIsAddMemberOpen(false);
+				setNewMember({
+					email: "",
+					role: "staff",
+					permissions: {},
+				});
+				loadBusinessDetails(); // Refresh the team members list
+			}
+		} catch (error) {
+			console.error("Error adding team member:", error);
+			const errorMessage = error.response?.data?.message || error.message;
+
+			// Handle specific error cases
+			if (errorMessage.includes("No user found with email")) {
+				setErrors({
+					email:
+						"This user hasn't registered yet. Please ask them to register first.",
+				});
+			} else if (errorMessage.includes("already a member")) {
+				setErrors({
+					email: "This user is already a member of this business.",
+				});
+			} else if (errorMessage.includes("previously removed")) {
+				setErrors({
+					email:
+						"This user was previously removed. Please contact support to restore access.",
+				});
+			} else if (errorMessage.includes("Invalid role")) {
+				setErrors({
+					role: "Please select a valid role.",
+				});
+			} else if (errorMessage.includes("already has an owner")) {
+				setErrors({
+					role: "This business already has an owner. Please select a different role.",
+				});
+			} else {
+				showError(errorMessage || "Failed to add team member");
+			}
+		} finally {
+			setIsAddingMember(false);
+		}
 	};
 
 	const handleRemoveMember = async (memberId) => {
 		try {
-			// Implement remove functionality
-			console.log("Remove member:", memberId);
+			const member = business.teamMembers.find((m) => m.id === memberId);
+			if (!member) return;
+
+			const isOwner = member.role === "owner";
+			if (isOwner) {
+				showError("Cannot remove the business owner");
+				return;
+			}
+
+			const confirmMessage = `Are you sure you want to remove ${
+				member.user.name || member.user.email
+			} from the team?`;
+			if (!window.confirm(confirmMessage)) return;
+
+			await removeTeamMember(business.id, memberId);
 			showSuccess("Team member removed successfully");
-			loadBusinessDetails();
+			loadBusinessDetails(); // Refresh the team members list
 		} catch (error) {
-			showError("Failed to remove team member");
+			console.error("Error removing team member:", error);
+			const errorMessage = error.response?.data?.message || error.message;
+			showError(errorMessage || "Failed to remove team member");
 		}
 	};
 
-	const handleRefreshChannelData = async (businessId) => {
-		try {
-			message.loading({
-				content: "Refreshing channel data...",
-				key: "refresh",
-			});
-			await axios.post(`/youtube/${businessId}/refresh`);
-			await loadBusinessDetails();
-			message.success({
-				content: "Channel data refreshed successfully",
-				key: "refresh",
-			});
-		} catch (error) {
-			console.error("Error refreshing channel data:", error);
-			message.error({
-				content:
-					error.response?.data?.message || "Failed to refresh channel data",
-				key: "refresh",
-			});
+	const getRoleIcon = (role) => {
+		switch (role) {
+			case "owner":
+				return <CrownOutlined className="text-yellow-500" />;
+			case "admin":
+				return <SafetyCertificateOutlined className="text-blue-500" />;
+			case "manager":
+				return <UserSwitchOutlined className="text-purple-500" />;
+			case "accountant":
+				return <AccountBookOutlined className="text-green-500" />;
+			case "inventory_manager":
+				return <InboxOutlined className="text-orange-500" />;
+			case "sales_representative":
+				return <ShoppingCartOutlined className="text-red-500" />;
+			case "marketing_specialist":
+				return <FundOutlined className="text-indigo-500" />;
+			case "customer_service":
+				return <CustomerServiceOutlined className="text-cyan-500" />;
+			case "staff":
+				return <UsergroupAddOutlined className="text-gray-500" />;
+			default:
+				return <UserOutlined className="text-gray-400" />;
 		}
 	};
 
-	const renderSocialMedia = () => {
-		const defaultSocialMedia = {
-			tiktok: { isConnected: false, permissions: [], metadata: {} },
-			facebook: { isConnected: false, permissions: [], metadata: {} },
-			instagram: { isConnected: false, permissions: [], metadata: {} },
-			youtube: { isConnected: false, permissions: [], metadata: {} },
-		};
-
-		const socialMedia = business?.socialMedia || defaultSocialMedia;
-
-		const connectedAccounts = SOCIAL_ACCOUNTS.map((account) => ({
-			...account,
-			isConnected: socialMedia[account.key]?.isConnected || false,
-			data: socialMedia[account.key] || { metadata: {} },
-		}));
-
-		const totalConnected = connectedAccounts.filter(
-			(acc) => acc.isConnected
-		).length;
-
-		const renderConnectPlatforms = () => (
-			<div className="space-y-6">
-				<div className="flex items-center justify-between mb-6">
-					<div>
-						<h3 className="text-lg font-semibold text-gray-900">
-							Connect Platforms
-						</h3>
-						<p className="text-sm text-gray-500">
-							Connect your social media accounts
-						</p>
-					</div>
-					<div className="flex items-center gap-2">
-						<div className="text-sm text-gray-600">
-							{totalConnected}/{SOCIAL_ACCOUNTS.length} Connected
-						</div>
-						{totalConnected === SOCIAL_ACCOUNTS.length && (
-							<div className="flex items-center gap-1 text-green-600 bg-green-50 px-3 py-1 rounded-full">
-								<FaCheckCircle className="text-sm" />
-								<span className="text-sm font-medium">All Connected</span>
-							</div>
-						)}
-					</div>
-				</div>
-
-				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-					{SOCIAL_ACCOUNTS.map((account) => {
-						const isConnected = socialMedia[account.key]?.isConnected || false;
-						return (
-							<div
-								key={account.key}
-								className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300"
-							>
-								<div className="flex items-start justify-between">
-									<div className="flex items-center gap-4">
-										<div
-											className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-											style={{
-												color: account.color,
-												background: `${account.color}10`,
-											}}
-										>
-											{account.icon}
-										</div>
-										<div>
-											<h4 className="text-lg font-medium text-gray-900">
-												{account.name}
-											</h4>
-											<p className="text-sm text-gray-500">
-												{isConnected ? "Connected" : "Not connected"}
-											</p>
-										</div>
-									</div>
-									{isConnected ? (
-										<div className="flex items-center gap-2 px-3 py-1 bg-green-50 rounded-full">
-											<FaCheckCircle className="text-green-500" />
-											<span className="text-green-600 text-sm font-medium">
-												Connected
-											</span>
-										</div>
-									) : (
-										<Button
-											type="primary"
-											ghost
-											icon={<LinkOutlined />}
-											className="flex items-center gap-2"
-											style={{
-												color: account.color,
-												borderColor: account.color,
-											}}
-											onClick={() => handleConnect(account.name)}
-										>
-											Connect
-										</Button>
-									)}
-								</div>
-							</div>
-						);
-					})}
-				</div>
-			</div>
-		);
-
-		const renderPlatformData = (account) => {
-			const platformData = socialMedia[account.key];
-			const metadata = platformData?.metadata || {};
-			const hasMetadata = Object.keys(metadata).length > 0;
-
-			if (!platformData?.isConnected) {
-				return (
-					<div className="text-center py-12">
-						<div
-							className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
-							style={{ background: `${account.color}10`, color: account.color }}
-						>
-							{account.icon}
-						</div>
-						<Text className="text-gray-500 block">
-							Connect your {account.name} account to see analytics
-						</Text>
-						<Button
-							type="primary"
-							ghost
-							icon={<LinkOutlined />}
-							className="mt-4"
-							style={{ color: account.color, borderColor: account.color }}
-							onClick={() => handleConnect(account.name)}
-						>
-							Connect {account.name}
-						</Button>
-					</div>
-				);
-			}
-
-			if (!hasMetadata) {
-				return (
-					<div className="text-center py-12">
-						<div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-							<FaChartBar className="text-gray-400 text-2xl" />
-						</div>
-						<Text className="text-gray-500 block">No data available yet</Text>
-					</div>
-				);
-			}
-
-			// Enhanced YouTube data display
-			if (account.key === "youtube") {
-				return (
-					<div className="space-y-6">
-						{/* Channel Banner */}
-						{metadata.bannerImageUrl && (
-							<div className="w-full h-32 md:h-48 rounded-xl overflow-hidden">
-								<img
-									src={metadata.bannerImageUrl}
-									alt="Channel Banner"
-									className="w-full h-full object-cover"
-								/>
-							</div>
-						)}
-
-						{/* Channel Header */}
-						<div className="bg-gradient-to-r from-red-50 to-red-100 rounded-xl p-6">
-							<div className="flex items-start gap-6">
-								{/* Channel Thumbnail */}
-								{metadata.thumbnails && (
-									<div className="flex-shrink-0">
-										<img
-											src={
-												metadata.thumbnails.default?.url ||
-												metadata.thumbnails.medium?.url
-											}
-											alt={metadata.channelName}
-											className="w-24 h-24 rounded-xl object-cover"
-										/>
-									</div>
-								)}
-
-								{/* Channel Info */}
-								<div className="flex-grow">
-									<h3 className="text-xl font-bold text-gray-900 mb-2">
-										{metadata.channelName}
-									</h3>
-									<div className="flex items-center gap-2 mb-2">
-										{metadata.customUrl && (
-											<a
-												href={`https://youtube.com/${metadata.customUrl}`}
-												target="_blank"
-												rel="noopener noreferrer"
-												className="text-red-600 hover:text-red-700 flex items-center gap-1"
-											>
-												<FaYoutube />
-												{metadata.customUrl}
-											</a>
-										)}
-									</div>
-									{metadata.description && (
-										<p className="text-gray-600 text-sm line-clamp-2 mb-3">
-											{metadata.description}
-										</p>
-									)}
-									<div className="flex flex-wrap items-center gap-4">
-										<div className="flex items-center gap-1 text-gray-600">
-											<FaUsers className="text-gray-400" />
-											<span>
-												{Number(metadata.subscriberCount).toLocaleString()}{" "}
-												subscribers
-											</span>
-										</div>
-										<div className="flex items-center gap-1 text-gray-600">
-											<FaVideo className="text-gray-400" />
-											<span>
-												{Number(metadata.videoCount).toLocaleString()} videos
-											</span>
-										</div>
-										<div className="flex items-center gap-1 text-gray-600">
-											<FaEye className="text-gray-400" />
-											<span>
-												{Number(metadata.viewCount).toLocaleString()} views
-											</span>
-										</div>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						{/* Channel Statistics */}
-						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
-								<div className="flex items-center gap-3 mb-2">
-									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
-										<FaUsers className="text-xl" />
-									</div>
-									<div>
-										<p className="text-sm text-gray-500">Subscribers</p>
-										<p className="text-xl font-bold text-gray-900">
-											{Number(metadata.subscriberCount).toLocaleString()}
-										</p>
-									</div>
-								</div>
-							</div>
-							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
-								<div className="flex items-center gap-3 mb-2">
-									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
-										<FaVideo className="text-xl" />
-									</div>
-									<div>
-										<p className="text-sm text-gray-500">Videos</p>
-										<p className="text-xl font-bold text-gray-900">
-											{Number(metadata.videoCount).toLocaleString()}
-										</p>
-									</div>
-								</div>
-							</div>
-							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
-								<div className="flex items-center gap-3 mb-2">
-									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
-										<FaEye className="text-xl" />
-									</div>
-									<div>
-										<p className="text-sm text-gray-500">Total Views</p>
-										<p className="text-xl font-bold text-gray-900">
-											{Number(metadata.viewCount).toLocaleString()}
-										</p>
-									</div>
-								</div>
-							</div>
-						</div>
-
-						{/* Additional Channel Info */}
-						<div className="bg-white rounded-xl p-6 border border-gray-100">
-							<h4 className="font-medium text-gray-900 mb-4">
-								Channel Details
-							</h4>
-							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-								{metadata.publishedAt && (
-									<div className="flex items-center gap-2">
-										<FaCalendar className="text-gray-400" />
-										<div>
-											<p className="text-sm text-gray-500">Created On</p>
-											<p className="text-gray-900">
-												{new Date(metadata.publishedAt).toLocaleDateString()}
-											</p>
-										</div>
-									</div>
-								)}
-								{metadata.country && (
-									<div className="flex items-center gap-2">
-										<FaGlobe className="text-gray-400" />
-										<div>
-											<p className="text-sm text-gray-500">Country</p>
-											<p className="text-gray-900">{metadata.country}</p>
-										</div>
-									</div>
-								)}
-							</div>
-							{metadata.keywords && (
-								<div className="mt-4">
-									<p className="text-sm text-gray-500 mb-2">Keywords</p>
-									<div className="flex flex-wrap gap-2">
-										{metadata.keywords.split(",").map((keyword, index) => (
-											<Tag key={index} className="rounded-full">
-												{keyword.trim()}
-											</Tag>
-										))}
-									</div>
-								</div>
-							)}
-						</div>
-
-						{/* Channel Actions */}
-						<div className="flex items-center justify-end gap-4 mt-6">
-							<Button
-								type="default"
-								icon={<FaSync />}
-								onClick={() => handleRefreshChannelData(business.id)}
-							>
-								Refresh Data
-							</Button>
-							{metadata.channelUrl && (
-								<Button
-									type="primary"
-									icon={<FaExternalLinkAlt />}
-									href={metadata.channelUrl}
-									target="_blank"
-									rel="noopener noreferrer"
-								>
-									View Channel
-								</Button>
-							)}
-						</div>
-					</div>
-				);
-			}
-
-			// Default display for other platforms
-			return (
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-					{Object.entries(account.metadataLabels).map(([key, label]) => {
-						const value = metadata[key];
-						if (value === undefined || value === null) return null;
-
-						return (
-							<div
-								key={key}
-								className="bg-white rounded-xl p-6 border border-gray-100"
-							>
-								<Text className="text-sm text-gray-500 block mb-1">
-									{label}
-								</Text>
-								<Text strong className="text-lg">
-									{typeof value === "boolean"
-										? value
-											? "Yes"
-											: "No"
-										: typeof value === "number"
-										? value.toLocaleString()
-										: value || "Not available"}
-								</Text>
-							</div>
-						);
-					})}
-				</div>
-			);
-		};
-
-		const items = [
-			{
-				key: "connect",
-				label: (
-					<span className="flex items-center gap-2">
-						<LinkOutlined />
-						Connect Platforms
-					</span>
-				),
-				children: renderConnectPlatforms(),
-			},
-			...SOCIAL_ACCOUNTS.map((account) => ({
-				key: account.key,
-				label: (
-					<span className="flex items-center gap-2">
-						{account.icon}
-						{account.name}
-					</span>
-				),
-				children: renderPlatformData(account),
-			})),
-		];
-
-		return (
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<Tabs
-					defaultActiveKey="connect"
-					items={items}
-					className="px-6 pt-6"
-					onChange={(key) => console.log(key)}
-				/>
-			</div>
-		);
-	};
-
-	const getStatusBadge = (status, type) => {
+	const getStatusBadge = (status = "pending", type = "status") => {
 		const statusConfig = {
 			status: {
 				active: {
 					color: "bg-green-100 text-green-700 border-green-300",
 					icon: <FaCheckCircle className="text-green-500" />,
+					text: "Active",
 				},
 				inactive: {
 					color: "bg-gray-100 text-gray-600 border-gray-300",
 					icon: <FaTimesCircle className="text-gray-500" />,
+					text: "Inactive",
 				},
 				suspended: {
 					color: "bg-red-100 text-red-700 border-red-300",
 					icon: <FaTimesCircle className="text-red-500" />,
+					text: "Suspended",
 				},
 				pending: {
 					color: "bg-yellow-100 text-yellow-700 border-yellow-300",
 					icon: <FaClock className="text-yellow-500" />,
+					text: "Pending",
 				},
 			},
 			verification: {
 				verified: {
 					color: "bg-green-100 text-green-700 border-green-300",
 					icon: <FaCheckCircle className="text-green-500" />,
+					text: "Verified",
 				},
 				unverified: {
 					color: "bg-gray-100 text-gray-600 border-gray-300",
 					icon: <FaTimesCircle className="text-gray-500" />,
+					text: "Unverified",
 				},
 				rejected: {
 					color: "bg-red-100 text-red-700 border-red-300",
 					icon: <FaTimesCircle className="text-red-500" />,
+					text: "Rejected",
 				},
 				pending: {
 					color: "bg-yellow-100 text-yellow-700 border-yellow-300",
 					icon: <FaClock className="text-yellow-500" />,
+					text: "Pending",
 				},
 			},
 		};
 
+		const normalizedStatus = (status || "pending").toLowerCase();
 		const config =
-			statusConfig[type][status?.toLowerCase()] || statusConfig[type].pending;
+			statusConfig[type][normalizedStatus] || statusConfig[type].pending;
 
 		return (
 			<div
 				className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${config.color} shadow-sm transition-all duration-200 hover:shadow-md`}
 			>
 				{config.icon}
-				<span className="capitalize font-medium text-sm">
-					{status || "Pending"}
-				</span>
+				<span className="capitalize font-medium text-sm">{config.text}</span>
+			</div>
+		);
+	};
+
+	const renderTeamMembers = () => {
+		if (!business?.teamMembers?.length) {
+			return renderEmptyList("No team members added yet");
+		}
+
+		return (
+			<div className="bg-white rounded-lg overflow-hidden -mx-4 sm:mx-0">
+				<Table
+					dataSource={business.teamMembers}
+					rowKey="id"
+					pagination={false}
+					className="custom-table"
+					scroll={{ x: true }}
+					columns={[
+						{
+							title: "Member",
+							key: "member",
+							fixed: "left",
+							width: 250,
+							render: (_, member) => (
+								<div className="flex items-center space-x-3 py-2">
+									<Avatar
+										size={32}
+										src={member.user?.profileImage}
+										icon={!member.user?.profileImage && <UserOutlined />}
+										className="bg-blue-100 flex-shrink-0"
+									/>
+									<div className="min-w-0">
+										<div className="text-sm font-medium text-gray-900 truncate">
+											{member.user?.name || "Unnamed User"}
+										</div>
+										<div className="text-xs text-gray-500 truncate">
+											{member.user?.email}
+										</div>
+									</div>
+								</div>
+							),
+						},
+						{
+							title: "Role",
+							key: "role",
+							width: 180,
+							render: (_, member) => (
+								<div className="flex items-center space-x-2">
+									<Tag
+										icon={getRoleIcon(member.role)}
+										color={
+											member.role === "owner"
+												? "gold"
+												: member.role === "admin"
+												? "blue"
+												: "default"
+										}
+									>
+										{member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+									</Tag>
+								</div>
+							),
+						},
+						{
+							title: "Status",
+							key: "status",
+							width: 120,
+							render: (_, member) =>
+								getStatusBadge(member.status || "pending", "status"),
+						},
+						{
+							title: "Department",
+							dataIndex: ["department"],
+							key: "department",
+							width: 150,
+							render: (department) =>
+								department ? (
+									<Tag icon={<TeamOutlined />}>{department}</Tag>
+								) : (
+									<span className="text-gray-400">-</span>
+								),
+						},
+						{
+							title: "Position",
+							dataIndex: ["position"],
+							key: "position",
+							width: 150,
+							render: (position) =>
+								position ? (
+									<Tag icon={<IdcardOutlined />}>{position}</Tag>
+								) : (
+									<span className="text-gray-400">-</span>
+								),
+						},
+						{
+							title: "Permissions",
+							key: "permissions",
+							width: 150,
+							render: (_, member) => {
+								const activePermissions = Object.entries(
+									member.permissions || {}
+								)
+									.filter(([, value]) => value === true)
+									.map(([key]) => key);
+
+								if (activePermissions.length === 0) {
+									return <span className="text-gray-400">No permissions</span>;
+								}
+
+								return (
+									<Tooltip
+										title={
+											<div className="max-w-xs">
+												{activePermissions.map((perm) => (
+													<div key={perm} className="text-xs py-0.5">
+														• {perm.split("_").join(" ")}
+													</div>
+												))}
+											</div>
+										}
+									>
+										<div className="flex items-center space-x-1">
+											<Tag className="cursor-help">
+												{activePermissions.length} permission
+												{activePermissions.length !== 1 ? "s" : ""}
+											</Tag>
+											<InfoCircleOutlined className="text-gray-400" />
+										</div>
+									</Tooltip>
+								);
+							},
+						},
+						{
+							title: "",
+							key: "actions",
+							fixed: "right",
+							width: 60,
+							render: (_, member) => (
+								<Dropdown
+									menu={{
+										items: [
+											{
+												key: "edit",
+												label: "Edit Member",
+												icon: <EditOutlined />,
+												onClick: () => handleEditMember(member),
+											},
+											{
+												key: "remove",
+												label: "Remove Member",
+												icon: <DeleteOutlined />,
+												danger: true,
+												disabled: member.role === "owner",
+												onClick: () => handleRemoveMember(member.id),
+											},
+										],
+									}}
+									trigger={["click"]}
+									placement="bottomRight"
+								>
+									<Button
+										type="text"
+										icon={<EllipsisOutlined />}
+										className="hover:bg-gray-50"
+									/>
+								</Dropdown>
+							),
+						},
+					]}
+				/>
 			</div>
 		);
 	};
 
 	const handleEditSection = (section) => {
 		setEditSection(section);
+
+		// Convert time strings to dayjs objects for business hours
+		const businessHoursWithDayjs = {};
+		if (business.businessHours) {
+			Object.entries(business.businessHours).forEach(([day, hours]) => {
+				businessHoursWithDayjs[day] = {
+					...hours,
+					start: hours.start ? dayjs(hours.start, "HH:mm") : null,
+					end: hours.end ? dayjs(hours.end, "HH:mm") : null,
+				};
+			});
+		}
+
 		editForm.setFieldsValue({
 			...business,
 			address: business.address || {},
-			businessHours: business.businessHours || {},
+			businessHours: businessHoursWithDayjs || {},
 			serviceCategories:
 				business.type === "service" ? business.serviceCategories : [],
 			productCategories:
 				business.type === "product" ? business.productCategories : [],
 		});
 		setEditDrawerVisible(true);
+		setShowEditDrawer(true);
 	};
 
 	const handleEditSave = async () => {
@@ -1359,14 +991,15 @@ const BusinessDetails = () => {
 
 			// Convert dayjs objects back to string format for API
 			if (values.businessHours) {
+				const businessHoursWithStrings = {};
 				Object.entries(values.businessHours).forEach(([day, hours]) => {
-					if (hours.start) {
-						values.businessHours[day].start = hours.start.format("HH:mm");
-					}
-					if (hours.end) {
-						values.businessHours[day].end = hours.end.format("HH:mm");
-					}
+					businessHoursWithStrings[day] = {
+						...hours,
+						start: hours.start ? hours.start.format("HH:mm") : null,
+						end: hours.end ? hours.end.format("HH:mm") : null,
+					};
 				});
+				values.businessHours = businessHoursWithStrings;
 			}
 
 			await updateBusiness(id, {
@@ -1376,6 +1009,7 @@ const BusinessDetails = () => {
 			hide();
 			message.success("Changes saved successfully!");
 			setEditDrawerVisible(false);
+			setShowEditDrawer(false);
 			setEditSection(null);
 			loadBusinessDetails();
 		} catch (error) {
@@ -1481,6 +1115,44 @@ const BusinessDetails = () => {
 								</Select>
 							</Form.Item>
 						)}
+
+						{/* Tags Input */}
+						<Form.Item
+							name="tags"
+							label="Business Tags"
+							extra="Add tags to help customers find your business"
+						>
+							<Select
+								mode="tags"
+								placeholder="Add tags (press enter to add)"
+								className="w-full"
+								tokenSeparators={[","]}
+								maxTagCount={10}
+								maxTagTextLength={20}
+								showSearch={true}
+								filterOption={(input, option) =>
+									option.children.toLowerCase().indexOf(input.toLowerCase()) >=
+									0
+								}
+								options={BUSINESS_CONSTANTS.TAGS.map((tag) => ({
+									label: tag,
+									value: tag,
+								}))}
+								tagRender={({ label, closable, onClose }) => (
+									<Tag
+										closable={closable}
+										onClose={(e) => {
+											e.preventDefault();
+											e.stopPropagation();
+											onClose();
+										}}
+										className="px-2 py-0.5 m-1 bg-blue-50 text-blue-600 border-0 hover:bg-blue-100 transition-colors"
+									>
+										{label}
+									</Tag>
+								)}
+							/>
+						</Form.Item>
 					</>
 				)}
 				{editSection === EDITABLE_SECTIONS.BASIC && (
@@ -2064,449 +1736,643 @@ const BusinessDetails = () => {
 					</div>
 				</div>
 				<div className="p-6">
+					{/* Operating Status Summary */}
+					<div className="mb-6 bg-gray-50 rounded-xl p-4">
+						<div className="flex items-center justify-between">
+							<div className="flex items-center gap-3">
+								<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-orange-500">
+									<FaClock />
+								</div>
+								<div>
+									<h4 className="font-medium text-gray-900">
+										Operating Status
+									</h4>
+									<p className="text-sm text-gray-500">
+										{
+											Object.values(business.businessHours || {}).filter(
+												(day) => day.closed
+											).length
+										}{" "}
+										days closed per week
+									</p>
+								</div>
+							</div>
+							<div className="flex items-center gap-2">
+								<div className="flex items-center gap-1 px-3 py-1.5 bg-green-50 rounded-full">
+									<FaCheckCircle className="text-green-500" />
+									<span className="text-green-600 text-sm font-medium">
+										{
+											Object.values(business.businessHours || {}).filter(
+												(day) => !day.closed
+											).length
+										}{" "}
+										Days Open
+									</span>
+								</div>
+								<div className="flex items-center gap-1 px-3 py-1.5 bg-red-50 rounded-full">
+									<FaTimesCircle className="text-red-500" />
+									<span className="text-red-600 text-sm font-medium">
+										{
+											Object.values(business.businessHours || {}).filter(
+												(day) => day.closed
+											).length
+										}{" "}
+										Days Closed
+									</span>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					{/* Business Hours Grid */}
 					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
 						{DAYS_ORDER.map((day) => {
-							const hours = business.businessHours?.[day] || {
-								start: "N/A",
-								end: "N/A",
-							};
+							const hours = business.businessHours?.[day] || {};
+							const isClosed = hours.closed;
+
 							return (
 								<div
 									key={day}
-									className="bg-gray-50 p-4 rounded-xl flex flex-col"
+									className={`p-4 rounded-xl flex flex-col transition-all duration-300 ${
+										isClosed
+											? "bg-red-50 border border-red-100"
+											: "bg-green-50 border border-green-100"
+									}`}
 								>
-									<span className="text-gray-900 font-medium capitalize mb-2">
-										{day}
-									</span>
-									<div className="flex items-center gap-2 text-gray-600">
-										<FaClock className="text-gray-400 text-sm" />
-										<span>
-											{hours.start} - {hours.end}
+									<div className="flex items-center justify-between mb-2">
+										<span
+											className={`font-medium capitalize ${
+												isClosed ? "text-red-700" : "text-green-700"
+											}`}
+										>
+											{day}
 										</span>
+										{isClosed ? (
+											<div className="flex items-center gap-1 px-2 py-1 bg-red-100 rounded-full">
+												<FaTimesCircle className="text-red-500 text-sm" />
+												<span className="text-red-600 text-xs font-medium">
+													Closed
+												</span>
+											</div>
+										) : (
+											<div className="flex items-center gap-1 px-2 py-1 bg-green-100 rounded-full">
+												<FaCheckCircle className="text-green-500 text-sm" />
+												<span className="text-green-600 text-xs font-medium">
+													Open
+												</span>
+											</div>
+										)}
 									</div>
+									{!isClosed && (
+										<div className="flex items-center gap-2 text-sm">
+											<FaClock
+												className={`${
+													isClosed ? "text-red-400" : "text-green-400"
+												}`}
+											/>
+											<span
+												className={`${
+													isClosed ? "text-red-600" : "text-green-600"
+												}`}
+											>
+												{hours.start} - {hours.end}
+											</span>
+										</div>
+									)}
 								</div>
 							);
 						})}
 					</div>
 				</div>
 			</div>
+		</div>
+	);
 
-			{/* Contact Information */}
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<div className="border-b border-gray-100">
-					<div className="flex items-center justify-between p-6">
-						<div className="flex items-center gap-4">
-							<div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
-								<FaEnvelope className="text-xl" />
-							</div>
-							<div>
-								<h3 className="text-lg font-semibold text-gray-900">
-									Contact Information
-								</h3>
-								<p className="text-sm text-gray-500">
-									Business contact details
-								</p>
+	const handleEditLocation = (location) => {
+		// TODO: Implement location editing functionality
+		console.log("Edit location:", location);
+	};
+
+	const handleDeleteLocation = async (locationId) => {
+		try {
+			// TODO: Implement location deletion functionality
+			console.log("Delete location:", locationId);
+			showSuccess("Location deleted successfully");
+			loadBusinessDetails();
+		} catch (error) {
+			showError("Failed to delete location");
+		}
+	};
+
+	const renderLocations = () => {
+		// Create a locations array from the address object
+		const locations = business.address
+			? [
+					{
+						id: "main",
+						name: "Main Location",
+						type:
+							business.operationMode === "digital"
+								? "Digital Office"
+								: "Physical Location",
+						address: business.address,
+						phone: business.phone,
+						email: business.email,
+						businessHours: business.businessHours,
+						isPrimary: true,
+					},
+			  ]
+			: [];
+
+		return (
+			<div className="space-y-6">
+				{/* Header Section */}
+				<div className="bg-white rounded-2xl shadow-sm p-6">
+					<div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+						<div>
+							<h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+								<FaMapMarkerAlt className="text-blue-500" />
+								Business Locations
+							</h3>
+							<p className="text-sm text-gray-500 mt-1">
+								Manage and organize your business locations
+							</p>
+						</div>
+						<div className="flex items-center gap-3">
+							<Button
+								type="primary"
+								icon={<FaPlus />}
+								onClick={() => setShowAddLocationModal(true)}
+								className="flex items-center gap-2"
+							>
+								Add New Location
+							</Button>
+						</div>
+					</div>
+
+					{/* Quick Stats */}
+					<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+						<div className="bg-blue-50 rounded-xl p-4">
+							<div className="flex items-center gap-3">
+								<div className="w-10 h-10 rounded-lg bg-blue-500 bg-opacity-10 flex items-center justify-center">
+									<FaBuilding className="text-blue-500" />
+								</div>
+								<div>
+									<p className="text-sm text-blue-600 font-medium">
+										Total Locations
+									</p>
+									<p className="text-2xl font-semibold text-blue-700">
+										{locations.length}
+									</p>
+								</div>
 							</div>
 						</div>
-						<Button
-							onClick={() => handleEditSection(EDITABLE_SECTIONS.CONTACT)}
-							icon={<FaEdit />}
-							className="flex items-center gap-2"
-						>
-							Edit Contact
-						</Button>
+						<div className="bg-green-50 rounded-xl p-4">
+							<div className="flex items-center gap-3">
+								<div className="w-10 h-10 rounded-lg bg-green-500 bg-opacity-10 flex items-center justify-center">
+									<FaStore className="text-green-500" />
+								</div>
+								<div>
+									<p className="text-sm text-green-600 font-medium">
+										Physical Locations
+									</p>
+									<p className="text-2xl font-semibold text-green-700">
+										{
+											locations.filter(
+												(loc) => loc.type === "Physical Location"
+											).length
+										}
+									</p>
+								</div>
+							</div>
+						</div>
+						<div className="bg-purple-50 rounded-xl p-4">
+							<div className="flex items-center gap-3">
+								<div className="w-10 h-10 rounded-lg bg-purple-500 bg-opacity-10 flex items-center justify-center">
+									<FaGlobe className="text-purple-500" />
+								</div>
+								<div>
+									<p className="text-sm text-purple-600 font-medium">
+										Digital Offices
+									</p>
+									<p className="text-2xl font-semibold text-purple-700">
+										{
+											locations.filter((loc) => loc.type === "Digital Office")
+												.length
+										}
+									</p>
+								</div>
+							</div>
+						</div>
+						<div className="bg-orange-50 rounded-xl p-4">
+							<div className="flex items-center gap-3">
+								<div className="w-10 h-10 rounded-lg bg-orange-500 bg-opacity-10 flex items-center justify-center">
+									<FaClock className="text-orange-500" />
+								</div>
+								<div>
+									<p className="text-sm text-orange-600 font-medium">
+										Operating Hours
+									</p>
+									<p className="text-2xl font-semibold text-orange-700">
+										{
+											Object.values(business.businessHours || {}).filter(
+												(day) => !day.closed
+											).length
+										}
+									</p>
+								</div>
+							</div>
+						</div>
 					</div>
 				</div>
-				<div className="p-6">
-					<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-						{[
-							{
-								label: "Email",
-								value: business.email || "Not provided",
-								icon: <FaEnvelope />,
-								link: business.email ? `mailto:${business.email}` : null,
-								color: "text-blue-500",
-								bg: "bg-blue-50",
-							},
-							{
-								label: "Phone",
-								value: business.phone || "Not provided",
-								icon: <FaPhone />,
-								link: business.phone ? `tel:${business.phone}` : null,
-								color: "text-green-500",
-								bg: "bg-green-50",
-							},
-						].map((contact, index) => (
+
+				{/* Locations List */}
+				{locations.length === 0 ? (
+					<div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+						<div className="max-w-sm mx-auto">
+							<div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+								<FaMapMarkerAlt className="text-blue-500 text-2xl" />
+							</div>
+							<h3 className="text-lg font-medium text-gray-900 mb-2">
+								No Locations Added
+							</h3>
+							<p className="text-gray-500 mb-6">
+								Start by adding your first business location. You can add
+								multiple locations and manage them all from here.
+							</p>
+							<Button
+								type="primary"
+								icon={<FaPlus />}
+								onClick={() => setShowAddLocationModal(true)}
+								className="flex items-center gap-2 mx-auto"
+							>
+								Add Your First Location
+							</Button>
+						</div>
+					</div>
+				) : (
+					<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+						{locations.map((location, index) => (
 							<div
 								key={index}
-								className={`group bg-gray-50 p-4 rounded-xl transition-all duration-300 hover:bg-gradient-to-br hover:from-${
-									contact.bg.split("-")[1]
-								}-50 hover:to-${contact.bg.split("-")[1]}-100/50`}
+								className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden group"
 							>
-								<div className="flex items-center gap-3 mb-2">
-									<div
-										className={`w-8 h-8 rounded-lg bg-white flex items-center justify-center ${contact.color}`}
-									>
-										{contact.icon}
-									</div>
-									<div className="text-gray-600 text-sm font-medium">
-										{contact.label}
+								{/* Location Header */}
+								<div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6">
+									<div className="flex items-start justify-between">
+										<div className="flex items-start gap-4">
+											<div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform duration-300">
+												{location.type === "Digital Office" ? (
+													<FaGlobe className="text-xl" />
+												) : (
+													<FaBuilding className="text-xl" />
+												)}
+											</div>
+											<div>
+												<div className="flex items-center gap-2">
+													<h4 className="text-lg font-medium text-gray-900">
+														{location.name}
+													</h4>
+													{location.isPrimary && (
+														<Tag color="blue" className="rounded-full">
+															Primary
+														</Tag>
+													)}
+												</div>
+												<p className="text-sm text-gray-500 mt-1">
+													{location.type}
+												</p>
+											</div>
+										</div>
+										<div className="flex items-center gap-2">
+											<Tooltip title="Edit Location">
+												<Button
+													type="text"
+													icon={<FaEdit />}
+													onClick={() => handleEditLocation(location)}
+													className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+												/>
+											</Tooltip>
+											<Popconfirm
+												title="Delete Location"
+												description="Are you sure you want to delete this location? This action cannot be undone."
+												onConfirm={() => handleDeleteLocation(location.id)}
+												okText="Delete"
+												cancelText="Cancel"
+												placement="left"
+											>
+												<Button
+													type="text"
+													icon={<FaTrash />}
+													className="text-red-600 hover:text-red-700 hover:bg-red-50"
+												/>
+											</Popconfirm>
+										</div>
 									</div>
 								</div>
-								<div className="text-gray-900 font-semibold pl-11 break-all">
-									{contact.link ? (
-										<a
-											href={contact.link}
-											className={`${contact.color} hover:underline`}
-										>
-											{contact.value}
-										</a>
-									) : (
-										contact.value
+
+								{/* Location Details */}
+								<div className="p-6 space-y-4">
+									{/* Address Section */}
+									{location.address && (
+										<div className="flex items-start gap-3">
+											<div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
+												<FaMapMarkerAlt />
+											</div>
+											<div className="flex-1">
+												<p className="text-sm font-medium text-gray-900 mb-1">
+													Address
+												</p>
+												<div className="text-gray-600 text-sm space-y-1">
+													{location.address.street && (
+														<p>{location.address.street}</p>
+													)}
+													<p>
+														{[
+															location.address.city,
+															location.address.state,
+															location.address.postalCode,
+														]
+															.filter(Boolean)
+															.join(", ")}
+													</p>
+													{location.address.country && (
+														<p>{location.address.country}</p>
+													)}
+												</div>
+											</div>
+										</div>
+									)}
+
+									{/* Contact Section */}
+									<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+										{location.phone && (
+											<div className="flex items-center gap-3">
+												<div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center text-green-500">
+													<FaPhone />
+												</div>
+												<div>
+													<p className="text-sm font-medium text-gray-900">
+														Phone
+													</p>
+													<a
+														href={`tel:${location.phone}`}
+														className="text-sm text-green-600 hover:text-green-700"
+													>
+														{location.phone}
+													</a>
+												</div>
+											</div>
+										)}
+
+										{location.email && (
+											<div className="flex items-center gap-3">
+												<div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center text-purple-500">
+													<FaEnvelope />
+												</div>
+												<div>
+													<p className="text-sm font-medium text-gray-900">
+														Email
+													</p>
+													<a
+														href={`mailto:${location.email}`}
+														className="text-sm text-purple-600 hover:text-purple-700"
+													>
+														{location.email}
+													</a>
+												</div>
+											</div>
+										)}
+									</div>
+
+									{/* Business Hours Section */}
+									{location.businessHours && (
+										<div className="pt-4 border-t">
+											<div className="flex items-center gap-2 mb-3">
+												<FaClock className="text-orange-500" />
+												<h5 className="text-sm font-medium text-gray-900">
+													Business Hours
+												</h5>
+											</div>
+											<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+												{Object.entries(location.businessHours)
+													.filter(([_, hours]) => !hours.closed)
+													.map(([day, hours]) => (
+														<div
+															key={day}
+															className="flex items-center justify-between bg-gray-50 rounded-lg p-2"
+														>
+															<span className="text-sm font-medium text-gray-700 capitalize">
+																{day}
+															</span>
+															<span className="text-sm text-gray-600">
+																{hours.start} - {hours.end}
+															</span>
+														</div>
+													))}
+											</div>
+										</div>
 									)}
 								</div>
 							</div>
 						))}
 					</div>
-					{business.address && (
-						<div className="mt-6 bg-gray-50 rounded-xl p-6">
-							<div className="flex items-center gap-3 mb-3">
-								<div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-purple-500">
-									<FaMapMarkerAlt />
-								</div>
-								<h4 className="font-medium text-gray-900">Address</h4>
-							</div>
-							<p className="text-gray-600 font-medium pl-11 break-words">
-								{[
-									business.address.street,
-									business.address.city,
-									business.address.state,
-									business.address.country,
-									business.address.postalCode,
-								]
-									.filter(Boolean)
-									.join(", ")}
-							</p>
-						</div>
-					)}
-				</div>
-			</div>
-
-			{/* Payment Information */}
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<div className="border-b border-gray-100">
-					<div className="flex items-center justify-between p-6">
-						<div className="flex items-center gap-4">
-							<div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
-								<FaWallet className="text-xl" />
-							</div>
-							<div>
-								<h3 className="text-lg font-semibold text-gray-900">
-									Payment Information
-								</h3>
-								<p className="text-sm text-gray-500">
-									Payment methods and currency
-								</p>
-							</div>
-						</div>
-						<Button
-							onClick={() => handleEditSection(EDITABLE_SECTIONS.PAYMENT)}
-							icon={<FaEdit />}
-							className="flex items-center gap-2"
-						>
-							Edit Payment Info
-						</Button>
-					</div>
-				</div>
-				<div className="p-6 space-y-8">
-					<div>
-						<div className="flex items-center gap-3 mb-4">
-							<div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
-								<FaCreditCard />
-							</div>
-							<h4 className="font-medium text-gray-900">
-								Accepted Payment Methods
-							</h4>
-						</div>
-						<div className="flex flex-wrap gap-3 pl-11">
-							{business.paymentMethods?.length > 0 ? (
-								business.paymentMethods.map((method, index) => (
-									<div
-										key={index}
-										className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-50 to-blue-100/50 border border-blue-100 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5"
-									>
-										<FaCreditCard className="text-blue-500 group-hover:scale-110 transition-transform duration-300" />
-										<span className="text-blue-700 font-medium capitalize">
-											{method.replace(/_/g, " ")}
-										</span>
-									</div>
-								))
-							) : (
-								<div className="text-gray-500 italic">
-									No payment methods specified
-								</div>
-							)}
-						</div>
-					</div>
-					<div>
-						<div className="flex items-center gap-3 mb-4">
-							<div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-500">
-								<FaDollarSign />
-							</div>
-							<h4 className="font-medium text-gray-900">Currency</h4>
-						</div>
-						<div className="pl-11">
-							<div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-50 to-emerald-100/50 border border-emerald-100 transition-all duration-300 hover:shadow-md">
-								<FaDollarSign className="text-emerald-500" />
-								<span className="text-emerald-700 font-medium">
-									{business.currency}
-								</span>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			{/* Status Information */}
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<div className="border-b border-gray-100">
-					<div className="flex items-center gap-4 p-6">
-						<div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-500">
-							<FaShieldAlt className="text-xl" />
-						</div>
-						<div>
-							<h3 className="text-lg font-semibold text-gray-900">
-								Status Information
-							</h3>
-							<p className="text-sm text-gray-500">
-								Business and verification status
-							</p>
-						</div>
-					</div>
-				</div>
-				<div className="p-6">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						{[
-							{
-								label: "Business Status",
-								value: business.status,
-								type: "status",
-								icon: <FaStore />,
-								bg: "bg-blue-50",
-								color: "text-blue-500",
-							},
-							{
-								label: "Verification Status",
-								value: business.verificationStatus,
-								type: "verification",
-								icon: <FaShieldAlt />,
-								bg: "bg-purple-50",
-								color: "text-purple-500",
-							},
-						].map((status, index) => (
-							<div
-								key={index}
-								className="group bg-gray-50 p-6 rounded-xl transition-all duration-300 hover:bg-gradient-to-br hover:from-gray-50 hover:to-gray-100/50"
-							>
-								<div className="flex items-center gap-3 mb-3">
-									<div
-										className={`w-8 h-8 rounded-lg ${status.bg} flex items-center justify-center ${status.color}`}
-									>
-										{status.icon}
-									</div>
-									<h4 className="font-medium text-gray-900">{status.label}</h4>
-								</div>
-								<div className="pl-11">
-									{getStatusBadge(status.value, status.type)}
-								</div>
-							</div>
-						))}
-					</div>
-					{business.verificationNote && (
-						<div className="mt-6 bg-gray-50 rounded-xl p-6">
-							<div className="flex items-center gap-3 mb-3">
-								<div className="w-8 h-8 rounded-lg bg-yellow-50 flex items-center justify-center text-yellow-500">
-									<FaClipboard />
-								</div>
-								<h4 className="font-medium text-gray-900">Verification Note</h4>
-							</div>
-							<p className="text-gray-600 leading-relaxed pl-11">
-								{business.verificationNote}
-							</p>
-						</div>
-					)}
-				</div>
-			</div>
-
-			{/* Add edit buttons to each section */}
-			<div className="flex justify-end gap-4">
-				<Button
-					onClick={() => handleEditSection(EDITABLE_SECTIONS.HOURS)}
-					icon={<FaClock />}
-					className="flex items-center gap-2"
-				>
-					Edit Hours
-				</Button>
-				<Button
-					onClick={() => handleEditSection(EDITABLE_SECTIONS.PAYMENT)}
-					icon={<FaWallet />}
-					className="flex items-center gap-2"
-				>
-					Edit Payment Info
-				</Button>
-			</div>
-		</div>
-	);
-
-	const renderLocation = () => {
-		// Early return if business or address is not available
-		if (!business?.address) {
-			return (
-				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-					<div className="p-6 text-center">
-						<Empty description="No location information available" />
-					</div>
-				</div>
-			);
-		}
-
-		return (
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<div className="border-b border-gray-100">
-					<div className="flex items-center gap-4 p-6">
-						<div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
-							<FaMapMarkerAlt className="text-xl" />
-						</div>
-						<div>
-							<h3 className="text-lg font-semibold text-gray-900">Location</h3>
-							<p className="text-sm text-gray-500">
-								Business address and location details
-							</p>
-						</div>
-					</div>
-				</div>
-				<div className="p-6">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<div className="bg-gray-50 p-6 rounded-xl">
-							<h4 className="font-medium text-gray-900 mb-4">
-								Address Details
-							</h4>
-							<div className="space-y-3">
-								{business.address.street && (
-									<div className="flex items-center gap-2">
-										<FaMapMarkerAlt className="text-gray-400" />
-										<span className="text-gray-600">
-											{business.address.street}
-										</span>
-									</div>
-								)}
-								{(business.address.city || business.address.state) && (
-									<div className="flex items-center gap-2">
-										<FaBuilding className="text-gray-400" />
-										<span className="text-gray-600">
-											{[business.address.city, business.address.state]
-												.filter(Boolean)
-												.join(", ")}
-										</span>
-									</div>
-								)}
-								{business.address.country && (
-									<div className="flex items-center gap-2">
-										<FaGlobe className="text-gray-400" />
-										<span className="text-gray-600">
-											{business.address.country}
-										</span>
-									</div>
-								)}
-								{business.address.postalCode && (
-									<div className="flex items-center gap-2">
-										<FaEnvelope className="text-gray-400" />
-										<span className="text-gray-600">
-											{business.address.postalCode}
-										</span>
-									</div>
-								)}
-							</div>
-						</div>
-						<div className="bg-gray-50 p-6 rounded-xl">
-							<h4 className="font-medium text-gray-900 mb-4">
-								Contact Information
-							</h4>
-							<div className="space-y-3">
-								{business.email && (
-									<div className="flex items-center gap-2">
-										<FaEnvelope className="text-gray-400" />
-										<span className="text-gray-600">{business.email}</span>
-									</div>
-								)}
-								{business.phone && (
-									<div className="flex items-center gap-2">
-										<FaPhone className="text-gray-400" />
-										<span className="text-gray-600">{business.phone}</span>
-									</div>
-								)}
-							</div>
-						</div>
-					</div>
-				</div>
+				)}
 			</div>
 		);
 	};
 
-	const renderFinancials = () => {
+	const renderFinancial = () => {
 		return (
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<div className="border-b border-gray-100">
-					<div className="flex items-center gap-4 p-6">
-						<div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
-							<FaWallet className="text-xl" />
+			<div className="space-y-6">
+				{/* Financial Overview */}
+				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+					<div className="border-b border-gray-100">
+						<div className="flex items-center justify-between p-6">
+							<div className="flex items-center gap-4">
+								<div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
+									<FaWallet className="text-xl" />
+								</div>
+								<div>
+									<h3 className="text-lg font-semibold text-gray-900">
+										Financial Overview
+									</h3>
+									<p className="text-sm text-gray-500">
+										Business financial information
+									</p>
+								</div>
+							</div>
+							<Button
+								onClick={() => handleEditSection(EDITABLE_SECTIONS.PAYMENT)}
+								icon={<FaEdit />}
+								className="flex items-center gap-2"
+							>
+								Edit Financial Info
+							</Button>
 						</div>
-						<div>
-							<h3 className="text-lg font-semibold text-gray-900">
-								Financial Information
-							</h3>
-							<p className="text-sm text-gray-500">
-								Business financial details and transactions
-							</p>
+					</div>
+					<div className="p-6">
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+							{/* Revenue Card */}
+							<div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6">
+								<div className="flex items-center gap-3 mb-4">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-green-500">
+										<FaDollarSign className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">Revenue</h4>
+										<p className="text-sm text-gray-500">
+											Total business revenue
+										</p>
+									</div>
+								</div>
+								<div className="text-2xl font-bold text-gray-900">
+									{business.currency}{" "}
+									{Number(business.revenue || 0).toLocaleString()}
+								</div>
+							</div>
+
+							{/* Payment Methods Card */}
+							<div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6">
+								<div className="flex items-center gap-3 mb-4">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500">
+										<FaCreditCard className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">
+											Payment Methods
+										</h4>
+										<p className="text-sm text-gray-500">
+											Accepted payment options
+										</p>
+									</div>
+								</div>
+								<div className="flex flex-wrap gap-2">
+									{business.paymentMethods?.map((method, index) => (
+										<Tag key={index} color="blue" className="capitalize">
+											{method.replace(/_/g, " ")}
+										</Tag>
+									))}
+								</div>
+							</div>
+
+							{/* Currency Card */}
+							<div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6">
+								<div className="flex items-center gap-3 mb-4">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-purple-500">
+										<FaGlobe className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">Currency</h4>
+										<p className="text-sm text-gray-500">Business currency</p>
+									</div>
+								</div>
+								<div className="text-xl font-bold text-gray-900">
+									{business.currency}
+								</div>
+							</div>
+
+							{/* Blockchain Info Card */}
+							<div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-6">
+								<div className="flex items-center gap-3 mb-4">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-orange-500">
+										<FaLink className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">Blockchain</h4>
+										<p className="text-sm text-gray-500">
+											Last update:{" "}
+											{new Date(
+												business.lastBlockchainUpdate
+											).toLocaleDateString()}
+										</p>
+									</div>
+								</div>
+								<div className="space-y-2">
+									<div className="flex items-center gap-2">
+										<FaLink className="text-orange-400" />
+										<a
+											href={`https://amoy.polygonscan.com/tx/${business.metadata?.blockchainTxHash}`}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="text-sm text-orange-600 hover:text-orange-700 truncate"
+										>
+											{business.metadata?.blockchainTxHash}
+										</a>
+									</div>
+									<div className="flex items-center gap-2">
+										<FaGlobe className="text-orange-400" />
+										<a
+											href={business.ipfsUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="text-sm text-orange-600 hover:text-orange-700 truncate"
+										>
+											IPFS: {business.ipfsCid}
+										</a>
+									</div>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
-				<div className="p-6">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<div className="bg-gray-50 p-6 rounded-xl">
-							<h4 className="font-medium text-gray-900 mb-4">
-								Revenue & Currency
-							</h4>
-							<div className="space-y-3">
-								<div className="flex items-center justify-between">
-									<span className="text-gray-600">Revenue</span>
-									<span className="text-lg font-semibold text-gray-900">
-										{business.currency} {business.revenue}
-									</span>
+
+				{/* Payment Methods Section */}
+				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+					<div className="border-b border-gray-100">
+						<div className="flex items-center justify-between p-6">
+							<div className="flex items-center gap-4">
+								<div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
+									<FaCreditCard className="text-xl" />
 								</div>
-								<div className="flex items-center justify-between">
-									<span className="text-gray-600">Currency</span>
-									<span className="text-lg font-semibold text-gray-900">
-										{business.currency}
-									</span>
+								<div>
+									<h3 className="text-lg font-semibold text-gray-900">
+										Payment Methods
+									</h3>
+									<p className="text-sm text-gray-500">
+										Configure accepted payment options
+									</p>
 								</div>
 							</div>
+							<Button
+								onClick={() => handleEditSection(EDITABLE_SECTIONS.PAYMENT)}
+								icon={<FaEdit />}
+								className="flex items-center gap-2"
+							>
+								Edit Payment Methods
+							</Button>
 						</div>
-						<div className="bg-gray-50 p-6 rounded-xl">
-							<h4 className="font-medium text-gray-900 mb-4">
-								Payment Methods
-							</h4>
-							<div className="flex flex-wrap gap-2">
-								{business.paymentMethods?.map((method, index) => (
-									<Tag
-										key={index}
-										color="blue"
-										className="rounded-full px-4 py-1"
-									>
-										{method.replace(/_/g, " ")}
-									</Tag>
-								))}
-							</div>
+					</div>
+					<div className="p-6">
+						<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+							{business.paymentMethods?.map((method, index) => (
+								<div
+									key={index}
+									className="bg-gray-50 p-4 rounded-xl flex items-center gap-3"
+								>
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500">
+										{method === "crypto" ? (
+											<FaWallet className="text-xl" />
+										) : method === "bank_transfer" ? (
+											<FaCreditCard className="text-xl" />
+										) : (
+											<FaDollarSign className="text-xl" />
+										)}
+									</div>
+									<div>
+										<div className="font-medium text-gray-900 capitalize">
+											{method.replace(/_/g, " ")}
+										</div>
+										<div className="text-sm text-gray-500">
+											{method === "crypto"
+												? "Cryptocurrency payments"
+												: method === "bank_transfer"
+												? "Bank transfer payments"
+												: "Other payment methods"}
+										</div>
+									</div>
+								</div>
+							))}
 						</div>
 					</div>
 				</div>
@@ -2516,68 +2382,148 @@ const BusinessDetails = () => {
 
 	const renderReviews = () => {
 		return (
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<div className="border-b border-gray-100">
-					<div className="flex items-center gap-4 p-6">
-						<div className="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center text-yellow-500">
-							<FaUsers className="text-xl" />
-						</div>
-						<div>
-							<h3 className="text-lg font-semibold text-gray-900">
-								Reviews & Ratings
-							</h3>
-							<p className="text-sm text-gray-500">
-								Customer reviews and ratings
-							</p>
+			<div className="space-y-6">
+				{/* Reviews Overview */}
+				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+					<div className="border-b border-gray-100">
+						<div className="flex items-center justify-between p-6">
+							<div className="flex items-center gap-4">
+								<div className="w-10 h-10 rounded-xl bg-yellow-50 flex items-center justify-center text-yellow-500">
+									<FaStar className="text-xl" />
+								</div>
+								<div>
+									<h3 className="text-lg font-semibold text-gray-900">
+										Reviews
+									</h3>
+									<p className="text-sm text-gray-500">
+										Customer feedback and ratings
+									</p>
+								</div>
+							</div>
 						</div>
 					</div>
-				</div>
-				<div className="p-6">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<div className="bg-gray-50 p-6 rounded-xl">
-							<h4 className="font-medium text-gray-900 mb-4">Overall Rating</h4>
-							<div className="flex items-center gap-4">
-								<div className="text-4xl font-bold text-gray-900">
-									{business.averageRating.toFixed(1)}
-								</div>
-								<div className="flex-1">
-									<div className="flex items-center gap-1">
-										{[1, 2, 3, 4, 5].map((star) => (
+					<div className="p-6">
+						{business.reviewCount > 0 ? (
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+								{/* Overall Rating Card */}
+								<div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-xl p-6">
+									<div className="flex items-center gap-3 mb-4">
+										<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-yellow-500">
+											<FaStar className="text-xl" />
+										</div>
+										<div>
+											<h4 className="font-medium text-gray-900">
+												Overall Rating
+											</h4>
+											<p className="text-sm text-gray-500">
+												Average customer rating
+											</p>
+										</div>
+									</div>
+									<div className="flex items-baseline gap-2">
+										<div className="text-3xl font-bold text-gray-900">
+											{business.averageRating.toFixed(1)}
+										</div>
+										<div className="text-gray-500">/ 5.0</div>
+									</div>
+									<div className="flex items-center gap-1 mt-2">
+										{[...Array(5)].map((_, index) => (
 											<FaStar
-												key={star}
+												key={index}
 												className={`${
-													star <= business.averageRating
+													index < Math.round(business.averageRating)
 														? "text-yellow-400"
 														: "text-gray-300"
 												}`}
 											/>
 										))}
 									</div>
-									<div className="text-sm text-gray-600 mt-1">
-										{business.reviewCount} reviews
+								</div>
+
+								{/* Review Count Card */}
+								<div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6">
+									<div className="flex items-center gap-3 mb-4">
+										<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500">
+											<FaUsers className="text-xl" />
+										</div>
+										<div>
+											<h4 className="font-medium text-gray-900">
+												Total Reviews
+											</h4>
+											<p className="text-sm text-gray-500">
+												Customer feedback received
+											</p>
+										</div>
+									</div>
+									<div className="text-3xl font-bold text-gray-900">
+										{business.reviewCount}
+									</div>
+									<div className="text-sm text-gray-500 mt-1">
+										Reviews from verified customers
 									</div>
 								</div>
 							</div>
-						</div>
-						<div className="bg-gray-50 p-6 rounded-xl">
-							<h4 className="font-medium text-gray-900 mb-4">
-								Review Statistics
-							</h4>
-							<div className="space-y-3">
-								<div className="flex items-center justify-between">
-									<span className="text-gray-600">Total Reviews</span>
-									<span className="font-semibold text-gray-900">
-										{business.reviewCount}
-									</span>
+						) : (
+							<div className="text-center py-12">
+								<div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+									<FaStar className="text-yellow-500 text-2xl" />
 								</div>
-								<div className="flex items-center justify-between">
-									<span className="text-gray-600">Average Rating</span>
-									<span className="font-semibold text-gray-900">
-										{business.averageRating.toFixed(1)} / 5.0
-									</span>
+								<Text className="text-gray-500 block mb-4">
+									No reviews yet. Be the first to review this business!
+								</Text>
+								<div className="flex items-center justify-center gap-2">
+									<div className="flex items-center gap-1">
+										{[...Array(5)].map((_, index) => (
+											<FaStar key={index} className="text-gray-300" />
+										))}
+									</div>
+									<span className="text-gray-400">0.0</span>
+								</div>
+							</div>
+						)}
+					</div>
+				</div>
+
+				{/* Review List Section */}
+				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+					<div className="border-b border-gray-100">
+						<div className="flex items-center justify-between p-6">
+							<div className="flex items-center gap-4">
+								<div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
+									<FaClipboard className="text-xl" />
+								</div>
+								<div>
+									<h3 className="text-lg font-semibold text-gray-900">
+										Review List
+									</h3>
+									<p className="text-sm text-gray-500">
+										Detailed customer feedback
+									</p>
 								</div>
 							</div>
 						</div>
+					</div>
+					<div className="p-6">
+						{business.reviewCount > 0 ? (
+							<div className="space-y-6">
+								{/* Placeholder for actual reviews */}
+								<div className="text-center py-8">
+									<Text className="text-gray-500">
+										Reviews will be displayed here when available
+									</Text>
+								</div>
+							</div>
+						) : (
+							<div className="text-center py-12">
+								<div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+									<FaClipboard className="text-green-500 text-2xl" />
+								</div>
+								<Text className="text-gray-500 block">
+									No reviews available yet. Reviews will appear here once
+									customers start leaving feedback.
+								</Text>
+							</div>
+						)}
 					</div>
 				</div>
 			</div>
@@ -2586,78 +2532,197 @@ const BusinessDetails = () => {
 
 	const renderCompliance = () => {
 		return (
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<div className="border-b border-gray-100">
-					<div className="flex items-center gap-4 p-6">
-						<div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-500">
-							<FaShieldAlt className="text-xl" />
+			<div className="space-y-6">
+				{/* Compliance Overview */}
+				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+					<div className="border-b border-gray-100">
+						<div className="flex items-center justify-between p-6">
+							<div className="flex items-center gap-4">
+								<div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-500">
+									<FaShieldAlt className="text-xl" />
+								</div>
+								<div>
+									<h3 className="text-lg font-semibold text-gray-900">
+										Compliance Overview
+									</h3>
+									<p className="text-sm text-gray-500">
+										Business compliance and regulatory information
+									</p>
+								</div>
+							</div>
 						</div>
-						<div>
-							<h3 className="text-lg font-semibold text-gray-900">
-								Compliance
-							</h3>
-							<p className="text-sm text-gray-500">
-								Business compliance and verification status
-							</p>
+					</div>
+					<div className="p-6">
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+							{/* Verification Status */}
+							<div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6">
+								<div className="flex items-center gap-3 mb-4">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500">
+										<FaCheckCircle className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">
+											Verification Status
+										</h4>
+										<p className="text-sm text-gray-500">
+											Business verification status
+										</p>
+									</div>
+								</div>
+								<div className="flex items-center gap-2">
+									{business.verificationStatus === "verified" ? (
+										<div className="flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full">
+											<FaCheckCircle className="text-green-500" />
+											<span className="text-green-600 text-sm font-medium">
+												Verified
+											</span>
+										</div>
+									) : business.verificationStatus === "pending" ? (
+										<div className="flex items-center gap-2 px-3 py-1.5 bg-yellow-50 rounded-full">
+											<FaClock className="text-yellow-500" />
+											<span className="text-yellow-600 text-sm font-medium">
+												Pending
+											</span>
+										</div>
+									) : (
+										<div className="flex items-center gap-2 px-3 py-1.5 bg-red-50 rounded-full">
+											<FaTimesCircle className="text-red-500" />
+											<span className="text-red-600 text-sm font-medium">
+												Unverified
+											</span>
+										</div>
+									)}
+								</div>
+							</div>
+
+							{/* Compliance Status */}
+							<div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6">
+								<div className="flex items-center gap-3 mb-4">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-purple-500">
+										<FaShieldAlt className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">
+											Compliance Status
+										</h4>
+										<p className="text-sm text-gray-500">
+											Regulatory compliance status
+										</p>
+									</div>
+								</div>
+								<div className="space-y-3">
+									<div className="flex items-center justify-between">
+										<span className="text-sm text-gray-600">
+											Terms of Service
+										</span>
+										<div className="flex items-center gap-2">
+											<FaCheckCircle className="text-green-500" />
+											<span className="text-sm text-gray-900">Accepted</span>
+										</div>
+									</div>
+									<div className="flex items-center justify-between">
+										<span className="text-sm text-gray-600">
+											Privacy Policy
+										</span>
+										<div className="flex items-center gap-2">
+											<FaCheckCircle className="text-green-500" />
+											<span className="text-sm text-gray-900">Accepted</span>
+										</div>
+									</div>
+									<div className="flex items-center justify-between">
+										<span className="text-sm text-gray-600">
+											Data Protection
+										</span>
+										<div className="flex items-center gap-2">
+											<FaCheckCircle className="text-green-500" />
+											<span className="text-sm text-gray-900">Compliant</span>
+										</div>
+									</div>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
-				<div className="p-6">
-					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-						<div className="bg-gray-50 p-6 rounded-xl">
-							<h4 className="font-medium text-gray-900 mb-4">
-								Verification Status
-							</h4>
-							<div className="space-y-3">
-								<div className="flex items-center justify-between">
-									<span className="text-gray-600">Status</span>
-									<Tag
-										color={
-											business.verificationStatus === "verified"
-												? "success"
-												: business.verificationStatus === "rejected"
-												? "error"
-												: "warning"
-										}
-									>
-										{business.verificationStatus}
-									</Tag>
+
+				{/* Compliance Documents */}
+				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+					<div className="border-b border-gray-100">
+						<div className="flex items-center justify-between p-6">
+							<div className="flex items-center gap-4">
+								<div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
+									<FaFileAlt className="text-xl" />
 								</div>
-								{business.verificationNote && (
-									<div className="mt-4">
-										<span className="text-gray-600">Note:</span>
-										<p className="text-gray-600 mt-1">
-											{business.verificationNote}
-										</p>
-									</div>
-								)}
+								<div>
+									<h3 className="text-lg font-semibold text-gray-900">
+										Compliance Documents
+									</h3>
+									<p className="text-sm text-gray-500">
+										Important compliance-related documents
+									</p>
+								</div>
 							</div>
 						</div>
-						<div className="bg-gray-50 p-6 rounded-xl">
-							<h4 className="font-medium text-gray-900 mb-4">
-								Business Status
-							</h4>
-							<div className="space-y-3">
-								<div className="flex items-center justify-between">
-									<span className="text-gray-600">Status</span>
-									<Tag
-										color={
-											business.status === "active"
-												? "success"
-												: business.status === "inactive"
-												? "error"
-												: "warning"
-										}
-									>
-										{business.status}
-									</Tag>
+					</div>
+					<div className="p-6">
+						<div className="space-y-4">
+							{/* Terms of Service */}
+							<div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+								<div className="flex items-center gap-3">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500">
+										<FaFileAlt className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">
+											Terms of Service
+										</h4>
+										<p className="text-sm text-gray-500">
+											Last updated: {new Date().toLocaleDateString()}
+										</p>
+									</div>
 								</div>
-								<div className="flex items-center justify-between">
-									<span className="text-gray-600">Operation Mode</span>
-									<span className="font-semibold text-gray-900 capitalize">
-										{business.operationMode}
-									</span>
+								<Button type="link" icon={<FaDownload />}>
+									Download
+								</Button>
+							</div>
+
+							{/* Privacy Policy */}
+							<div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+								<div className="flex items-center gap-3">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500">
+										<FaFileAlt className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">
+											Privacy Policy
+										</h4>
+										<p className="text-sm text-gray-500">
+											Last updated: {new Date().toLocaleDateString()}
+										</p>
+									</div>
 								</div>
+								<Button type="link" icon={<FaDownload />}>
+									Download
+								</Button>
+							</div>
+
+							{/* Data Protection Policy */}
+							<div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+								<div className="flex items-center gap-3">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500">
+										<FaFileAlt className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">
+											Data Protection Policy
+										</h4>
+										<p className="text-sm text-gray-500">
+											Last updated: {new Date().toLocaleDateString()}
+										</p>
+									</div>
+								</div>
+								<Button type="link" icon={<FaDownload />}>
+									Download
+								</Button>
 							</div>
 						</div>
 					</div>
@@ -2668,49 +2733,518 @@ const BusinessDetails = () => {
 
 	const renderBlockchain = () => {
 		return (
-			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-				<div className="border-b border-gray-100">
-					<div className="flex items-center gap-4 p-6">
-						<div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
-							<FaWallet className="text-xl" />
+			<div className="space-y-6">
+				{/* Blockchain Overview */}
+				<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+					<div className="border-b border-gray-100">
+						<div className="flex items-center justify-between p-6">
+							<div className="flex items-center gap-4">
+								<div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
+									<FaLink className="text-xl" />
+								</div>
+								<div>
+									<h3 className="text-lg font-semibold text-gray-900">
+										Blockchain Information
+									</h3>
+									<p className="text-sm text-gray-500">
+										Business blockchain details and transactions
+									</p>
+								</div>
+							</div>
 						</div>
-						<div>
-							<h3 className="text-lg font-semibold text-gray-900">
-								Blockchain Information
-							</h3>
-							<p className="text-sm text-gray-500">
-								Blockchain and IPFS details
-							</p>
+					</div>
+					<div className="p-6">
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+							{/* Transaction Hash */}
+							<div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6">
+								<div className="flex items-center gap-3 mb-4">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-blue-500">
+										<FaLink className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">
+											Transaction Hash
+										</h4>
+										<p className="text-sm text-gray-500">
+											Blockchain transaction identifier
+										</p>
+									</div>
+								</div>
+								<div className="space-y-2">
+									<div className="flex items-center gap-2">
+										<FaLink className="text-blue-400" />
+										<a
+											href={`https://amoy.polygonscan.com/tx/${business.metadata?.blockchainTxHash}`}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="text-sm text-blue-600 hover:text-blue-700 truncate"
+										>
+											{business.metadata?.blockchainTxHash}
+										</a>
+									</div>
+								</div>
+							</div>
+
+							{/* IPFS Information */}
+							<div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6">
+								<div className="flex items-center gap-3 mb-4">
+									<div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center text-purple-500">
+										<FaGlobe className="text-xl" />
+									</div>
+									<div>
+										<h4 className="font-medium text-gray-900">IPFS Details</h4>
+										<p className="text-sm text-gray-500">
+											Decentralized storage information
+										</p>
+									</div>
+								</div>
+								<div className="space-y-2">
+									<div className="flex items-center gap-2">
+										<FaGlobe className="text-purple-400" />
+										<a
+											href={business.ipfsUrl}
+											target="_blank"
+											rel="noopener noreferrer"
+											className="text-sm text-purple-600 hover:text-purple-700 truncate"
+										>
+											IPFS: {business.ipfsCid}
+										</a>
+									</div>
+									<div className="text-sm text-gray-500">
+										Last Update:{" "}
+										{new Date(business.lastBlockchainUpdate).toLocaleString()}
+									</div>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
-				<div className="p-6">
-					<div className="space-y-3">
-						<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-							<span className="text-gray-600">IPFS CID</span>
-							<span className="font-mono text-sm text-gray-900 break-all">
-								{business.ipfsCid}
-							</span>
+			</div>
+		);
+	};
+
+	const renderSocialMedia = () => {
+		const defaultSocialMedia = {
+			tiktok: { isConnected: false, permissions: [], metadata: {} },
+			facebook: { isConnected: false, permissions: [], metadata: {} },
+			instagram: { isConnected: false, permissions: [], metadata: {} },
+			youtube: { isConnected: false, permissions: [], metadata: {} },
+		};
+
+		const socialMedia = business?.socialMedia || defaultSocialMedia;
+
+		const connectedAccounts = SOCIAL_ACCOUNTS.map((account) => ({
+			...account,
+			isConnected: socialMedia[account.key]?.isConnected || false,
+			data: socialMedia[account.key] || { metadata: {} },
+		}));
+
+		const totalConnected = connectedAccounts.filter(
+			(acc) => acc.isConnected
+		).length;
+
+		const renderConnectPlatforms = () => (
+			<div className="space-y-6">
+				<div className="flex items-center justify-between mb-6">
+					<div>
+						<h3 className="text-lg font-semibold text-gray-900">
+							Connect Platforms
+						</h3>
+						<p className="text-sm text-gray-500">
+							Connect your social media accounts
+						</p>
+					</div>
+					<div className="flex items-center gap-2">
+						<div className="text-sm text-gray-600">
+							{totalConnected}/{SOCIAL_ACCOUNTS.length} Connected
 						</div>
-						<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-							<span className="text-gray-600">IPFS URL</span>
-							<a
-								href={business.ipfsUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								className="text-indigo-600 hover:text-indigo-800 break-all"
+						{totalConnected === SOCIAL_ACCOUNTS.length && (
+							<div className="flex items-center gap-1 text-green-600 bg-green-50 px-3 py-1 rounded-full">
+								<FaCheckCircle className="text-sm" />
+								<span className="text-sm font-medium">All Connected</span>
+							</div>
+						)}
+					</div>
+				</div>
+
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+					{SOCIAL_ACCOUNTS.map((platform) => {
+						const accountData = business.socialMedia?.[platform.key] || {};
+						const isConnected = accountData.isConnected;
+
+						return (
+							<div
+								key={platform.key}
+								className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300"
 							>
-								{business.ipfsUrl}
-							</a>
+								<div className="flex items-start justify-between">
+									<div className="flex items-center gap-4">
+										<div
+											className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+											style={{
+												color: platform.color,
+												background: `${platform.color}10`,
+											}}
+										>
+											{platform.icon}
+										</div>
+										<div>
+											<h4 className="text-lg font-medium text-gray-900">
+												{platform.name}
+											</h4>
+											<p className="text-sm text-gray-500">
+												{isConnected ? "Connected" : "Not connected"}
+											</p>
+										</div>
+									</div>
+									<Button
+										type={isConnected ? "default" : "primary"}
+										icon={isConnected ? <FaSync /> : <FaPlus />}
+										className="flex items-center gap-2"
+										onClick={() => handleConnect(platform.name)}
+									>
+										{isConnected ? "Refresh" : "Connect"}
+									</Button>
+								</div>
+
+								{isConnected && (
+									<div className="mt-4 pt-4 border-t border-gray-200">
+										<div className="flex items-center justify-between">
+											<span className="text-sm text-gray-600">
+												Last Updated
+											</span>
+											<span className="text-sm text-gray-900">
+												{new Date(
+													accountData.lastUpdate || Date.now()
+												).toLocaleDateString(undefined, {
+													year: "numeric",
+													month: "long",
+													day: "numeric",
+													hour: "numeric",
+													minute: "numeric",
+												})}
+											</span>
+										</div>
+									</div>
+								)}
+							</div>
+						);
+					})}
+				</div>
+			</div>
+		);
+
+		const renderPlatformData = (account) => {
+			const platformData = socialMedia[account.key];
+			const metadata = platformData?.metadata || {};
+			const hasMetadata = Object.keys(metadata).length > 0;
+
+			if (!platformData?.isConnected) {
+				return (
+					<div className="text-center py-12">
+						<div
+							className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center"
+							style={{ background: `${account.color}10`, color: account.color }}
+						>
+							{account.icon}
 						</div>
-						<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-							<span className="text-gray-600">Transaction Hash</span>
-							<span className="font-mono text-sm text-gray-900 break-all">
-								{business.metadata?.blockchainTxHash}
-							</span>
+						<Text className="text-gray-500 block">
+							Connect your {account.name} account to see analytics
+						</Text>
+						<Button
+							type="primary"
+							ghost
+							icon={<LinkOutlined />}
+							className="mt-4"
+							style={{ color: account.color, borderColor: account.color }}
+							onClick={() => handleConnect(account.name)}
+						>
+							Connect {account.name}
+						</Button>
+					</div>
+				);
+			}
+
+			if (!hasMetadata) {
+				return (
+					<div className="text-center py-12">
+						<div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+							<FaChartBar className="text-gray-400 text-2xl" />
+						</div>
+						<Text className="text-gray-500 block">No data available yet</Text>
+					</div>
+				);
+			}
+
+			// Enhanced YouTube data display
+			if (account.key === "youtube") {
+				return (
+					<div className="space-y-6">
+						{/* Channel Banner */}
+						{metadata.bannerImageUrl && (
+							<div className="w-full h-32 md:h-48 rounded-xl overflow-hidden">
+								<img
+									src={metadata.bannerImageUrl}
+									alt="Channel Banner"
+									className="w-full h-full object-cover"
+								/>
+							</div>
+						)}
+
+						{/* Channel Header */}
+						<div className="bg-gradient-to-r from-red-50 to-red-100 rounded-xl p-6">
+							<div className="flex items-start gap-6">
+								{/* Channel Thumbnail */}
+								{metadata.thumbnails && (
+									<div className="flex-shrink-0">
+										<img
+											src={
+												metadata.thumbnails.default?.url ||
+												metadata.thumbnails.medium?.url
+											}
+											alt={metadata.channelName}
+											className="w-24 h-24 rounded-xl object-cover"
+										/>
+									</div>
+								)}
+
+								{/* Channel Info */}
+								<div className="flex-grow">
+									<h3 className="text-xl font-bold text-gray-900 mb-2">
+										{metadata.channelName}
+									</h3>
+									<div className="flex items-center gap-2 mb-2">
+										{metadata.customUrl && (
+											<a
+												href={`https://youtube.com/${metadata.customUrl}`}
+												target="_blank"
+												rel="noopener noreferrer"
+												className="text-red-600 hover:text-red-700 flex items-center gap-1"
+											>
+												<FaYoutube />
+												{metadata.customUrl}
+											</a>
+										)}
+									</div>
+									{metadata.description && (
+										<p className="text-gray-600 text-sm line-clamp-2 mb-3">
+											{metadata.description}
+										</p>
+									)}
+									<div className="flex flex-wrap items-center gap-4">
+										<div className="flex items-center gap-1 text-gray-600">
+											<FaUsers className="text-gray-400" />
+											<span>
+												{Number(metadata.subscriberCount).toLocaleString()}{" "}
+												subscribers
+											</span>
+										</div>
+										<div className="flex items-center gap-1 text-gray-600">
+											<FaVideo className="text-gray-400" />
+											<span>
+												{Number(metadata.videoCount).toLocaleString()} videos
+											</span>
+										</div>
+										<div className="flex items-center gap-1 text-gray-600">
+											<FaEye className="text-gray-400" />
+											<span>
+												{Number(metadata.viewCount).toLocaleString()} views
+											</span>
+										</div>
+									</div>
+									{/* Last Synced */}
+									<div className="mt-4">
+										<p className="text-sm text-gray-500">
+											Last Synced:{" "}
+											{new Date(
+												platformData.lastUpdate || Date.now()
+											).toLocaleString()}
+										</p>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						{/* Channel Statistics */}
+						<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center gap-3 mb-2">
+									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
+										<FaUsers className="text-xl" />
+									</div>
+									<div>
+										<p className="text-sm text-gray-500">Subscribers</p>
+										<p className="text-xl font-bold text-gray-900">
+											{Number(metadata.subscriberCount).toLocaleString()}
+										</p>
+									</div>
+								</div>
+							</div>
+							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center gap-3 mb-2">
+									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
+										<FaVideo className="text-xl" />
+									</div>
+									<div>
+										<p className="text-sm text-gray-500">Videos</p>
+										<p className="text-xl font-bold text-gray-900">
+											{Number(metadata.videoCount).toLocaleString()}
+										</p>
+									</div>
+								</div>
+							</div>
+							<div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300">
+								<div className="flex items-center gap-3 mb-2">
+									<div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-500">
+										<FaEye className="text-xl" />
+									</div>
+									<div>
+										<p className="text-sm text-gray-500">Total Views</p>
+										<p className="text-xl font-bold text-gray-900">
+											{Number(metadata.viewCount).toLocaleString()}
+										</p>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						{/* Additional Channel Info */}
+						<div className="bg-white rounded-xl p-6 border border-gray-100">
+							<h4 className="font-medium text-gray-900 mb-4">
+								Channel Details
+							</h4>
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								{metadata.publishedAt && (
+									<div className="flex items-center gap-2">
+										<FaCalendar className="text-gray-400" />
+										<div>
+											<p className="text-sm text-gray-500">Created On</p>
+											<p className="text-gray-900">
+												{new Date(metadata.publishedAt).toLocaleDateString()}
+											</p>
+										</div>
+									</div>
+								)}
+								{metadata.country && (
+									<div className="flex items-center gap-2">
+										<FaGlobe className="text-gray-400" />
+										<div>
+											<p className="text-sm text-gray-500">Country</p>
+											<p className="text-gray-900">{metadata.country}</p>
+										</div>
+									</div>
+								)}
+							</div>
+							{metadata.keywords && (
+								<div className="mt-4">
+									<p className="text-sm text-gray-500 mb-2">Keywords</p>
+									<div className="flex flex-wrap gap-2">
+										{metadata.keywords.split(",").map((keyword, index) => (
+											<Tag key={index} className="rounded-full">
+												{keyword.trim()}
+											</Tag>
+										))}
+									</div>
+								</div>
+							)}
+						</div>
+
+						{/* Channel Actions */}
+						<div className="flex items-center justify-end gap-4 mt-6 py-4">
+							<Button
+								type="default"
+								icon={<FaSync />}
+								onClick={() => handleConnect("YouTube")}
+							>
+								Refresh Data
+							</Button>
+							{metadata.channelUrl && (
+								<Button
+									type="primary"
+									icon={<FaExternalLinkAlt />}
+									href={metadata.channelUrl}
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									View Channel
+								</Button>
+							)}
 						</div>
 					</div>
+				);
+			}
+
+			// Default display for other platforms
+			return (
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+					{Object.entries(account.metadataLabels).map(([key, label]) => {
+						const value = metadata[key];
+						if (value === undefined || value === null) return null;
+
+						return (
+							<div
+								key={key}
+								className="bg-white rounded-xl p-6 border border-gray-100"
+							>
+								<Text className="text-sm text-gray-500 block mb-1">
+									{label}
+								</Text>
+								<Text strong className="text-lg">
+									{typeof value === "boolean"
+										? value
+											? "Yes"
+											: "No"
+										: typeof value === "number"
+										? value.toLocaleString()
+										: value || "Not available"}
+								</Text>
+							</div>
+						);
+					})}
 				</div>
+			);
+		};
+
+		const items = [
+			{
+				key: "connect",
+				label: (
+					<span className="flex items-center gap-2">
+						<FaGlobe />
+						Connect Platforms
+					</span>
+				),
+				children: renderConnectPlatforms(),
+			},
+			...SOCIAL_ACCOUNTS.map((platform) => {
+				const accountData = business.socialMedia?.[platform.key] || {};
+				const isConnected = accountData.isConnected;
+
+				return {
+					key: platform.key,
+					label: (
+						<span
+							className="flex items-center gap-2"
+							style={{ color: platform.color }}
+						>
+							{platform.icon}
+							{platform.name}
+						</span>
+					),
+					disabled: !isConnected,
+					children: renderPlatformData(platform),
+				};
+			}),
+		];
+
+		return (
+			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+				<Tabs
+					defaultActiveKey="connect"
+					items={items}
+					className="px-6 pt-6"
+					onChange={(key) => console.log(key)}
+				/>
 			</div>
 		);
 	};
@@ -2722,9 +3256,9 @@ const BusinessDetails = () => {
 			case "team":
 				return renderTeamMembers();
 			case "locations":
-				return renderLocation();
+				return renderLocations();
 			case "financial":
-				return renderFinancials();
+				return renderFinancial();
 			case "social_media":
 				return renderSocialMedia();
 			case "reviews":
@@ -2733,110 +3267,51 @@ const BusinessDetails = () => {
 				return renderCompliance();
 			case "blockchain":
 				return renderBlockchain();
+			case "delete":
+				return renderDeleteConfirmation();
 			default:
-				return renderOverview();
-		}
-	};
-
-	// Add this function to handle team member addition
-	const handleAddTeamMember = async () => {
-		try {
-			const values = await addMemberForm.validateFields();
-			// Add the selected permissions to the form values
-			values.permissions = selectedPermissions;
-
-			// Here you would typically make an API call to add the team member
-			// For now, we'll just show a success message
-			showSuccess("Team member invited successfully");
-			setAddMemberDrawerVisible(false);
-			setInviteStep(0);
-			addMemberForm.resetFields();
-			setSelectedPermissions({});
-			loadBusinessDetails();
-		} catch (error) {
-			showError("Failed to add team member");
+				return null;
 		}
 	};
 
 	return (
-		<div className="min-h-screen bg-gray-50">
-			{screens.md ? (
-				<div className="flex">
-					{/* Sticky Sidebar */}
-					<div className="sticky top-0 h-screen flex-shrink-0">
-						<div className="w-64 h-full bg-white shadow-sm overflow-y-auto">
-							<div className="p-4 border-b border-gray-100">
-								<div className="flex items-center gap-3">
-									<div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
-										<FaStore />
-									</div>
-									<h2 className="text-lg font-semibold text-gray-900">
-										Business Menu
-									</h2>
-								</div>
-							</div>
-							<Menu
-								mode="inline"
-								selectedKeys={[selectedMenu]}
-								items={menuItems}
-								onClick={({ key }) => {
-									if (key === "delete") {
-										setShowDeleteModal(true);
-									} else {
-										setSelectedMenu(key);
-									}
-								}}
-								className="border-r-0"
-							/>
-						</div>
-					</div>
-
-					{/* Main Content Area with Independent Scroll */}
-					<div className="flex-1 min-h-screen">
-						<div className="max-w-7xl mx-auto p-4 lg:p-6 space-y-6">
-							{renderBusinessHeader()}
-							<div className="overflow-x-auto">{renderContent()}</div>
-						</div>
+		<div className="min-h-screen bg-gray-50 p-4">
+			{/* Mobile View */}
+			<div className="flex flex-col min-h-screen">
+				{/* Mobile Header */}
+				<div className="bg-white shadow-sm sticky top-0 z-20">
+					<div className="p-2 sm:p-4">
+						<Tabs
+							activeKey={selectedMenu}
+							onChange={(key) => {
+								if (key === "delete") {
+									setShowDeleteModal(true);
+								} else {
+									setSelectedMenu(key);
+								}
+							}}
+							items={menuItems
+								.filter((item) => item.type !== "divider")
+								.map((item) => ({
+									key: item.key,
+									label: (
+										<span className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
+											{item.icon}
+											<span className="hidden sm:inline">{item.label}</span>
+										</span>
+									),
+								}))}
+							className="business-tabs"
+						/>
 					</div>
 				</div>
-			) : (
-				// Mobile View
-				<div className="flex flex-col min-h-screen">
-					{/* Mobile Header */}
-					<div className="bg-white shadow-sm sticky top-0 z-20">
-						<div className="p-2 sm:p-4">
-							<Tabs
-								activeKey={selectedMenu}
-								onChange={(key) => {
-									if (key === "delete") {
-										setShowDeleteModal(true);
-									} else {
-										setSelectedMenu(key);
-									}
-								}}
-								items={menuItems
-									.filter((item) => item.type !== "divider")
-									.map((item) => ({
-										key: item.key,
-										label: (
-											<span className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm">
-												{item.icon}
-												<span className="hidden sm:inline">{item.label}</span>
-											</span>
-										),
-									}))}
-								className="business-tabs"
-							/>
-						</div>
-					</div>
 
-					{/* Mobile Content */}
-					<div className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-x-hidden">
-						{renderBusinessHeader()}
-						{renderContent()}
-					</div>
+				{/* Mobile Content */}
+				<div className="flex-1 p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-x-hidden">
+					{renderBusinessHeader()}
+					{renderContent()}
 				</div>
-			)}
+			</div>
 
 			{/* Modals */}
 			<ConfirmationModal

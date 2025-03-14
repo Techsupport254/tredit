@@ -66,37 +66,29 @@ const blockchainConfig = {
 // Database Configuration for different environments
 const dbConfig = {
 	development: {
-		username: "postgres",
-		password: "",
-		database: "tredit_test",
-		host: "127.0.0.1",
-		port: 5432,
+		username: process.env.DB_USER || "postgres",
+		password: process.env.DB_PASSWORD || "postgres",
+		database: process.env.DB_NAME || "tredit",
+		host: process.env.DB_HOST || "localhost",
+		port: process.env.DB_PORT || 5432,
 		dialect: "postgres",
+		logging: false,
 	},
 	test: {
-		username: "postgres",
-		password: "",
-		database: "tredit_test",
-		host: "127.0.0.1",
-		port: 5432,
+		username: process.env.DB_USER,
+		password: process.env.DB_PASSWORD,
+		database: process.env.DB_NAME,
+		host: process.env.DB_HOST,
 		dialect: "postgres",
+		logging: false,
 	},
 	production: {
 		username: process.env.DB_USER,
-		password: process.env.DB_PASS,
+		password: process.env.DB_PASSWORD,
 		database: process.env.DB_NAME,
 		host: process.env.DB_HOST,
-		port: process.env.DB_PORT,
 		dialect: "postgres",
-		dialectOptions: {
-			ssl:
-				process.env.DB_SSL === "true"
-					? {
-							require: true,
-							rejectUnauthorized: false,
-					  }
-					: false,
-		},
+		logging: false,
 	},
 };
 

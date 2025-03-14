@@ -385,6 +385,108 @@ export const BusinessProvider = ({ children }) => {
 		}
 	}, []);
 
+	const addTeamMember = useCallback(
+		async (businessId, memberData) => {
+			try {
+				setState((prev) => ({ ...prev, isLoading: true, error: null }));
+				const response = await axios.post(
+					`/team-members/${businessId}/members`,
+					memberData
+				);
+
+				if (response.data?.success) {
+					const updatedBusiness = await fetchBusinessById(businessId);
+					showSuccessNotification("Team member added successfully");
+					return response.data.data.teamMember;
+				} else {
+					throw new Error(
+						response.data?.message || "Failed to add team member"
+					);
+				}
+			} catch (error) {
+				setState((prev) => ({
+					...prev,
+					error: error.response?.data?.message || error.message,
+					isLoading: false,
+				}));
+				showErrorNotification(error.response?.data?.message || error.message);
+				throw error;
+			}
+		},
+		[fetchBusinessById]
+	);
+
+	const updateTeamMember = useCallback(
+		async (businessId, memberId, updateData) => {
+			try {
+				setState((prev) => ({ ...prev, isLoading: true, error: null }));
+				const response = await axios.put(
+					`/team-members/${businessId}/members/${memberId}`,
+					updateData
+				);
+
+				if (response.data?.success) {
+					const updatedBusiness = await fetchBusinessById(businessId);
+					showSuccessNotification("Team member updated successfully");
+					return response.data.data.teamMember;
+				} else {
+					throw new Error(
+						response.data?.message || "Failed to update team member"
+					);
+				}
+			} catch (error) {
+				setState((prev) => ({
+					...prev,
+					error: error.response?.data?.message || error.message,
+					isLoading: false,
+				}));
+				showErrorNotification(error.response?.data?.message || error.message);
+				throw error;
+			}
+		},
+		[fetchBusinessById]
+	);
+
+	const removeTeamMember = useCallback(
+		async (businessId, memberId) => {
+			try {
+				setState((prev) => ({ ...prev, isLoading: true, error: null }));
+
+				// Get the team member details first
+				const business = await fetchBusinessById(businessId);
+				const member = business.teamMembers.find((m) => m.id === memberId);
+
+				// Don't allow removing the owner
+				if (member?.role === "owner") {
+					throw new Error("Cannot remove the business owner");
+				}
+
+				const response = await axios.delete(
+					`/team-members/${businessId}/members/${memberId}`
+				);
+
+				if (response.data?.success) {
+					const updatedBusiness = await fetchBusinessById(businessId);
+					showSuccessNotification("Team member removed successfully");
+					return true;
+				} else {
+					throw new Error(
+						response.data?.message || "Failed to remove team member"
+					);
+				}
+			} catch (error) {
+				setState((prev) => ({
+					...prev,
+					error: error.response?.data?.message || error.message,
+					isLoading: false,
+				}));
+				showErrorNotification(error.response?.data?.message || error.message);
+				throw error;
+			}
+		},
+		[fetchBusinessById]
+	);
+
 	const contextValue = useMemo(
 		() => ({
 			...state,
@@ -393,6 +495,9 @@ export const BusinessProvider = ({ children }) => {
 			deleteBusiness,
 			fetchAllBusinesses,
 			fetchBusinessById,
+			addTeamMember,
+			updateTeamMember,
+			removeTeamMember,
 			connectYouTube: async (businessId) => {
 				console.log("Connecting YouTube");
 				try {
@@ -440,6 +545,9 @@ export const BusinessProvider = ({ children }) => {
 			deleteBusiness,
 			fetchAllBusinesses,
 			fetchBusinessById,
+			addTeamMember,
+			updateTeamMember,
+			removeTeamMember,
 		]
 	);
 

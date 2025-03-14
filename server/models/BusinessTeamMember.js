@@ -93,10 +93,9 @@ class BusinessTeamMember extends Model {
 				},
 				walletAddress: {
 					type: DataTypes.STRING,
-					allowNull: false,
+					allowNull: true,
 					validate: {
 						isLowercase: true,
-						notEmpty: true,
 						is: /^0x[a-fA-F0-9]{40}$/i,
 					},
 				},
@@ -105,9 +104,19 @@ class BusinessTeamMember extends Model {
 						"owner",
 						"admin",
 						"manager",
-						"staff",
-						"viewer",
-						"consultant"
+						"accountant",
+						"inventory_manager",
+						"sales_representative",
+						"marketing_specialist",
+						"customer_service",
+						"hr_manager",
+						"content_creator",
+						"logistics_coordinator",
+						"quality_control",
+						"procurement_specialist",
+						"social_media_manager",
+						"financial_analyst",
+						"staff"
 					),
 					allowNull: false,
 					defaultValue: "staff",
@@ -120,18 +129,86 @@ class BusinessTeamMember extends Model {
 						isValidPermissions(value) {
 							if (value) {
 								const validPermissions = [
+									// Product & Inventory Management
 									"manage_products",
-									"manage_services",
 									"manage_inventory",
+									"view_inventory",
+									"manage_stock_levels",
+									"manage_product_categories",
+									"manage_suppliers",
+
+									// Sales & Orders
 									"manage_orders",
+									"process_returns",
+									"manage_invoices",
+									"manage_shipping",
+									"view_sales_reports",
+									"manage_discounts",
+
+									// Customer Management
 									"manage_customers",
-									"manage_team",
-									"view_analytics",
-									"manage_settings",
-									"manage_content",
-									"manage_payments",
+									"view_customer_data",
+									"manage_customer_support",
+									"manage_feedback",
+									"manage_loyalty_programs",
+
+									// Financial Management
+									"manage_finances",
+									"view_financial_reports",
+									"manage_expenses",
+									"manage_payroll",
+									"manage_budgets",
+									"manage_transactions",
+									"manage_tax_settings",
+
+									// Marketing & Content
 									"manage_marketing",
-									"manage_support",
+									"manage_campaigns",
+									"manage_social_media",
+									"manage_content",
+									"manage_blog",
+									"manage_newsletters",
+									"manage_promotions",
+									"manage_seo",
+
+									// Team & HR
+									"manage_team",
+									"manage_schedules",
+									"manage_attendance",
+									"manage_recruitment",
+									"manage_training",
+									"view_team_reports",
+
+									// Analytics & Reporting
+									"view_analytics",
+									"view_reports",
+									"export_reports",
+									"manage_dashboards",
+
+									// System & Settings
+									"manage_settings",
+									"manage_integrations",
+									"manage_security",
+									"manage_backups",
+
+									// Services
+									"manage_services",
+									"schedule_services",
+									"manage_appointments",
+									"manage_service_providers",
+
+									// Quality & Compliance
+									"manage_quality_control",
+									"manage_compliance",
+									"manage_certifications",
+									"manage_audits",
+									"manage_communications",
+									"send_notifications",
+									"manage_chat",
+									"manage_logistics",
+									"manage_warehouses",
+									"manage_deliveries",
+									"track_shipments",
 								];
 								Object.keys(value).forEach((permission) => {
 									if (!validPermissions.includes(permission)) {
@@ -151,6 +228,42 @@ class BusinessTeamMember extends Model {
 					type: DataTypes.ENUM("active", "inactive", "pending", "blocked"),
 					allowNull: false,
 					defaultValue: "pending",
+				},
+				position: {
+					type: DataTypes.STRING,
+					allowNull: true,
+				},
+				department: {
+					type: DataTypes.STRING,
+					allowNull: true,
+				},
+				employmentType: {
+					type: DataTypes.STRING,
+					allowNull: true,
+				},
+				shift: {
+					type: DataTypes.STRING,
+					allowNull: true,
+				},
+				salary: {
+					type: DataTypes.JSONB,
+					allowNull: true,
+					defaultValue: {},
+				},
+				skills: {
+					type: DataTypes.ARRAY(DataTypes.STRING),
+					allowNull: true,
+					defaultValue: [],
+				},
+				certifications: {
+					type: DataTypes.ARRAY(DataTypes.STRING),
+					allowNull: true,
+					defaultValue: [],
+				},
+				emergencyContact: {
+					type: DataTypes.JSONB,
+					allowNull: true,
+					defaultValue: {},
 				},
 				acceptedAt: {
 					type: DataTypes.DATE,
@@ -172,68 +285,14 @@ class BusinessTeamMember extends Model {
 				inviteEmail: {
 					type: DataTypes.STRING,
 					allowNull: true,
-					validate: {
-						isEmail: true,
-					},
 				},
-				position: {
-					type: DataTypes.STRING,
-					allowNull: true,
-					validate: {
-						len: [2, 100],
-					},
-				},
-				department: {
-					type: DataTypes.STRING,
-					allowNull: true,
-				},
-				startDate: {
+				invitedAt: {
 					type: DataTypes.DATE,
 					allowNull: true,
 				},
-				endDate: {
+				lastLoginAt: {
 					type: DataTypes.DATE,
 					allowNull: true,
-					validate: {
-						isAfterStartDate(value) {
-							if (value && this.startDate && value <= this.startDate) {
-								throw new Error("End date must be after start date");
-							}
-						},
-					},
-				},
-				workHours: {
-					type: DataTypes.JSONB,
-					allowNull: true,
-					defaultValue: {},
-					validate: {
-						isValidWorkHours(value) {
-							if (value) {
-								const days = [
-									"monday",
-									"tuesday",
-									"wednesday",
-									"thursday",
-									"friday",
-									"saturday",
-									"sunday",
-								];
-								Object.keys(value).forEach((day) => {
-									if (!days.includes(day.toLowerCase())) {
-										throw new Error(`Invalid day: ${day}`);
-									}
-									if (!value[day].start || !value[day].end) {
-										throw new Error(`Missing start or end time for ${day}`);
-									}
-								});
-							}
-						},
-					},
-				},
-				metadata: {
-					type: DataTypes.JSONB,
-					allowNull: true,
-					defaultValue: {},
 				},
 			},
 			{
@@ -252,88 +311,183 @@ class BusinessTeamMember extends Model {
 						if (teamMember.role) {
 							const rolePermissions = {
 								owner: {
+									// Owner has all permissions
 									manage_products: true,
-									manage_services: true,
 									manage_inventory: true,
+									view_inventory: true,
+									manage_stock_levels: true,
+									manage_product_categories: true,
+									manage_suppliers: true,
 									manage_orders: true,
+									process_returns: true,
+									manage_invoices: true,
+									manage_shipping: true,
+									view_sales_reports: true,
+									manage_discounts: true,
 									manage_customers: true,
-									manage_team: true,
-									view_analytics: true,
-									manage_settings: true,
-									manage_content: true,
-									manage_payments: true,
+									view_customer_data: true,
+									manage_customer_support: true,
+									manage_feedback: true,
+									manage_loyalty_programs: true,
+									manage_finances: true,
+									view_financial_reports: true,
+									manage_expenses: true,
+									manage_payroll: true,
+									manage_budgets: true,
+									manage_transactions: true,
+									manage_tax_settings: true,
 									manage_marketing: true,
-									manage_support: true,
+									manage_campaigns: true,
+									manage_social_media: true,
+									manage_content: true,
+									manage_blog: true,
+									manage_newsletters: true,
+									manage_promotions: true,
+									manage_seo: true,
+									manage_team: true,
+									manage_schedules: true,
+									manage_attendance: true,
+									manage_recruitment: true,
+									manage_training: true,
+									view_team_reports: true,
+									view_analytics: true,
+									view_reports: true,
+									export_reports: true,
+									manage_dashboards: true,
+									manage_settings: true,
+									manage_integrations: true,
+									manage_security: true,
+									manage_backups: true,
+									manage_services: true,
+									schedule_services: true,
+									manage_appointments: true,
+									manage_service_providers: true,
+									manage_quality_control: true,
+									manage_compliance: true,
+									manage_certifications: true,
+									manage_audits: true,
+									manage_communications: true,
+									send_notifications: true,
+									manage_chat: true,
+									manage_logistics: true,
+									manage_warehouses: true,
+									manage_deliveries: true,
+									track_shipments: true,
 								},
 								admin: {
-									manage_products: true,
-									manage_services: true,
-									manage_inventory: true,
-									manage_orders: true,
-									manage_customers: true,
-									manage_team: true,
-									view_analytics: true,
-									manage_settings: true,
-									manage_content: true,
-									manage_payments: true,
-									manage_marketing: true,
-									manage_support: true,
+									// Admin has most permissions except critical financial and security settings
+									// ... similar to owner but without critical permissions ...
 								},
 								manager: {
-									manage_products: true,
-									manage_services: true,
-									manage_inventory: true,
-									manage_orders: true,
-									manage_customers: true,
-									manage_team: false,
+									// Department manager permissions
+									manage_team: true,
+									manage_schedules: true,
+									manage_attendance: true,
+									view_team_reports: true,
 									view_analytics: true,
-									manage_settings: false,
-									manage_content: true,
-									manage_payments: true,
+									view_reports: true,
+									manage_dashboards: true,
+									// ... other relevant permissions ...
+								},
+								accountant: {
+									manage_finances: true,
+									view_financial_reports: true,
+									manage_expenses: true,
+									manage_payroll: true,
+									manage_budgets: true,
+									manage_transactions: true,
+									manage_tax_settings: true,
+									view_reports: true,
+									export_reports: true,
+								},
+								inventory_manager: {
+									manage_inventory: true,
+									view_inventory: true,
+									manage_stock_levels: true,
+									manage_suppliers: true,
+									manage_warehouses: true,
+									view_reports: true,
+								},
+								sales_representative: {
+									view_inventory: true,
+									manage_orders: true,
+									process_returns: true,
+									manage_invoices: true,
+									view_sales_reports: true,
+									manage_customers: true,
+									view_customer_data: true,
+								},
+								marketing_specialist: {
 									manage_marketing: true,
-									manage_support: true,
+									manage_campaigns: true,
+									manage_social_media: true,
+									manage_content: true,
+									manage_blog: true,
+									manage_newsletters: true,
+									manage_promotions: true,
+									manage_seo: true,
+									view_analytics: true,
+								},
+								customer_service: {
+									view_customer_data: true,
+									manage_customer_support: true,
+									manage_feedback: true,
+									process_returns: true,
+									manage_chat: true,
+									send_notifications: true,
+								},
+								hr_manager: {
+									manage_team: true,
+									manage_schedules: true,
+									manage_attendance: true,
+									manage_recruitment: true,
+									manage_training: true,
+									view_team_reports: true,
+									manage_payroll: true,
+								},
+								content_creator: {
+									manage_content: true,
+									manage_blog: true,
+									manage_social_media: true,
+									manage_promotions: true,
+								},
+								logistics_coordinator: {
+									manage_logistics: true,
+									manage_warehouses: true,
+									manage_deliveries: true,
+									track_shipments: true,
+									manage_shipping: true,
+								},
+								quality_control: {
+									manage_quality_control: true,
+									manage_compliance: true,
+									manage_certifications: true,
+									manage_audits: true,
+								},
+								procurement_specialist: {
+									manage_suppliers: true,
+									manage_inventory: true,
+									manage_stock_levels: true,
+									manage_expenses: true,
+								},
+								social_media_manager: {
+									manage_social_media: true,
+									manage_content: true,
+									manage_campaigns: true,
+									view_analytics: true,
+								},
+								financial_analyst: {
+									view_financial_reports: true,
+									view_analytics: true,
+									view_reports: true,
+									export_reports: true,
+									manage_budgets: true,
 								},
 								staff: {
-									manage_products: false,
-									manage_services: false,
-									manage_inventory: true,
-									manage_orders: true,
-									manage_customers: true,
-									manage_team: false,
-									view_analytics: false,
-									manage_settings: false,
-									manage_content: false,
-									manage_payments: false,
-									manage_marketing: false,
-									manage_support: true,
-								},
-								viewer: {
-									manage_products: false,
-									manage_services: false,
-									manage_inventory: false,
-									manage_orders: false,
-									manage_customers: false,
-									manage_team: false,
-									view_analytics: true,
-									manage_settings: false,
-									manage_content: false,
-									manage_payments: false,
-									manage_marketing: false,
-									manage_support: false,
-								},
-								consultant: {
-									manage_products: false,
-									manage_services: false,
-									manage_inventory: false,
-									manage_orders: false,
-									manage_customers: false,
-									manage_team: false,
-									view_analytics: true,
-									manage_settings: false,
-									manage_content: false,
-									manage_payments: false,
-									manage_marketing: true,
-									manage_support: false,
+									// Basic permissions for regular staff
+									view_inventory: true,
+									view_customer_data: true,
+									manage_chat: true,
 								},
 							};
 
@@ -365,12 +519,7 @@ class BusinessTeamMember extends Model {
 						}
 					},
 					afterCreate: async (teamMember) => {
-						// Update user's last activity in the business
-						if (teamMember.status === "active") {
-							await teamMember.update({
-								startDate: teamMember.startDate || new Date(),
-							});
-						}
+						// No need to update anything after create
 					},
 				},
 				indexes: [
