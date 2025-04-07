@@ -1,13 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const { User } = require("../models");
+const { db, sequelize } = require("../models");
 const { Op } = require("sequelize");
-const { verifySignature } = require("../utils/web3");
 const { generateToken } = require("../utils/jwt");
 const { protect, adminProtect } = require("../middleware/authMiddleware");
 const { ethers } = require("ethers");
 const { manageTransaction } = require("../utils/transactionManager");
-const { sequelize } = require("../models");
 const {
 	successResponse,
 	errorResponse,
@@ -21,6 +19,14 @@ const {
 	createOrUpdateUserProfile,
 	unpinFromPinata,
 } = require("../utils/blockchainHelper");
+const {
+	getUserProfile,
+	updateUserProfile,
+	walletAuth,
+	getAllUsers,
+	updateUserRole,
+} = require("../controllers/userController");
+const { setupSSE } = require("../utils/sseHelper");
 
 // Public Routes (No Protection)
 
@@ -41,14 +47,168 @@ router.get(
 	})
 );
 
+// Enhanced middleware to validate registration data
+const validateRegistration = async (req, res, next) => {
+	const transaction = await sequelize.transaction();
+	try {
+		const { walletAddress, email, name, phoneNumber, uid } = req.body;
+
+		// Validate required fields
+		if (!walletAddress) {
+			await transaction.rollback();
+			return res.status(400).json(
+				errorResponse(
+					"Missing required fields",
+					ResponseCodes.VALIDATION_ERROR,
+					{
+						details: ["Wallet address is required"],
+					}
+				)
+			);
+		}
+
+		// Validate wallet address format
+		if (!walletAddress.match(/^0x[a-fA-F0-9]{40}$/)) {
+			await transaction.rollback();
+			return res
+				.status(400)
+				.json(
+					errorResponse(
+						"Invalid wallet address format",
+						ResponseCodes.VALIDATION_ERROR
+					)
+				);
+		}
+
+		// Check if wallet address exists
+		const existingWallet = await db.User.findOne({
+			where: { walletAddress: walletAddress.toLowerCase() },
+			transaction,
+		});
+
+		if (existingWallet && existingWallet.email) {
+			await transaction.rollback();
+			return res
+				.status(409)
+				.json(
+					errorResponse(
+						"Wallet address already registered",
+						ResponseCodes.RESOURCE_EXISTS
+					)
+				);
+		}
+
+		// Validate and check email if provided
+		if (email) {
+			if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
+				await transaction.rollback();
+				return res
+					.status(400)
+					.json(
+						errorResponse(
+							"Invalid email format",
+							ResponseCodes.VALIDATION_ERROR
+						)
+					);
+			}
+
+			const existingEmail = await db.User.findOne({
+				where: { email: email.toLowerCase() },
+				transaction,
+			});
+
+			if (existingEmail) {
+				await transaction.rollback();
+				return res
+					.status(409)
+					.json(
+						errorResponse(
+							"Email already registered",
+							ResponseCodes.RESOURCE_EXISTS
+						)
+					);
+			}
+		}
+
+		// Validate phone number if provided
+		if (phoneNumber) {
+			const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+			if (!phoneRegex.test(phoneNumber)) {
+				await transaction.rollback();
+				return res
+					.status(400)
+					.json(
+						errorResponse(
+							"Invalid phone number format",
+							ResponseCodes.VALIDATION_ERROR
+						)
+					);
+			}
+
+			const existingPhone = await db.User.findOne({
+				where: { phoneNumber },
+				transaction,
+			});
+
+			if (existingPhone) {
+				await transaction.rollback();
+				return res
+					.status(409)
+					.json(
+						errorResponse(
+							"Phone number already registered",
+							ResponseCodes.RESOURCE_EXISTS
+						)
+					);
+			}
+		}
+
+		// Check if UID exists and is already associated with another user
+		if (uid) {
+			const existingUid = await db.User.findOne({
+				where: { uid },
+				transaction,
+			});
+
+			if (
+				existingUid &&
+				existingUid.walletAddress !== walletAddress.toLowerCase()
+			) {
+				await transaction.rollback();
+				return res
+					.status(409)
+					.json(
+						errorResponse(
+							"UID already associated with another account",
+							ResponseCodes.RESOURCE_EXISTS
+						)
+					);
+			}
+		}
+
+		// If all validations pass, commit transaction and continue
+		await transaction.commit();
+		next();
+	} catch (error) {
+		await transaction.rollback();
+		console.error("Registration validation error:", error);
+		return res.status(500).json(
+			errorResponse("Validation check failed", ResponseCodes.INTERNAL_ERROR, {
+				details: error.errors?.map((e) => e.message) || [error.message],
+			})
+		);
+	}
+};
+
 // Register new user - public route
 router.post(
 	"/register",
+	validateRegistration,
 	catchAsync(async (req, res) => {
 		const transaction = await sequelize.transaction();
+		let user = null;
 		let ipfsResult = null;
 		let blockchainResult = null;
-		let user = null;
 
 		try {
 			const {
@@ -56,53 +216,38 @@ router.post(
 				name,
 				email,
 				profileImage,
-				role = "user",
+				bio,
+				gender,
+				dob,
+				location,
+				phoneNumber,
+				preferences,
 				uid,
 				acceptBlockchainStorage = true,
-				preferences,
 			} = req.body;
 
-			// Validate required fields
-			if (!walletAddress || !email || !name) {
-				await transaction.rollback();
-				return res.status(400).json(
-					errorResponse(
-						"Missing required fields",
-						ResponseCodes.VALIDATION_ERROR,
-						{
-							details: ["Wallet address, email, and name are required"],
-						}
-					)
-				);
-			}
-
-			// Check if user already exists
-			const existingUser = await User.findOne({
-				where: { walletAddress: walletAddress.toLowerCase() },
-				transaction,
-			});
-
-			if (existingUser && existingUser.email) {
-				await transaction.rollback();
-				return res
-					.status(400)
-					.json(
-						errorResponse(
-							"User profile already exists",
-							ResponseCodes.RESOURCE_EXISTS
-						)
-					);
-			}
-
-			// Create or update user first (without blockchain data)
-			const [createdUser, created] = await User.upsert(
+			// Create user in database
+			user = await db.User.create(
 				{
 					walletAddress: walletAddress.toLowerCase(),
-					name,
-					email,
-					profileImage,
-					role,
-					uid,
+					name: name || "Anonymous User",
+					email: email?.toLowerCase() || null,
+					profileImage: profileImage || "",
+					bio: bio || "",
+					gender: gender || "prefer_not_to_say",
+					dob: dob || new Date(),
+					location: location || {
+						country: "",
+						state: "",
+						city: "",
+						address: "",
+						postalCode: "",
+						coordinates: {
+							latitude: null,
+							longitude: null,
+						},
+					},
+					phoneNumber: phoneNumber || "",
 					preferences: preferences || {
 						theme: "light",
 						notifications: {
@@ -111,16 +256,15 @@ router.post(
 						},
 						language: "en",
 					},
+					uid: uid || null,
+					role: "user",
 					isVerified: false,
 					acceptBlockchainStorage,
 				},
 				{ transaction }
 			);
 
-			user = createdUser;
-
-			// Upload to IPFS if blockchain storage is accepted
-			let blockchainData = null;
+			// Upload to IPFS and blockchain only if acceptBlockchainStorage is true
 			if (acceptBlockchainStorage) {
 				try {
 					// Step 1: Upload to IPFS
@@ -179,7 +323,7 @@ router.post(
 						{ transaction }
 					);
 
-					blockchainData = {
+					const blockchainData = {
 						ipfs: {
 							status: "success",
 							state: "COMPLETED",
@@ -205,7 +349,7 @@ router.post(
 					await transaction.commit();
 
 					// Generate new token
-					const token = generateToken(user.walletAddress);
+					const token = generateToken(user);
 
 					// Return success response
 					return res.status(201).json(
@@ -213,14 +357,12 @@ router.post(
 							{
 								user: {
 									...user.toJSON(),
-									acceptBlockchainStorage,
+									acceptBlockchainStorage: true,
 								},
 								token,
 								blockchain: blockchainData,
 							},
-							created
-								? "User registered successfully"
-								: "User profile updated successfully"
+							"User registered successfully"
 						)
 					);
 				} catch (error) {
@@ -237,7 +379,7 @@ router.post(
 					}
 
 					// Set error data based on which step failed
-					blockchainData = {
+					const blockchainData = {
 						ipfs: {
 							status: ipfsResult ? "success" : "error",
 							state: ipfsResult ? "COMPLETED" : "ERROR",
@@ -282,39 +424,31 @@ router.post(
 						)
 					);
 				}
-			}
+			} else {
+				await transaction.commit();
 
-			await transaction.commit();
+				// Generate new token
+				const token = generateToken(user);
 
-			// Generate new token
-			const token = generateToken(user.walletAddress);
-
-			// Return success response
-			return res.status(201).json(
-				successResponse(
-					{
-						user: {
-							...user.toJSON(),
-							acceptBlockchainStorage,
+				// Return success response without blockchain data
+				return res.status(201).json(
+					successResponse(
+						{
+							user: {
+								...user.toJSON(),
+								acceptBlockchainStorage: false,
+							},
+							token,
 						},
-						token,
-						blockchain: blockchainData,
-					},
-					created
-						? "User registered successfully"
-						: "User profile updated successfully"
-				)
-			);
-		} catch (error) {
-			console.error("Registration error:", error);
-
-			// Only attempt rollback if transaction exists and hasn't been committed/rolled back
-			if (transaction && !transaction.finished) {
-				await transaction.rollback();
+						"User registered successfully"
+					)
+				);
 			}
-
+		} catch (error) {
+			await transaction.rollback();
+			console.error("Error creating user:", error);
 			return res.status(500).json(
-				errorResponse("Failed to register user", ResponseCodes.INTERNAL_ERROR, {
+				errorResponse("Error creating user", ResponseCodes.INTERNAL_ERROR, {
 					details: error.errors?.map((e) => e.message) || [error.message],
 				})
 			);
@@ -322,337 +456,17 @@ router.post(
 	})
 );
 
-// Combined wallet check and authentication endpoint
-router.post(
-	"/wallet-auth",
-	catchAsync(async (req, res) => {
-		const transaction = await sequelize.transaction();
-		try {
-			const { walletAddress, signature, message, chainId } = req.body;
+// Public routes
+router.post("/wallet-auth", walletAuth);
 
-			// Basic validation
-			if (!walletAddress) {
-				await transaction.rollback();
-				return res.status(400).json(
-					errorResponse(
-						"Wallet address is required",
-						ResponseCodes.VALIDATION_ERROR,
-						{
-							exists: false,
-							hasProfile: false,
-							authenticated: false,
-						}
-					)
-				);
-			}
-
-			// Normalize wallet address
-			const normalizedWalletAddress = walletAddress.toLowerCase();
-
-			// First, check wallet status
-			const user = await User.findOne({
-				where: { walletAddress: normalizedWalletAddress },
-				attributes: [
-					"id",
-					"walletAddress",
-					"email",
-					"name",
-					"profileImage",
-					"role",
-					"blockchainTxHash",
-					"ipfsUrl",
-					"acceptBlockchainStorage",
-				],
-				transaction,
-			});
-
-			// Base response structure
-			const baseResponse = {
-				success: true,
-				exists: !!user,
-				hasProfile: !!user?.email,
-				authenticated: false,
-			};
-
-			// If user doesn't exist, return early
-			if (!user) {
-				await transaction.commit();
-				return res.json(
-					successResponse(baseResponse, "User not found, registration required")
-				);
-			}
-
-			// Generate token if we have a valid signature
-			let token = null;
-			if (signature && message && chainId) {
-				// Verify signature here if needed
-				token = generateToken(normalizedWalletAddress);
-				baseResponse.authenticated = true;
-			}
-
-			await transaction.commit();
-
-			// Return full response with user data
-			return res.json(
-				successResponse(
-					{
-						...baseResponse,
-						user: user.email
-							? {
-									id: user.id,
-									walletAddress: user.walletAddress,
-									name: user.name,
-									email: user.email,
-									profileImage: user.profileImage,
-									role: user.role,
-									blockchainTxHash: user.blockchainTxHash,
-									ipfsUrl: user.ipfsUrl,
-									acceptBlockchainStorage: user.acceptBlockchainStorage,
-							  }
-							: null,
-						...(token && { token }),
-					},
-					user.email
-						? "Authentication successful"
-						: "Wallet authenticated, profile completion required"
-				)
-			);
-		} catch (error) {
-			// Only attempt rollback if transaction exists and hasn't been committed/rolled back
-			if (transaction && !transaction.finished) {
-				await transaction.rollback();
-			}
-			console.error("Wallet auth error:", error);
-			return res.status(500).json(
-				errorResponse("Authentication failed", ResponseCodes.INTERNAL_ERROR, {
-					exists: false,
-					hasProfile: false,
-					authenticated: false,
-					error: error.message,
-				})
-			);
-		}
-	})
-);
-
-// Protected Routes (Need Authentication)
-
-// Get user profile by wallet address
-router.get("/:walletAddress", protect, async (req, res) => {
-	try {
-		const { walletAddress } = req.params;
-
-		// Normalize the wallet address
-		const normalizedWalletAddress = walletAddress.toLowerCase();
-
-		// Find the user with all fields
-		const user = await User.findOne({
-			where: { walletAddress: normalizedWalletAddress },
-		});
-
-		if (!user) {
-			return res.status(404).json({
-				success: false,
-				message: "User not found",
-				code: "USER_NOT_FOUND",
-			});
-		}
-
-		return res.json({
-			success: true,
-			user,
-		});
-	} catch (error) {
-		console.error("Error fetching user:", error);
-		res.status(500).json({
-			success: false,
-			message: "Failed to fetch user data",
-			error: error.message,
-			code: "FETCH_ERROR",
-		});
-	}
-});
-
-// Update user profile - protected route
-router.patch("/profile/:walletAddress", async (req, res) => {
-	const transaction = await sequelize.transaction();
-	try {
-		const { walletAddress } = req.params;
-		const {
-			name,
-			email,
-			phoneNumber,
-			bio,
-			gender,
-			dob,
-			location,
-			profileImage,
-			preferences,
-			store,
-			acceptBlockchainStorage,
-		} = req.body;
-
-		// Find existing user
-		const user = await User.findOne({
-			where: { walletAddress: walletAddress.toLowerCase() },
-			transaction,
-		});
-
-		if (!user) {
-			await transaction.rollback();
-			return res.status(404).json({
-				success: false,
-				message: "User not found",
-			});
-		}
-
-		// Validate email format if provided
-		if (email && !email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-			await transaction.rollback();
-			return res.status(400).json({
-				success: false,
-				message: "Invalid email format",
-			});
-		}
-
-		// Validate phone number format if provided
-		if (phoneNumber && !phoneNumber.match(/^\+?[\d\s-()]{8,}$/)) {
-			await transaction.rollback();
-			return res.status(400).json({
-				success: false,
-				message: "Invalid phone number format",
-			});
-		}
-
-		// Validate date of birth if provided
-		if (dob) {
-			const dobDate = new Date(dob);
-			if (isNaN(dobDate.getTime())) {
-				await transaction.rollback();
-				return res.status(400).json({
-					success: false,
-					message: "Invalid date of birth format",
-				});
-			}
-		}
-
-		// Prepare update data
-		const updateData = {
-			...(name && { name }),
-			...(email && { email }),
-			...(phoneNumber && { phoneNumber }),
-			...(bio && { bio }),
-			...(gender && { gender }),
-			...(dob && { dob }),
-			...(location && { location }),
-			...(profileImage && { profileImage }),
-			...(preferences && { preferences }),
-			...(typeof acceptBlockchainStorage === "boolean" && {
-				acceptBlockchainStorage,
-			}),
-			updatedAt: new Date(),
-		};
-
-		// If store details are provided, update or create store
-		if (store) {
-			updateData.store = {
-				...(user.store || {}),
-				...store,
-				updatedAt: new Date(),
-			};
-		}
-
-		// Update user with new data
-		const updatedUser = await user.update(updateData, { transaction });
-
-		await transaction.commit();
-
-		// Return updated user data
-		res.json({
-			success: true,
-			message: "Profile updated successfully",
-			user: {
-				walletAddress: updatedUser.walletAddress,
-				name: updatedUser.name,
-				email: updatedUser.email,
-				phoneNumber: updatedUser.phoneNumber,
-				bio: updatedUser.bio,
-				gender: updatedUser.gender,
-				dob: updatedUser.dob,
-				location: updatedUser.location,
-				profileImage: updatedUser.profileImage,
-				role: updatedUser.role,
-				store: updatedUser.store,
-				preferences: updatedUser.preferences,
-				ipfsCid: updatedUser.ipfsCid,
-				ipfsUrl: updatedUser.ipfsUrl,
-				blockchainTxHash: updatedUser.blockchainTxHash,
-				lastBlockchainUpdate: updatedUser.lastBlockchainUpdate,
-				acceptBlockchainStorage: updatedUser.acceptBlockchainStorage,
-				createdAt: updatedUser.createdAt,
-				updatedAt: updatedUser.updatedAt,
-			},
-		});
-	} catch (error) {
-		await transaction.rollback();
-		console.error("Error updating profile:", error);
-		res.status(500).json({
-			success: false,
-			message: "Failed to update profile",
-			error: error.message,
-		});
-	}
-});
-
-// Delete specific user - protected route
-router.delete("/:walletAddress", protect, async (req, res) => {
-	const transaction = await sequelize.transaction();
-	try {
-		const { walletAddress } = req.params;
-
-		// Find the user
-		const user = await User.findOne({
-			where: { walletAddress: walletAddress.toLowerCase() },
-			transaction,
-		});
-
-		if (!user) {
-			await transaction.rollback();
-			return res.status(404).json({
-				success: false,
-				message: "User not found",
-			});
-		}
-
-		// Delete the user
-		await user.destroy({ transaction });
-
-		await transaction.commit();
-		res.json({
-			success: true,
-			message: "User deleted successfully",
-		});
-	} catch (error) {
-		await transaction.rollback();
-		console.error("Error deleting user:", error);
-		res.status(500).json({
-			success: false,
-			error: error.message,
-		});
-	}
-});
+// Protected routes
+router.get("/profile/:walletAddress", protect, getUserProfile);
+router.patch("/profile/:walletAddress", protect, updateUserProfile);
 
 // Admin Routes
 
-// Get all users (admin only)
-router.get("/", async (req, res) => {
-	try {
-		const users = await User.findAll();
-		res.json(users);
-	} catch (error) {
-		res.status(500).json({ success: false, error: error.message });
-	}
-});
+// Get all users (protected route)
+router.get("/", protect, adminProtect, getAllUsers);
 
 // Delete all users (admin only)
 router.delete("/", adminProtect, async (req, res) => {
@@ -673,7 +487,7 @@ router.delete("/", adminProtect, async (req, res) => {
 		});
 
 		// Finally delete all users
-		await User.destroy({ where: {}, force: true, transaction });
+		await db.User.destroy({ where: {}, force: true, transaction });
 
 		await transaction.commit();
 		res.json({
@@ -707,7 +521,7 @@ router.post("/complete-profile", protect, async (req, res) => {
 		}
 
 		// Check if user already exists with completed profile
-		const existingUser = await User.findOne({
+		const existingUser = await db.User.findOne({
 			where: { walletAddress: walletAddress.toLowerCase() },
 			transaction,
 		});
@@ -721,7 +535,7 @@ router.post("/complete-profile", protect, async (req, res) => {
 		}
 
 		// Create or update user with Google data
-		const [user, created] = await User.upsert(
+		const [user, created] = await db.User.upsert(
 			{
 				walletAddress: walletAddress.toLowerCase(),
 				name: displayName,
@@ -745,7 +559,7 @@ router.post("/complete-profile", protect, async (req, res) => {
 		await transaction.commit();
 
 		// Generate new token
-		const token = generateToken(user.walletAddress);
+		const token = generateToken(user);
 
 		res.json({
 			success: true,
@@ -767,37 +581,137 @@ router.post("/complete-profile", protect, async (req, res) => {
 	}
 });
 
-// Profile setup events endpoint
+// Profile-setup-events endpoint in user routes
 router.get("/profile-setup-events", (req, res) => {
-	// Set headers for SSE
-	res.writeHead(200, {
-		"Content-Type": "text/event-stream",
-		"Cache-Control": "no-cache",
-		Connection: "keep-alive",
-	});
+	// Extract token from query parameters
+	const token = req.query.token;
 
-	// Helper function to send events
-	const sendEvent = (data) => {
-		res.write(`data: ${JSON.stringify(data)}\n\n`);
-	};
+	// Validate token if provided
+	if (!token) {
+		return res.status(401).json({
+			success: false,
+			message: "Authentication required",
+		});
+	}
 
-	// Store the client's response object in the request
-	req.on("close", () => {
-		res.end();
-	});
+	try {
+		// Set response headers
+		res.setHeader("Content-Type", "text/event-stream");
+		res.setHeader("Cache-Control", "no-cache");
+		res.setHeader("Connection", "keep-alive");
+		res.setHeader("X-Accel-Buffering", "no"); // Disable buffering for nginx
 
-	// Store the sendEvent function in the request for use in other middleware
-	req.sendEvent = sendEvent;
+		// Allow CORS
+		res.setHeader("Access-Control-Allow-Origin", "*");
+		res.setHeader("Access-Control-Allow-Credentials", "true");
 
-	// Keep the connection alive
-	const keepAlive = setInterval(() => {
-		res.write(": keepalive\n\n");
-	}, 20000);
+		// Set status code
+		res.statusCode = 200;
 
-	req.on("close", () => {
-		clearInterval(keepAlive);
-	});
+		// Helper function to send events
+		const sendEvent = (data) => {
+			const event = data.type || "message";
+			res.write(`event: ${event}\n`);
+			res.write(`data: ${JSON.stringify(data)}\n\n`);
+		};
+
+		// Store the sendEvent function on the request for use in other middleware
+		req.sendEvent = sendEvent;
+
+		// Send initial connection established event
+		sendEvent({
+			type: "connection",
+			status: "connected",
+			message: "SSE connection established",
+			timestamp: new Date().toISOString(),
+		});
+
+		// Send a test event after a short delay
+		setTimeout(() => {
+			sendEvent({
+				type: "setup",
+				status: "ready",
+				message: "Ready to receive profile setup events",
+				timestamp: new Date().toISOString(),
+			});
+		}, 1000);
+
+		// Keep connection alive with keepalive messages
+		const keepAlive = setInterval(() => {
+			res.write(`: ${new Date().toISOString()}\n\n`);
+		}, 15000);
+
+		// Cleanup on connection close
+		req.on("close", () => {
+			clearInterval(keepAlive);
+			console.log("SSE connection closed");
+		});
+	} catch (error) {
+		console.error("Error setting up SSE:", error);
+		if (!res.headersSent) {
+			return res.status(500).json({
+				success: false,
+				message: "Failed to set up event stream",
+				error: error.message,
+			});
+		}
+	}
 });
+
+// Update user role (protected route)
+router.patch("/:userId/role", protect, adminProtect, updateUserRole);
+
+// Test registration route - skips blockchain storage
+router.post(
+	"/test-register",
+	catchAsync(async (req, res) => {
+		const transaction = await sequelize.transaction();
+		try {
+			const { walletAddress, name, email, phoneNumber } = req.body;
+
+			// Create user in database
+			const user = await db.User.create(
+				{
+					walletAddress: walletAddress.toLowerCase(),
+					name: name || "Anonymous User",
+					email: email?.toLowerCase() || null,
+					phoneNumber: phoneNumber || "",
+					role: "user",
+					isVerified: false,
+					acceptBlockchainStorage: false,
+				},
+				{ transaction }
+			);
+
+			await transaction.commit();
+
+			// Generate new token
+			const token = generateToken(user);
+
+			// Return success response
+			return res.status(201).json(
+				successResponse(
+					{
+						user: {
+							...user.toJSON(),
+							acceptBlockchainStorage: false,
+						},
+						token,
+					},
+					"User registered successfully"
+				)
+			);
+		} catch (error) {
+			await transaction.rollback();
+			console.error("Error creating user:", error);
+			return res.status(500).json(
+				errorResponse("Error creating user", ResponseCodes.INTERNAL_ERROR, {
+					details: error.errors?.map((e) => e.message) || [error.message],
+				})
+			);
+		}
+	})
+);
 
 // Add a router-level error handler
 router.use((err, req, res, next) => {

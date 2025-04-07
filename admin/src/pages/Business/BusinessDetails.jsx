@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import {
 	FaEdit,
 	FaTrash,
@@ -55,6 +55,8 @@ import {
 	FaTrophy,
 	FaKey,
 	FaHistory,
+	FaCogs,
+	FaExclamationCircle,
 } from "react-icons/fa";
 import {
 	Typography,
@@ -91,6 +93,8 @@ import {
 	Dropdown,
 	Table,
 	Timeline,
+	Alert,
+	Badge,
 } from "antd";
 import LoadingSpinner from "../../Components/Common/LoadingSpinner";
 import ErrorMessage from "../../Components/Common/ErrorMessage";
@@ -137,6 +141,7 @@ import dayjs from "dayjs";
 import { BUSINESS_CONSTANTS } from "../../constants/businessConstants";
 import axios from "axios";
 import { TEAM_MEMBER_CONSTANTS } from "../../constants/businessConstants";
+import { STORAGE_KEYS } from "../../utils/storage";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -384,24 +389,149 @@ const BusinessDetails = () => {
 	}, []);
 
 	useEffect(() => {
+		// Clear any previous business data when parameters change
+		setBusiness(null);
+		setEditedBusiness(null);
+
+		// Validate ID before attempting to load
+		if (!id || id === "*" || id === "undefined") {
+			console.error("Invalid business ID in useEffect:", id);
+			setLoading(false);
+			showError("Invalid business ID or no businesses found");
+			// Use a short timeout to ensure the message is shown before redirecting
+			setTimeout(() => {
+				navigate("/dashboard/businesses");
+			}, 100);
+			return;
+		}
+
+		console.log("Loading business with ID:", id);
 		loadBusinessDetails();
-	}, [id]);
+	}, [id, navigate]);
 
 	const loadBusinessDetails = async () => {
 		try {
 			setLoading(true);
+			// Validate business ID
+			if (!id || id === "*" || id === "undefined") {
+				console.error("Invalid business ID detected:", id);
+				showError("Invalid business ID");
+				navigate("/dashboard/businesses");
+				return;
+			}
+
+			// Check for token before making the request
+			const token = localStorage.getItem(STORAGE_KEYS.token);
+			if (!token) {
+				console.error(
+					"Authentication token not found when loading business details"
+				);
+				showError(
+					"Authentication token not found. Please reconnect your wallet."
+				);
+				navigate("/connect");
+				return;
+			}
+
+			// Log token info for debugging
+			console.log("Loading business details with token:", {
+				tokenExists: !!token,
+				tokenPreview: token
+					? `${token.substring(0, 10)}...${token.substring(token.length - 5)}`
+					: null,
+				businessId: id,
+			});
+
+			// Make sure axios headers are configured
+			axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+			// Direct API call for debugging
+			try {
+				const response = await axios.get(`/businesses/${id}`);
+				console.log("Direct API response:", response.data);
+
+				if (response.data?.success) {
+					const businessData = response.data.message;
+					console.log("Business details loaded successfully:", {
+						id: businessData.id,
+						name: businessData.name,
+						status: businessData.status,
+					});
+					setBusiness(businessData);
+					setEditedBusiness(businessData);
+					return;
+				}
+			} catch (directError) {
+				console.error("Direct API call failed:", directError);
+				// Continue with the context-based approach
+			}
+
+			// Try context-based approach as fallback
 			const data = await fetchBusinessById(id);
 			if (data) {
+				console.log("Business details loaded successfully from context:", {
+					id: data.id,
+					name: data.name,
+					status: data.status,
+				});
 				setBusiness(data);
 				setEditedBusiness(data);
 			} else {
-				showError("Business not found");
-				navigate("/businesses");
+				console.error("Business data not returned from API call for ID:", id);
+				showError("Business not found or you don't have access to view it");
+				navigate("/dashboard/businesses");
 			}
 		} catch (error) {
 			console.error("Error loading business details:", error);
-			showError("Failed to load business details");
-			navigate("/businesses");
+			console.error("Error details:", error.response || error);
+
+			// Check for specific error types
+			if (error.response) {
+				console.error("Error response data:", error.response.data);
+
+				if (error.response.status === 404) {
+					showError("Business not found - Please check the business ID");
+				} else if (error.response.status === 403) {
+					showError(
+						"You don't have permission to view this business. Please check your authentication."
+					);
+				} else if (error.response.status === 401) {
+					showError("Your session has expired. Please reconnect your wallet.");
+					navigate("/connect");
+				} else if (error.response.status === 500) {
+					showError(
+						`Server error: ${
+							error.response.data?.message || "Internal server error"
+						}. Please try again later.`
+					);
+				} else {
+					showError(
+						`Failed to load business details: ${
+							error.response.data?.message || error.message
+						}`
+					);
+				}
+			} else if (error.request) {
+				// Request was made but no response received
+				console.error("No response received:", error.request);
+
+				// Check for CORS issues
+				if (
+					(error.message && error.message.includes("NetworkError")) ||
+					(error.message && error.message.includes("Network Error"))
+				) {
+					showError(
+						"Network error - possible CORS issue. Please check server configuration."
+					);
+				} else {
+					showError("No response from server. Please check your connection.");
+				}
+			} else {
+				showError(
+					`Failed to load business details: ${error.message}. Please try again later.`
+				);
+			}
+			navigate("/dashboard/businesses");
 		} finally {
 			setLoading(false);
 		}
@@ -419,25 +549,51 @@ const BusinessDetails = () => {
 	// Return error state if no business found
 	if (!business) {
 		return (
-			<div className="min-h-screen bg-gray-50 p-4">
-				<ErrorMessage message="Business not found" />
+			<div className="min-h-screen bg-gray-50 p-4 flex items-center justify-center">
+				<div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full text-center">
+					<FaExclamationCircle className="mx-auto text-red-500 text-4xl mb-4" />
+					<h2 className="text-2xl font-semibold mb-2">Business Not Found</h2>
+					<p className="text-gray-600 mb-6">
+						The business you're looking for could not be found or you don't have
+						permission to view it.
+					</p>
+					<button
+						onClick={() => navigate("/dashboard/businesses")}
+						className="px-6 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors"
+					>
+						View All Businesses
+					</button>
+				</div>
 			</div>
 		);
 	}
 
 	const handleVerification = async (status) => {
 		try {
-			const response = await fetch(
-				`http://localhost:8000/api/businesses/${id}/verify`,
-				{
-					method: "PUT",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						verificationStatus: status,
-						verificationNote,
-					}),
-				}
-			);
+			// Get the token from localStorage
+			const token = localStorage.getItem(STORAGE_KEYS.token);
+			if (!token) {
+				showError(
+					"Authentication token not found. Please reconnect your wallet."
+				);
+				return;
+			}
+
+			// Get API URL from environment
+			const API_URL =
+				import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:8000/api";
+
+			const response = await fetch(`${API_URL}/businesses/${id}/verify`, {
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${token}`,
+				},
+				body: JSON.stringify({
+					verificationStatus: status,
+					verificationNote,
+				}),
+			});
 
 			if (response.ok) {
 				const data = await response.json();
@@ -450,7 +606,16 @@ const BusinessDetails = () => {
 					} successfully`
 				);
 			} else {
-				showError("Failed to update verification status");
+				// Handle specific error cases
+				if (response.status === 403) {
+					showError(
+						"You don't have permission to perform this action. Please check your authentication."
+					);
+				} else if (response.status === 401) {
+					showError("Your session has expired. Please reconnect your wallet.");
+				} else {
+					showError("Failed to update verification status");
+				}
 			}
 		} catch (error) {
 			console.error("Error updating verification status:", error);
@@ -463,7 +628,7 @@ const BusinessDetails = () => {
 			try {
 				await deleteBusiness(id);
 				showSuccess("Business deleted successfully");
-				navigate("/businesses");
+				navigate("/dashboard/businesses");
 			} catch (error) {
 				showError("Failed to delete business");
 			}
@@ -699,6 +864,15 @@ const BusinessDetails = () => {
 		}
 	};
 
+	const handleEditMember = (member) => {
+		// This will be implemented in a future update
+		message.info("Edit member functionality coming soon!");
+		// Future implementation would include:
+		// 1. Setting state with the current member details
+		// 2. Opening a modal or drawer with a form pre-filled with the member's details
+		// 3. Saving changes using the updateTeamMember function from BusinessContext
+	};
+
 	const getRoleIcon = (role) => {
 		switch (role) {
 			case "owner":
@@ -787,171 +961,307 @@ const BusinessDetails = () => {
 	};
 
 	const renderTeamMembers = () => {
-		if (!business?.teamMembers?.length) {
-			return renderEmptyList("No team members added yet");
-		}
-
 		return (
-			<div className="bg-white rounded-lg overflow-hidden -mx-4 sm:mx-0">
-				<Table
-					dataSource={business.teamMembers}
-					rowKey="id"
-					pagination={false}
-					className="custom-table"
-					scroll={{ x: true }}
-					columns={[
-						{
-							title: "Member",
-							key: "member",
-							fixed: "left",
-							width: 250,
-							render: (_, member) => (
-								<div className="flex items-center space-x-3 py-2">
-									<Avatar
-										size={32}
-										src={member.user?.profileImage}
-										icon={!member.user?.profileImage && <UserOutlined />}
-										className="bg-blue-100 flex-shrink-0"
-									/>
-									<div className="min-w-0">
-										<div className="text-sm font-medium text-gray-900 truncate">
-											{member.user?.name || "Unnamed User"}
-										</div>
-										<div className="text-xs text-gray-500 truncate">
-											{member.user?.email}
-										</div>
-									</div>
-								</div>
-							),
-						},
-						{
-							title: "Role",
-							key: "role",
-							width: 180,
-							render: (_, member) => (
-								<div className="flex items-center space-x-2">
-									<Tag
-										icon={getRoleIcon(member.role)}
-										color={
-											member.role === "owner"
-												? "gold"
-												: member.role === "admin"
-												? "blue"
-												: "default"
-										}
-									>
-										{member.role.charAt(0).toUpperCase() + member.role.slice(1)}
-									</Tag>
-								</div>
-							),
-						},
-						{
-							title: "Status",
-							key: "status",
-							width: 120,
-							render: (_, member) =>
-								getStatusBadge(member.status || "pending", "status"),
-						},
-						{
-							title: "Department",
-							dataIndex: ["department"],
-							key: "department",
-							width: 150,
-							render: (department) =>
-								department ? (
-									<Tag icon={<TeamOutlined />}>{department}</Tag>
-								) : (
-									<span className="text-gray-400">-</span>
-								),
-						},
-						{
-							title: "Position",
-							dataIndex: ["position"],
-							key: "position",
-							width: 150,
-							render: (position) =>
-								position ? (
-									<Tag icon={<IdcardOutlined />}>{position}</Tag>
-								) : (
-									<span className="text-gray-400">-</span>
-								),
-						},
-						{
-							title: "Permissions",
-							key: "permissions",
-							width: 150,
-							render: (_, member) => {
-								const activePermissions = Object.entries(
-									member.permissions || {}
-								)
-									.filter(([, value]) => value === true)
-									.map(([key]) => key);
+			<div className="space-y-6">
+				{/* Team Members Header */}
+				<div className="bg-white rounded-2xl shadow-sm p-6">
+					<div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+						<div>
+							<h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+								<FaUsers className="text-blue-500" />
+								Team Members
+							</h3>
+							<p className="text-sm text-gray-500 mt-1">
+								Manage your business team members and permissions
+							</p>
+						</div>
+						<Button
+							type="primary"
+							icon={<FaUserPlus />}
+							onClick={() => setIsAddMemberOpen(true)}
+							className="flex items-center gap-2"
+						>
+							Add Team Member
+						</Button>
+					</div>
+				</div>
 
-								if (activePermissions.length === 0) {
-									return <span className="text-gray-400">No permissions</span>;
-								}
-
-								return (
-									<Tooltip
-										title={
-											<div className="max-w-xs">
-												{activePermissions.map((perm) => (
-													<div key={perm} className="text-xs py-0.5">
-														• {perm.split("_").join(" ")}
-													</div>
-												))}
-											</div>
-										}
-									>
-										<div className="flex items-center space-x-1">
-											<Tag className="cursor-help">
-												{activePermissions.length} permission
-												{activePermissions.length !== 1 ? "s" : ""}
-											</Tag>
-											<InfoCircleOutlined className="text-gray-400" />
-										</div>
-									</Tooltip>
-								);
-							},
-						},
-						{
-							title: "",
-							key: "actions",
-							fixed: "right",
-							width: 60,
-							render: (_, member) => (
-								<Dropdown
-									menu={{
-										items: [
-											{
-												key: "edit",
-												label: "Edit Member",
-												icon: <EditOutlined />,
-												onClick: () => handleEditMember(member),
-											},
-											{
-												key: "remove",
-												label: "Remove Member",
-												icon: <DeleteOutlined />,
-												danger: true,
-												disabled: member.role === "owner",
-												onClick: () => handleRemoveMember(member.id),
-											},
-										],
-									}}
-									trigger={["click"]}
-									placement="bottomRight"
+				{/* Add Member Modal */}
+				<Modal
+					title="Add Team Member"
+					open={isAddMemberOpen}
+					onCancel={() => setIsAddMemberOpen(false)}
+					footer={null}
+					destroyOnClose
+				>
+					<div className="p-4">
+						<div className="space-y-4">
+							<div>
+								<label
+									htmlFor="email"
+									className="block text-sm font-medium text-gray-700"
 								>
-									<Button
-										type="text"
-										icon={<EllipsisOutlined />}
-										className="hover:bg-gray-50"
-									/>
-								</Dropdown>
-							),
-						},
-					]}
-				/>
+									Email Address <span className="text-red-500">*</span>
+								</label>
+								<Input
+									id="email"
+									type="email"
+									placeholder="Enter email address"
+									value={newMember.email}
+									onChange={(e) =>
+										setNewMember({ ...newMember, email: e.target.value })
+									}
+									status={errors.email ? "error" : ""}
+									className="mt-1"
+								/>
+								{errors.email && (
+									<div className="text-red-500 text-xs mt-1">
+										{errors.email}
+									</div>
+								)}
+							</div>
+
+							<div>
+								<label
+									htmlFor="role"
+									className="block text-sm font-medium text-gray-700"
+								>
+									Role <span className="text-red-500">*</span>
+								</label>
+								<Select
+									id="role"
+									value={newMember.role}
+									onChange={(value) =>
+										setNewMember({ ...newMember, role: value })
+									}
+									status={errors.role ? "error" : ""}
+									className="w-full mt-1"
+								>
+									{TEAM_MEMBER_ROLES.map((role) => (
+										<Select.Option key={role.value} value={role.value}>
+											<div className="flex items-center gap-2">
+												{role.icon}
+												<div>
+													<div className="font-medium">{role.label}</div>
+													<div className="text-gray-500 text-xs">
+														{role.description}
+													</div>
+												</div>
+											</div>
+										</Select.Option>
+									))}
+								</Select>
+								{errors.role && (
+									<div className="text-red-500 text-xs mt-1">{errors.role}</div>
+								)}
+							</div>
+
+							<div className="mt-6 flex justify-end gap-3">
+								<Button onClick={() => setIsAddMemberOpen(false)}>
+									Cancel
+								</Button>
+								<Button
+									type="primary"
+									onClick={handleAddMember}
+									loading={isAddingMember}
+								>
+									Add Member
+								</Button>
+							</div>
+						</div>
+					</div>
+				</Modal>
+
+				{/* Team Members Table */}
+				{!business?.teamMembers?.length ? (
+					<div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+						<div className="max-w-sm mx-auto">
+							<div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+								<FaUsers className="text-blue-500 text-2xl" />
+							</div>
+							<h3 className="text-lg font-medium text-gray-900 mb-2">
+								No Team Members Yet
+							</h3>
+							<p className="text-gray-500 mb-6">
+								Add your first team member to collaborate on your business
+								management.
+							</p>
+							<Button
+								type="primary"
+								icon={<FaUserPlus />}
+								onClick={() => setIsAddMemberOpen(true)}
+								className="flex items-center gap-2 mx-auto"
+							>
+								Add Your First Team Member
+							</Button>
+						</div>
+					</div>
+				) : (
+					<div className="bg-white rounded-lg overflow-hidden -mx-4 sm:mx-0">
+						<Table
+							dataSource={business.teamMembers}
+							rowKey="id"
+							pagination={false}
+							className="custom-table"
+							scroll={{ x: true }}
+							columns={[
+								{
+									title: "Member",
+									key: "member",
+									fixed: "left",
+									width: 250,
+									render: (_, member) => (
+										<div className="flex items-center space-x-3 py-2">
+											<Avatar
+												size={32}
+												src={member.user?.profileImage}
+												icon={!member.user?.profileImage && <UserOutlined />}
+												className="bg-blue-100 flex-shrink-0"
+											/>
+											<div className="min-w-0">
+												<div className="text-sm font-medium text-gray-900 truncate">
+													{member.user?.name || "Unnamed User"}
+												</div>
+												<div className="text-xs text-gray-500 truncate">
+													{member.user?.email}
+												</div>
+											</div>
+										</div>
+									),
+								},
+								{
+									title: "Role",
+									key: "role",
+									width: 180,
+									render: (_, member) => (
+										<div className="flex items-center space-x-2">
+											<Tag
+												icon={getRoleIcon(member.role)}
+												color={
+													member.role === "owner"
+														? "gold"
+														: member.role === "admin"
+														? "blue"
+														: "default"
+												}
+											>
+												{member.role.charAt(0).toUpperCase() +
+													member.role.slice(1)}
+											</Tag>
+										</div>
+									),
+								},
+								{
+									title: "Status",
+									key: "status",
+									width: 120,
+									render: (_, member) =>
+										getStatusBadge(member.status || "pending", "status"),
+								},
+								{
+									title: "Department",
+									dataIndex: ["department"],
+									key: "department",
+									width: 150,
+									render: (department) =>
+										department ? (
+											<Tag icon={<TeamOutlined />}>{department}</Tag>
+										) : (
+											<span className="text-gray-400">-</span>
+										),
+								},
+								{
+									title: "Position",
+									dataIndex: ["position"],
+									key: "position",
+									width: 150,
+									render: (position) =>
+										position ? (
+											<Tag icon={<IdcardOutlined />}>{position}</Tag>
+										) : (
+											<span className="text-gray-400">-</span>
+										),
+								},
+								{
+									title: "Permissions",
+									key: "permissions",
+									width: 150,
+									render: (_, member) => {
+										const activePermissions = Object.entries(
+											member.permissions || {}
+										)
+											.filter(([, value]) => value === true)
+											.map(([key]) => key);
+
+										if (activePermissions.length === 0) {
+											return (
+												<span className="text-gray-400">No permissions</span>
+											);
+										}
+
+										return (
+											<Tooltip
+												title={
+													<div className="max-w-xs">
+														{activePermissions.map((perm) => (
+															<div key={perm} className="text-xs py-0.5">
+																• {perm.split("_").join(" ")}
+															</div>
+														))}
+													</div>
+												}
+											>
+												<div className="flex items-center space-x-1">
+													<Tag className="cursor-help">
+														{activePermissions.length} permission
+														{activePermissions.length !== 1 ? "s" : ""}
+													</Tag>
+													<InfoCircleOutlined className="text-gray-400" />
+												</div>
+											</Tooltip>
+										);
+									},
+								},
+								{
+									title: "",
+									key: "actions",
+									fixed: "right",
+									width: 60,
+									render: (_, member) => (
+										<Dropdown
+											menu={{
+												items: [
+													{
+														key: "edit",
+														label: "Edit Member",
+														icon: <EditOutlined />,
+														onClick: () => handleEditMember(member),
+													},
+													{
+														key: "remove",
+														label: "Remove Member",
+														icon: <DeleteOutlined />,
+														danger: true,
+														disabled: member.role === "owner",
+														onClick: () => handleRemoveMember(member.id),
+													},
+												],
+											}}
+											trigger={["click"]}
+											placement="bottomRight"
+										>
+											<Button
+												type="text"
+												icon={<EllipsisOutlined />}
+												className="hover:bg-gray-50"
+											/>
+										</Dropdown>
+									),
+								},
+							]}
+						/>
+					</div>
+				)}
 			</div>
 		);
 	};
@@ -1346,18 +1656,6 @@ const BusinessDetails = () => {
 								))}
 							</Select>
 						</Form.Item>
-						<Form.Item name="revenue" label="Revenue">
-							<InputNumber
-								className="w-full"
-								formatter={(value) =>
-									`${business.currency} ${value}`.replace(
-										/\B(?=(\d{3})+(?!\d))/g,
-										","
-									)
-								}
-								parser={(value) => value.replace(/[^\d.]/g, "")}
-							/>
-						</Form.Item>
 					</>
 				)}
 
@@ -1522,13 +1820,12 @@ const BusinessDetails = () => {
 						iconBg: "bg-emerald-500",
 					},
 					{
-						label: "Social Connections",
-						value: `${
-							Object.values(business.socialMedia || {}).filter(
-								(p) => p.isConnected
-							).length
-						}/4`,
-						icon: <FaGlobe />,
+						label: business.type === "product" ? "Products" : "Services",
+						value:
+							business.type === "product"
+								? business.productCategories?.length || 0
+								: business.serviceCategories?.length || 0,
+						icon: business.type === "product" ? <FaBox /> : <FaCogs />,
 						gradient: "from-purple-600 via-purple-500 to-pink-500",
 						iconBg: "bg-purple-500",
 					},
@@ -1635,7 +1932,7 @@ const BusinessDetails = () => {
 				</div>
 			</div>
 
-			{/* Service Categories */}
+			{/* Categories Section - Dynamic based on business type */}
 			<div className="bg-white rounded-2xl shadow-sm overflow-hidden">
 				<div className="border-b border-gray-100">
 					<div className="flex items-center justify-between p-6">
@@ -1645,10 +1942,14 @@ const BusinessDetails = () => {
 							</div>
 							<div>
 								<h3 className="text-lg font-semibold text-gray-900">
-									Service Categories
+									{business.type === "product"
+										? "Product Categories"
+										: "Service Categories"}
 								</h3>
 								<p className="text-sm text-gray-500">
-									Available services and categories
+									{business.type === "product"
+										? "Available product categories"
+										: "Available service categories"}
 								</p>
 							</div>
 						</div>
@@ -1662,10 +1963,15 @@ const BusinessDetails = () => {
 					</div>
 				</div>
 				<div className="p-6">
-					{business.serviceCategories &&
-					business.serviceCategories.length > 0 ? (
+					{(business.type === "product" &&
+						business.productCategories?.length > 0) ||
+					(business.type === "service" &&
+						business.serviceCategories?.length > 0) ? (
 						<div className="flex flex-wrap gap-2">
-							{business.serviceCategories.map((category, index) => (
+							{(business.type === "product"
+								? business.productCategories
+								: business.serviceCategories
+							).map((category, index) => (
 								<Tag
 									key={index}
 									color="blue"
@@ -1676,7 +1982,12 @@ const BusinessDetails = () => {
 							))}
 						</div>
 					) : (
-						<Empty description="No service categories added" className="my-4" />
+						<Empty
+							description={`No ${
+								business.type === "product" ? "product" : "service"
+							} categories added`}
+							className="my-4"
+						/>
 					)}
 				</div>
 			</div>
@@ -1884,6 +2195,160 @@ const BusinessDetails = () => {
 			  ]
 			: [];
 
+		const locationColumns = [
+			{
+				title: "Name",
+				dataIndex: "name",
+				key: "name",
+				render: (text, location) => (
+					<div className="flex items-center gap-2">
+						<div className="w-8 h-8 rounded-md bg-blue-50 flex items-center justify-center text-blue-500">
+							{location.type === "Digital Office" ? (
+								<FaGlobe />
+							) : (
+								<FaBuilding />
+							)}
+						</div>
+						<div>
+							<div className="text-sm font-medium text-gray-900">{text}</div>
+							<div className="flex items-center gap-1">
+								{location.isPrimary && (
+									<Tag color="blue" className="text-xs rounded-sm">
+										Primary
+									</Tag>
+								)}
+								<span className="text-xs text-gray-500">{location.type}</span>
+							</div>
+						</div>
+					</div>
+				),
+			},
+			{
+				title: "Address",
+				key: "address",
+				render: (_, location) => {
+					if (!location.address)
+						return <span className="text-gray-400">-</span>;
+
+					return (
+						<div className="text-sm text-gray-700">
+							{location.address.street && <div>{location.address.street}</div>}
+							<div>
+								{[
+									location.address.city,
+									location.address.state,
+									location.address.postalCode,
+								]
+									.filter(Boolean)
+									.join(", ")}
+							</div>
+							{location.address.country && (
+								<div>{location.address.country}</div>
+							)}
+						</div>
+					);
+				},
+			},
+			{
+				title: "Contact",
+				key: "contact",
+				render: (_, location) => (
+					<div className="space-y-1">
+						{location.phone && (
+							<div className="flex items-center gap-2 text-sm">
+								<FaPhone className="text-gray-400" />
+								<a
+									href={`tel:${location.phone}`}
+									className="text-blue-600 hover:underline"
+								>
+									{location.phone}
+								</a>
+							</div>
+						)}
+						{location.email && (
+							<div className="flex items-center gap-2 text-sm">
+								<FaEnvelope className="text-gray-400" />
+								<a
+									href={`mailto:${location.email}`}
+									className="text-blue-600 hover:underline"
+								>
+									{location.email}
+								</a>
+							</div>
+						)}
+					</div>
+				),
+			},
+			{
+				title: "Hours",
+				key: "hours",
+				render: (_, location) => {
+					if (
+						!location.businessHours ||
+						Object.keys(location.businessHours).length === 0
+					) {
+						return <span className="text-gray-400">Not set</span>;
+					}
+
+					const openDays = Object.entries(location.businessHours)
+						.filter(([_, hours]) => !hours.closed)
+						.map(
+							([day, hours]) =>
+								`${day.charAt(0).toUpperCase() + day.slice(1)}: ${
+									hours.start
+								}-${hours.end}`
+						);
+
+					return (
+						<div className="text-sm">
+							{openDays.length > 0 ? (
+								<Tooltip title={openDays.join("\n")}>
+									<div className="flex items-center gap-1 cursor-help">
+										<FaClock className="text-gray-400" />
+										<span>{openDays.length} days open</span>
+										<InfoCircleOutlined className="text-gray-400" />
+									</div>
+								</Tooltip>
+							) : (
+								<span className="text-yellow-500 flex items-center gap-1">
+									<FaClock /> Closed
+								</span>
+							)}
+						</div>
+					);
+				},
+			},
+			{
+				title: "",
+				key: "actions",
+				width: 100,
+				render: (_, location) => (
+					<div className="flex items-center justify-end gap-2">
+						<Button
+							type="text"
+							icon={<FaEdit />}
+							onClick={() => handleEditLocation(location)}
+							className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+						/>
+						<Popconfirm
+							title="Delete Location"
+							description="Are you sure you want to delete this location? This action cannot be undone."
+							onConfirm={() => handleDeleteLocation(location.id)}
+							okText="Delete"
+							cancelText="Cancel"
+							placement="left"
+						>
+							<Button
+								type="text"
+								icon={<FaTrash />}
+								className="text-red-600 hover:text-red-700 hover:bg-red-50"
+							/>
+						</Popconfirm>
+					</div>
+				),
+			},
+		];
+
 		return (
 			<div className="space-y-6">
 				{/* Header Section */}
@@ -1986,7 +2451,7 @@ const BusinessDetails = () => {
 					</div>
 				</div>
 
-				{/* Locations List */}
+				{/* Locations Table */}
 				{locations.length === 0 ? (
 					<div className="bg-white rounded-2xl shadow-sm p-8 text-center">
 						<div className="max-w-sm mx-auto">
@@ -2011,171 +2476,14 @@ const BusinessDetails = () => {
 						</div>
 					</div>
 				) : (
-					<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-						{locations.map((location, index) => (
-							<div
-								key={index}
-								className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden group"
-							>
-								{/* Location Header */}
-								<div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6">
-									<div className="flex items-start justify-between">
-										<div className="flex items-start gap-4">
-											<div className="w-12 h-12 rounded-xl bg-white shadow-sm flex items-center justify-center text-blue-500 group-hover:scale-110 transition-transform duration-300">
-												{location.type === "Digital Office" ? (
-													<FaGlobe className="text-xl" />
-												) : (
-													<FaBuilding className="text-xl" />
-												)}
-											</div>
-											<div>
-												<div className="flex items-center gap-2">
-													<h4 className="text-lg font-medium text-gray-900">
-														{location.name}
-													</h4>
-													{location.isPrimary && (
-														<Tag color="blue" className="rounded-full">
-															Primary
-														</Tag>
-													)}
-												</div>
-												<p className="text-sm text-gray-500 mt-1">
-													{location.type}
-												</p>
-											</div>
-										</div>
-										<div className="flex items-center gap-2">
-											<Tooltip title="Edit Location">
-												<Button
-													type="text"
-													icon={<FaEdit />}
-													onClick={() => handleEditLocation(location)}
-													className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-												/>
-											</Tooltip>
-											<Popconfirm
-												title="Delete Location"
-												description="Are you sure you want to delete this location? This action cannot be undone."
-												onConfirm={() => handleDeleteLocation(location.id)}
-												okText="Delete"
-												cancelText="Cancel"
-												placement="left"
-											>
-												<Button
-													type="text"
-													icon={<FaTrash />}
-													className="text-red-600 hover:text-red-700 hover:bg-red-50"
-												/>
-											</Popconfirm>
-										</div>
-									</div>
-								</div>
-
-								{/* Location Details */}
-								<div className="p-6 space-y-4">
-									{/* Address Section */}
-									{location.address && (
-										<div className="flex items-start gap-3">
-											<div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500">
-												<FaMapMarkerAlt />
-											</div>
-											<div className="flex-1">
-												<p className="text-sm font-medium text-gray-900 mb-1">
-													Address
-												</p>
-												<div className="text-gray-600 text-sm space-y-1">
-													{location.address.street && (
-														<p>{location.address.street}</p>
-													)}
-													<p>
-														{[
-															location.address.city,
-															location.address.state,
-															location.address.postalCode,
-														]
-															.filter(Boolean)
-															.join(", ")}
-													</p>
-													{location.address.country && (
-														<p>{location.address.country}</p>
-													)}
-												</div>
-											</div>
-										</div>
-									)}
-
-									{/* Contact Section */}
-									<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-										{location.phone && (
-											<div className="flex items-center gap-3">
-												<div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center text-green-500">
-													<FaPhone />
-												</div>
-												<div>
-													<p className="text-sm font-medium text-gray-900">
-														Phone
-													</p>
-													<a
-														href={`tel:${location.phone}`}
-														className="text-sm text-green-600 hover:text-green-700"
-													>
-														{location.phone}
-													</a>
-												</div>
-											</div>
-										)}
-
-										{location.email && (
-											<div className="flex items-center gap-3">
-												<div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center text-purple-500">
-													<FaEnvelope />
-												</div>
-												<div>
-													<p className="text-sm font-medium text-gray-900">
-														Email
-													</p>
-													<a
-														href={`mailto:${location.email}`}
-														className="text-sm text-purple-600 hover:text-purple-700"
-													>
-														{location.email}
-													</a>
-												</div>
-											</div>
-										)}
-									</div>
-
-									{/* Business Hours Section */}
-									{location.businessHours && (
-										<div className="pt-4 border-t">
-											<div className="flex items-center gap-2 mb-3">
-												<FaClock className="text-orange-500" />
-												<h5 className="text-sm font-medium text-gray-900">
-													Business Hours
-												</h5>
-											</div>
-											<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-												{Object.entries(location.businessHours)
-													.filter(([_, hours]) => !hours.closed)
-													.map(([day, hours]) => (
-														<div
-															key={day}
-															className="flex items-center justify-between bg-gray-50 rounded-lg p-2"
-														>
-															<span className="text-sm font-medium text-gray-700 capitalize">
-																{day}
-															</span>
-															<span className="text-sm text-gray-600">
-																{hours.start} - {hours.end}
-															</span>
-														</div>
-													))}
-											</div>
-										</div>
-									)}
-								</div>
-							</div>
-						))}
+					<div className="bg-white rounded-lg shadow-sm overflow-hidden">
+						<Table
+							dataSource={locations}
+							columns={locationColumns}
+							rowKey="id"
+							pagination={false}
+							className="custom-table"
+						/>
 					</div>
 				)}
 			</div>
@@ -3274,6 +3582,26 @@ const BusinessDetails = () => {
 		}
 	};
 
+	// Replace the style tag with a styled-components implementation
+	const StyledBusinessTabs = styled.div`
+		.business-tabs .ant-tabs-nav {
+			margin-bottom: 0;
+		}
+		.business-tabs .ant-tabs-nav-list {
+			width: 100%;
+			justify-content: space-between;
+		}
+		.business-tabs .ant-tabs-tab {
+			margin: 0;
+			padding: 8px 12px;
+		}
+		@media (max-width: 640px) {
+			.business-tabs .ant-tabs-tab {
+				padding: 8px;
+			}
+		}
+	`;
+
 	return (
 		<div className="min-h-screen bg-gray-50 p-4">
 			{/* Mobile View */}
@@ -3357,26 +3685,7 @@ const BusinessDetails = () => {
 				/>
 			</Modal>
 
-			{/* Add custom styles for better mobile tabs */}
-			<style jsx global>{`
-				.business-tabs .ant-tabs-nav {
-					margin-bottom: 0;
-				}
-				.business-tabs .ant-tabs-nav-list {
-					width: 100%;
-					justify-content: space-between;
-				}
-				.business-tabs .ant-tabs-tab {
-					margin: 0;
-					padding: 8px 12px;
-				}
-				@media (max-width: 640px) {
-					.business-tabs .ant-tabs-tab {
-						padding: 8px;
-					}
-				}
-			`}</style>
-
+			<StyledBusinessTabs />
 			{renderEditDrawer()}
 		</div>
 	);

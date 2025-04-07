@@ -99,6 +99,25 @@ const asyncHandler = (fn) => {
 	};
 };
 
+// Async error handler wrapper
+const handleAsync = (fn) => (req, res, next) => {
+	Promise.resolve(fn(req, res, next)).catch((error) => {
+		console.error("Error:", error);
+		res.status(500).json({
+			success: false,
+			message: error.message || "Internal server error",
+			code: "INTERNAL_ERROR",
+			details:
+				process.env.NODE_ENV === "development"
+					? {
+							stack: error.stack,
+					  }
+					: null,
+			timestamp: new Date().toISOString(),
+		});
+	});
+};
+
 module.exports = {
 	errorHandler,
 	asyncHandler,
@@ -106,4 +125,5 @@ module.exports = {
 	handleIPFSError,
 	handleDatabaseError,
 	handleJWTError,
+	handleAsync,
 };

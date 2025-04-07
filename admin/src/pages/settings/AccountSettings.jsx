@@ -36,8 +36,12 @@ import {
 } from "antd";
 import axios from "axios";
 import debounce from "lodash/debounce";
+import { STORAGE_KEYS } from "../../utils/storage";
 
 const { Title, Text } = Typography;
+
+const API_URL =
+	import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:8000/api";
 
 // Add store categories
 const STORE_CATEGORIES = [
@@ -105,7 +109,7 @@ const formatLocation = (location) => {
 
 const AccountSettings = () => {
 	const { user: authUser } = useAuth();
-	const { user: accountUser, updateProfile } = useAccount();
+	const { user: accountUser } = useAccount();
 	const [selectedMenu, setSelectedMenu] = useState("profile");
 	const [editingSection, setEditingSection] = useState(null);
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -133,8 +137,8 @@ const AccountSettings = () => {
 				)}`,
 				{
 					headers: {
+						// Browser will set User-Agent automatically, no need to specify it
 						"Accept-Language": "en-US,en;q=0.9",
-						"User-Agent": "TreditApp/1.0",
 					},
 				}
 			);
@@ -1132,6 +1136,137 @@ const AccountSettings = () => {
 						<Text className="text-gray-500 text-lg">Coming Soon</Text>
 					</div>
 				);
+		}
+	};
+
+	// Add updateProfile function since it's not available in context
+	const updateProfile = async (updateData) => {
+		try {
+			// Get token from localStorage using the constant
+			const token = localStorage.getItem(STORAGE_KEYS.token);
+			if (!token) {
+				throw new Error(
+					"Authentication token not found. Please reconnect your wallet."
+				);
+			}
+
+			// Make sure we have a walletAddress
+			if (!user?.walletAddress) {
+				throw new Error(
+					"Wallet address not found. Please reconnect your wallet."
+				);
+			}
+
+			// Log the update data for debugging
+			console.log("Sending profile update request with data:", updateData);
+
+			// Based on the API structure, try the likely endpoint for profile updates
+			try {
+				// Try the profile-update endpoint
+				const response = await axios.post(
+					`${API_URL}/users/profile-update`,
+					{
+						...updateData,
+						walletAddress: user.walletAddress.toLowerCase()
+					},
+					{
+						headers: {
+							"Content-Type": "application/json",
+							Authorization: `Bearer ${token}`,
+						},
+					}
+				);
+
+				// Handle success
+				if (response.data?.success) {
+					message.success("Profile updated successfully");
+					// Return standardized response
+					return {
+						success: true,
+						user: response.data.user || response.data.data || response.data.message,
+					};
+				} else {
+					throw new Error(response.data?.message || "Failed to update profile");
+				}
+			} catch (firstError) {
+				console.log("First endpoint attempt failed, trying alternate endpoint...", firstError);
+				
+				// Try alternate endpoint formats
+				try {
+					// This endpoint pattern matches how profiles are fetched
+					const alternateResponse = await axios.put(
+						`${API_URL}/users/profile/${user.walletAddress.toLowerCase()}`,
+						updateData,
+						{
+							headers: {
+								"Content-Type": "application/json",
+								Authorization: `Bearer ${token}`,
+							},
+						}
+					);
+
+					if (alternateResponse.data?.success) {
+						message.success("Profile updated successfully");
+						return {
+							success: true,
+							user: alternateResponse.data.user || alternateResponse.data.data || alternateResponse.data.message,
+						};
+					}
+				} catch (secondError) {
+					console.log("Second endpoint attempt also failed", secondError);
+					
+					// One more attempt with a direct user update endpoint
+					try {
+						// Try a direct update to the user endpoint
+						const thirdResponse = await axios.post(
+							`${API_URL}/users/update`,
+							{
+								...updateData,
+								walletAddress: user.walletAddress.toLowerCase(),
+							},
+							{
+								headers: {
+									"Content-Type": "application/json",
+									Authorization: `Bearer ${token}`,
+								},
+							}
+						);
+
+						if (thirdResponse.data?.success) {
+							message.success("Profile updated successfully");
+							return {
+								success: true,
+								user: thirdResponse.data.user || thirdResponse.data.data || thirdResponse.data.message,
+							};
+						}
+					} catch (thirdError) {
+						// Handle the scenario where the server responds with something other than a 2xx status code
+						console.error("All API endpoint attempts failed. Details:", {
+							firstAttempt: { endpoint: "/users/profile-update", error: firstError.message },
+							secondAttempt: { endpoint: `/users/profile/${user.walletAddress.toLowerCase()}`, error: secondError.message },
+							thirdAttempt: { endpoint: "/users/update", error: thirdError.message }
+						});
+						
+						// Check for specific error conditions
+						const errorCodes = [firstError.response?.status, secondError.response?.status, thirdError.response?.status];
+						
+						if (errorCodes.includes(401)) {
+							throw new Error("Authentication failed. Please log in again.");
+						} else if (errorCodes.includes(403)) {
+							throw new Error("You don't have permission to update this profile.");
+						} else {
+							throw new Error("Failed to update profile: API endpoint not found");
+						}
+					}
+				}
+				
+				// If we reached here, none of the endpoints worked
+				throw new Error("Failed to update profile: No valid API endpoint found");
+			}
+		} catch (error) {
+			console.error("Profile update error:", error);
+			message.error(error.message || "Failed to update profile");
+			throw error;
 		}
 	};
 

@@ -27,6 +27,7 @@ class PinataManager {
 	 */
 	async uploadContent(data, name) {
 		try {
+			console.log("Uploading to Pinata with data:", JSON.stringify(data));
 			const response = await axios.post(
 				`${this.baseURL}/pinning/pinJSONToIPFS`,
 				{
@@ -38,8 +39,19 @@ class PinataManager {
 						cidVersion: 1,
 					},
 				},
-				{ headers: this.headers }
+				{
+					headers: {
+						...this.headers,
+						"Content-Type": "application/json",
+					},
+				}
 			);
+
+			console.log("Pinata response:", JSON.stringify(response.data));
+
+			if (!response.data.IpfsHash) {
+				throw new Error("No IPFS hash returned from Pinata");
+			}
 
 			return {
 				cid: response.data.IpfsHash,
@@ -50,7 +62,7 @@ class PinataManager {
 				"Pinata Upload Error:",
 				error.response?.data || error.message
 			);
-			throw new Error("Failed to upload to Pinata");
+			throw new Error(`Failed to upload to Pinata: ${error.message}`);
 		}
 	}
 
@@ -337,6 +349,22 @@ class IpfsService {
 	}
 }
 
+/**
+ * Upload data to IPFS
+ * @param {Object} data - The data to upload
+ * @returns {Promise<{ipfsCid: string, ipfsUrl: string}>}
+ */
+const uploadToIPFS = async (data) => {
+	const pinataManager = new PinataManager();
+	const result = await pinataManager.uploadContent(data, "product");
+	return {
+		ipfsCid: result.cid,
+		ipfsUrl: result.url,
+	};
+};
+
 module.exports = {
+	uploadToIPFS,
 	PinataManager,
+	IpfsService,
 };

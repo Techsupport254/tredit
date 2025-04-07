@@ -10,6 +10,7 @@ const {
 	BUSINESS_CONTRACT_ADDRESS = process.env.BUSINESS_CONTRACT_ADDRESS,
 	USER_PROFILE_ABI = process.env.USER_PROFILE_ABI,
 	BUSINESS_ABI = process.env.BUSINESS_ABI,
+	BICONOMY_FORWARDER = process.env.BICONOMY_FORWARDER,
 } = blockchainConfig;
 
 console.log("Initializing blockchain with:", {
@@ -36,6 +37,10 @@ if (!BUSINESS_CONTRACT_ADDRESS || !BUSINESS_ABI) {
 	throw new Error("Business contract configuration is missing");
 }
 
+if (!BICONOMY_FORWARDER) {
+	throw new Error("Biconomy forwarder address is missing");
+}
+
 const userProfileContract = new ethers.Contract(
 	USER_PROFILE_CONTRACT_ADDRESS,
 	JSON.parse(USER_PROFILE_ABI),
@@ -57,6 +62,25 @@ console.log("Contracts initialized:", {
 	userProfileAddress: USER_PROFILE_CONTRACT_ADDRESS,
 	businessAddress: BUSINESS_CONTRACT_ADDRESS,
 });
+
+async function initializeContracts() {
+	try {
+		// Set the trusted forwarder and business contract addresses
+		const tx1 = await userProfileContract.setTrustedForwarder(
+			BICONOMY_FORWARDER
+		);
+		await tx1.wait();
+		console.log("Trusted forwarder set successfully");
+
+		const tx2 = await userProfileContract.setBusinessContract(
+			BUSINESS_CONTRACT_ADDRESS
+		);
+		await tx2.wait();
+		console.log("Business contract set successfully");
+	} catch (error) {
+		console.error("Error initializing contracts:", error);
+	}
+}
 
 async function getSignedContract(contract) {
 	try {
@@ -125,6 +149,7 @@ async function executeTransaction(contract, method, args = [], options = {}) {
 }
 
 module.exports = {
+	initializeContracts,
 	getSignedContract,
 	estimateGas,
 	executeTransaction,

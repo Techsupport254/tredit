@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAccount } from "../../Context/AccountContext";
+import { CONNECTION_STATES, USER_STATES } from "../../Context/AccountContext";
 import { useAuth } from "../../Context/AuthContext";
 import { Button, Typography, message } from "antd";
 import { useNavigate } from "react-router-dom";
@@ -19,89 +20,161 @@ import {
 import metamaskIcon from "../../assets/metamask.svg";
 import PropTypes from "prop-types";
 import axios from "axios";
+import {
+	setStorageItem,
+	getStorageItem,
+	STORAGE_KEYS,
+} from "../../utils/storage";
+
+const API_URL =
+	import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:8000/api";
 
 const { Title, Text } = Typography;
 
-const WalletStatus = ({ status }) => {
-	if (!status) return null;
+// Define features array for the right panel
+const features = [
+	{
+		icon: <SecurityScanOutlined />,
+		text: "Secure Authentication",
+		desc: "Connect securely with Web3 wallet integration",
+	},
+	{
+		icon: <CloudOutlined />,
+		text: "Cross-Platform Access",
+		desc: "Access your account from any device",
+	},
+	{
+		icon: <LockOutlined />,
+		text: "Data Protection",
+		desc: "Your data is encrypted and protected",
+	},
+];
 
-	const getStatusIcon = (stepStatus) => {
-		switch (stepStatus) {
-			case "pending":
-				return <LoadingOutlined className="text-blue-500 text-xl" />;
-			case "success":
-				return <CheckCircleFilled className="text-green-500 text-xl" />;
-			case "error":
-				return <CloseCircleFilled className="text-red-500 text-xl" />;
+// Define steps for the connection process
+const steps = [
+	{
+		title: "Connect Wallet",
+		description: "Connect your Web3 wallet to get started",
+		completed: false,
+		current: true,
+	},
+	{
+		title: "Verify Account",
+		description: "Verify your wallet ownership",
+		completed: false,
+		current: false,
+	},
+	{
+		title: "Access Platform",
+		description: "Start using the platform features",
+		completed: false,
+		current: false,
+	},
+];
+
+// Memoize ConnectionStatus component
+const ConnectionStatus = ({
+	connectionState,
+	connectionError,
+	walletAddress,
+	networkName,
+	balance,
+	loading,
+}) => {
+	const getStatusIcon = useCallback(() => {
+		switch (connectionState) {
+			case CONNECTION_STATES.INITIALIZING:
+				return <LoadingOutlined className="text-blue-500" />;
+			case CONNECTION_STATES.CONNECTED:
+				return <CheckCircleFilled className="text-green-500" />;
+			case CONNECTION_STATES.ERROR:
+				return <CloseCircleFilled className="text-red-500" />;
 			default:
 				return null;
 		}
-	};
+	}, [connectionState]);
+
+	const getStatusMessage = useCallback(() => {
+		switch (connectionState) {
+			case CONNECTION_STATES.INITIALIZING:
+				return "Connecting Wallet";
+			case CONNECTION_STATES.CONNECTED:
+				return "Connection Successful";
+			case CONNECTION_STATES.ERROR:
+				return "Connection Error";
+			default:
+				return "";
+		}
+	}, [connectionState]);
+
+	if (
+		!loading &&
+		connectionState === CONNECTION_STATES.DISCONNECTED &&
+		!connectionError &&
+		!walletAddress
+	) {
+		return null;
+	}
 
 	return (
-		<div className="mt-4 p-6 bg-white rounded-xl shadow-sm border border-gray-100 max-w-xl">
-			<div className="flex items-center gap-3 mb-4">
-				{getStatusIcon(status.status)}
+		<div className="mb-6 p-4 bg-white rounded-lg border border-gray-100">
+			<div className="flex items-center gap-2 mb-2">
+				{getStatusIcon()}
 				<Text
 					strong
-					className={`text-lg ${
-						status.status === "error"
+					className={
+						connectionState === CONNECTION_STATES.ERROR
 							? "text-red-500"
-							: status.status === "success"
+							: connectionState === CONNECTION_STATES.CONNECTED
 							? "text-green-500"
 							: "text-blue-500"
-					}`}
+					}
 				>
-					{status.message}
+					{getStatusMessage()}
 				</Text>
 			</div>
-			{status.steps && status.steps.length > 0 && (
-				<div className="space-y-2">
-					{status.steps.map((step, index) => (
-						<div key={index} className="flex items-start gap-2 text-gray-600">
-							<div className="mt-1.5">
-								{status.status === "success" ? (
-									<CheckCircleFilled className="text-green-500" />
-								) : status.status === "error" ? (
-									<CloseCircleFilled className="text-red-500" />
-								) : (
-									<div className="w-2 h-2 rounded-full bg-blue-500 mt-1" />
-								)}
+
+			{connectionError && (
+				<Text className="text-red-500 text-sm block mt-1">
+					{connectionError}
+				</Text>
+			)}
+
+			{walletAddress && connectionState === CONNECTION_STATES.CONNECTED && (
+				<div className="mt-2 pt-2 border-t border-gray-100">
+					<div className="text-sm text-gray-600">
+						<div className="flex items-center gap-2">
+							<WalletOutlined />
+							<span>
+								{walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+							</span>
+						</div>
+						{networkName && (
+							<div className="flex items-center gap-2 mt-1">
+								<GlobalOutlined />
+								<span>{networkName}</span>
 							</div>
-							<Text className="flex-1">{step}</Text>
-						</div>
-					))}
-				</div>
-			)}
-			{status.error && (
-				<div className="mt-4 p-4 bg-red-50 rounded-lg border border-red-100">
-					<Text className="text-red-600">{status.error}</Text>
-				</div>
-			)}
-			{status.data && (
-				<div className="mt-4 p-4 bg-gray-50 rounded-lg space-y-2">
-					{Object.entries(status.data).map(([key, value]) => (
-						<div key={key} className="flex items-center gap-2">
-							<Text strong className="capitalize">
-								{key.replace(/([A-Z])/g, " $1").trim()}:
-							</Text>
-							<Text className="font-mono text-sm">{value}</Text>
-						</div>
-					))}
+						)}
+						{balance && (
+							<div className="flex items-center gap-2 mt-1">
+								<AccountBookOutlined />
+								<span>{Number(balance).toFixed(4)} MATIC</span>
+							</div>
+						)}
+					</div>
 				</div>
 			)}
 		</div>
 	);
 };
 
-WalletStatus.propTypes = {
-	status: PropTypes.shape({
-		status: PropTypes.string,
-		message: PropTypes.string,
-		steps: PropTypes.arrayOf(PropTypes.string),
-		error: PropTypes.string,
-		data: PropTypes.object,
-	}),
+ConnectionStatus.propTypes = {
+	connectionState: PropTypes.string,
+	connectionError: PropTypes.string,
+	walletAddress: PropTypes.string,
+	networkName: PropTypes.string,
+	balance: PropTypes.string,
+	loading: PropTypes.bool,
 };
 
 const ConnectWallet = ({ className = "" }) => {
@@ -109,547 +182,346 @@ const ConnectWallet = ({ className = "" }) => {
 	const {
 		walletAddress,
 		connectWallet,
-		loading,
+		loading: accountLoading,
 		networkName,
 		balance,
 		connectionState,
 		connectionError,
+		userState,
+		token,
+		user,
+		isConnected,
+		isConnecting,
+		errorMessage,
 	} = useAccount();
 
-	const [isMetaMaskInstalled, setIsMetaMaskInstalled] = useState(false);
-	const [status, setStatus] = useState(null);
+	const [state, setState] = useState({
+		isMetaMaskInstalled: false,
+		isMobileDevice: false,
+		loading: false,
+		error: null,
+		status: null,
+	});
 
-	// Check MetaMask installation and connection status on mount
+	// Add navigation effect
 	useEffect(() => {
-		const checkMetaMask = async () => {
-			const isInstalled =
-				typeof window.ethereum !== "undefined" && window.ethereum.isMetaMask;
-			setIsMetaMaskInstalled(isInstalled);
+		// Only navigate if we have all the necessary authentication data
+		if (connectionState === CONNECTION_STATES.CONNECTED && token && user) {
+			console.log("✅ User authenticated, navigating to dashboard");
+			navigate("/dashboard", { replace: true });
+			return;
+		}
+
+		// Handle case where user needs to create profile
+		if (
+			connectionState === CONNECTION_STATES.CONNECTED &&
+			userState === USER_STATES.NO_PROFILE
+		) {
+			console.log("⚠️ User needs profile, navigating to profile setup");
+			navigate("/profile-setup", { replace: true });
+			return;
+		}
+	}, [connectionState, token, user, userState, navigate]);
+
+	// Handle connect button click
+	const handleConnect = useCallback(async () => {
+		try {
+			await connectWallet();
+		} catch (error) {
+			console.error("Error in connect handler:", error);
+		}
+	}, [connectWallet]);
+
+	// Clean up navigation flags when component unmounts
+	useEffect(() => {
+		return () => {
+			sessionStorage.removeItem("hasNavigatedFromConnect");
 		};
-		checkMetaMask();
 	}, []);
 
-	// Update useEffect for connection status
+	// Check wallet detection and update UI based on error state
 	useEffect(() => {
-		if (connectionState === "connected" && walletAddress) {
-			// Only check wallet status without creating login history
-			checkWalletStatus(walletAddress, null, null, null, true);
+		if (connectionError && connectionError.includes("No connected accounts")) {
+			setState((prev) => ({
+				...prev,
+				error: connectionError,
+			}));
 		}
-	}, [connectionState, walletAddress]);
+	}, [connectionError]);
 
-	const checkWalletStatus = async () => {
-		try {
-			setLoading(true);
-			setError(null);
+	// Check MetaMask installation and if using mobile device
+	useEffect(() => {
+		const checkMetaMaskAndDevice = async () => {
+			// Check if mobile device
+			const isMobile =
+				/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+					navigator.userAgent
+				);
 
-			const provider = new ethers.BrowserProvider(window.ethereum);
-			const signer = await provider.getSigner();
-			const address = await signer.getAddress();
-			const chainId = (await provider.getNetwork()).chainId;
+			// Check for MetaMask - more robust detection
+			let isInstalled = false;
 
-			// Create message for signing
-			const message = `Welcome to Tredit!\n\nWallet: ${address}\nNonce: ${Date.now()}\n\nSign this message to verify your wallet ownership.`;
+			if (typeof window.ethereum !== "undefined") {
+				// Primary check
+				isInstalled = window.ethereum.isMetaMask;
 
-			// Get signature
-			const signature = await signer.signMessage(message);
+				// Secondary checks
+				if (!isInstalled && window.ethereum.providers) {
+					// Check if MetaMask is in the providers array
+					isInstalled = window.ethereum.providers.some(
+						(provider) => provider.isMetaMask
+					);
+				}
+			}
 
-			// Get authentication token
-			const response = await axios.post(`${API_URL}/users/wallet-auth`, {
-				walletAddress: address,
-				signature,
-				message,
-				chainId: chainId.toString(),
-				skipLoginHistory: true,
+			console.log("Wallet detection:", {
+				isMobile,
+				isMetaMaskInstalled: isInstalled,
 			});
 
-			if (response.data?.success) {
-				console.log("Wallet status check response:", response.data);
-				const { token, user, exists, hasProfile } = response.data;
+			setState((prev) => ({
+				...prev,
+				isMobileDevice: isMobile,
+				isMetaMaskInstalled: isInstalled,
+			}));
+		};
+		checkMetaMaskAndDevice();
+	}, []);
 
-				// Store token using storage utility
-				if (token) {
-					setStorageItem(STORAGE_KEYS.token, token);
-					axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+	// Memoize features array
+	const features = useMemo(
+		() => [
+			{
+				icon: <SecurityScanOutlined />,
+				text: "Secure Authentication",
+				desc: "Connect securely using your Web3 wallet",
+			},
+			{
+				icon: <UserOutlined />,
+				text: "Personalized Experience",
+				desc: "Create and manage your profile",
+			},
+			{
+				icon: <CloudOutlined />,
+				text: "Decentralized Storage",
+				desc: "Access all platform features securely",
+			},
+			{
+				icon: <LockOutlined />,
+				text: "Blockchain Integration",
+				desc: "Store your data securely on the blockchain",
+			},
+		],
+		[]
+	);
+
+	// Memoize getStepDescription callback
+	const getStepDescription = useCallback(
+		(step) => {
+			if (step.completed) {
+				return step.title === "Connect Wallet" && walletAddress
+					? `Connected: ${walletAddress.slice(0, 6)}...${walletAddress.slice(
+							-4
+					  )}${networkName ? ` (${networkName})` : ""}`
+					: "Completed";
+			}
+			if (step.current) {
+				if (step.title === "Install MetaMask") {
+					return state.isMobileDevice
+						? "Get the MetaMask mobile app"
+						: "Get the MetaMask browser extension";
+				}
+				if (step.title === "Connect Wallet") {
+					return state.loading
+						? "Connecting..."
+						: "Click to connect your wallet";
+				}
+				if (step.title === "Connect with Google") {
+					return "Link your Google account to complete setup";
+				}
+			}
+			return step.description;
+		},
+		[walletAddress, networkName, state.loading, state.isMobileDevice]
+	);
+
+	// Memoize steps array after getStepDescription is defined
+	const steps = useMemo(
+		() => [
+			{
+				title: "Install MetaMask",
+				description:
+					state.isMetaMaskInstalled || state.isMobileDevice
+						? "MetaMask is available"
+						: state.isMobileDevice
+						? "Get the MetaMask mobile app"
+						: "Get the MetaMask browser extension",
+				completed: state.isMetaMaskInstalled || state.isMobileDevice,
+				current: !state.isMetaMaskInstalled && !state.isMobileDevice,
+			},
+			{
+				title: "Connect Wallet",
+				description: getStepDescription({
+					title: "Connect Wallet",
+					completed:
+						connectionState === CONNECTION_STATES.CONNECTED && !!walletAddress,
+					current:
+						(state.isMetaMaskInstalled || state.isMobileDevice) &&
+						!walletAddress,
+				}),
+				completed:
+					connectionState === CONNECTION_STATES.CONNECTED && !!walletAddress,
+				current:
+					(state.isMetaMaskInstalled || state.isMobileDevice) &&
+					(!walletAddress || connectionState !== CONNECTION_STATES.CONNECTED),
+			},
+			{
+				title: "Connect with Google",
+				description: "Link your Google account to complete setup",
+				completed: false,
+				current:
+					connectionState === CONNECTION_STATES.CONNECTED && !!walletAddress,
+			},
+		],
+		[
+			state.isMetaMaskInstalled,
+			connectionState,
+			walletAddress,
+			getStepDescription,
+			state.isMobileDevice,
+		]
+	);
+
+	// Memoize button properties
+	const buttonProps = useMemo(() => {
+		if (isConnecting) {
+			return {
+				isLoading: true,
+				loadingText: "Connecting...",
+				disabled: true,
+			};
+		}
+
+		if (isConnected && walletAddress) {
+			return {
+				disabled: true,
+				children: `Connected: ${walletAddress.slice(
+					0,
+					6
+				)}...${walletAddress.slice(-4)}`,
+			};
+		}
+
+		if (errorMessage) {
+			return {
+				colorScheme: "red",
+				children: errorMessage.includes("install")
+					? "Install MetaMask"
+					: "Try Again",
+				onClick: handleConnect,
+			};
+		}
+
+		return {
+			onClick: handleConnect,
+			children: "Connect Wallet",
+		};
+	}, [isConnecting, isConnected, walletAddress, errorMessage, handleConnect]);
+
+	// Debug function to fetch wallet details
+	const fetchWalletDetails = useCallback(async () => {
+		if (!walletAddress || !import.meta.env.DEV) return;
+
+		try {
+			const storedToken = localStorage.getItem(STORAGE_KEYS.token);
+			const storedUserString = localStorage.getItem(STORAGE_KEYS.USER);
+			const authToken = token;
+
+			if (storedToken !== authToken) {
+				console.log("🔄 Token mismatch:", {
+					hasStateToken: !!authToken,
+					hasStoredToken: !!storedToken,
+				});
+			}
+
+			// Only log user data if there's an issue
+			if (storedUserString) {
+				const storedUser = JSON.parse(storedUserString);
+				if (
+					!storedUser.walletAddress ||
+					storedUser.walletAddress.toLowerCase() !== walletAddress.toLowerCase()
+				) {
+					console.log("⚠️ User data mismatch:", {
+						storedWallet: storedUser.walletAddress,
+						currentWallet: walletAddress,
+					});
+				}
+			}
+
+			console.log("===== WALLET CONNECTION DIAGNOSTICS =====");
+			console.log("Current location:", window.location.pathname);
+			console.log("Connected wallet address:", walletAddress);
+			console.log("Connection state:", connectionState);
+			console.log("Network information:", {
+				networkName,
+				balance: balance
+					? Number(balance).toFixed(4) + " MATIC"
+					: "Not available",
+			});
+
+			// Make API call to check user existence
+			try {
+				const userResponse = await axios.get(
+					`${API_URL}/users/${walletAddress.toLowerCase()}`
+				);
+				const userExists = true;
+				const userData = userResponse.data?.user;
+
+				// Check if we're on profile setup but user exists
+				if (window.location.pathname === "/profile-setup" && userExists) {
+					console.error(
+						"⚠️ NAVIGATION ISSUE: User exists but on profile setup page!"
+					);
+					message.warning(
+						"User exists but you're on profile setup. Click 'Force navigate' below.",
+						10
+					);
 				}
 
-				// Update wallet info in account context
-				await updateWalletInfo(address);
-
-				// Return auth response data
 				return {
 					success: true,
-					exists,
-					hasProfile,
-					user,
+					userExists,
+					userData,
+					storedToken,
+					storedUser: storedUserString ? JSON.parse(storedUserString) : null,
+					currentPath: window.location.pathname,
+					shouldBeOnProfileSetup: !userExists,
+					navigationIssue:
+						userExists && window.location.pathname === "/profile-setup",
 				};
-			} else {
-				throw new Error(response.data?.message || "Authentication failed");
-			}
-		} catch (error) {
-			console.error("Wallet status check error:", error);
-			setError(error.message);
-			throw error;
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const handleConnect = async () => {
-		const messageKey = "wallet-connection";
-		try {
-			setStatus({
-				status: "pending",
-				message: "Connecting to MetaMask...",
-				steps: ["Requesting wallet connection"],
-			});
-
-			// Check if ethereum is available
-			if (!window.ethereum) {
-				throw new Error(
-					"MetaMask is not installed. Please install MetaMask to continue."
-				);
-			}
-
-			// Request account access
-			let accounts;
-			try {
-				accounts = await window.ethereum.request({
-					method: "eth_requestAccounts",
-				});
-			} catch (err) {
-				if (err.code === 4001) {
-					throw new Error(
-						"You rejected the connection request. Please try again."
-					);
-				} else if (err.code === -32002) {
-					throw new Error(
-						"MetaMask is already processing a connection request. Please check your MetaMask extension."
-					);
-				} else {
-					throw new Error(`Failed to connect to MetaMask: ${err.message}`);
-				}
-			}
-
-			const account = accounts[0];
-			if (!account) {
-				throw new Error(
-					"No account found. Please make sure you are logged into MetaMask."
-				);
-			}
-
-			// Get provider and signer
-			let provider, network, balance;
-			try {
-				provider = new ethers.BrowserProvider(window.ethereum);
-				await provider.getSigner(); // Just to verify signer is available
-
-				// Get network information
-				network = await provider.getNetwork();
-
-				// Verify network is Polygon Amoy and attempt to switch if it's not
-				if (network.chainId !== 80002n) {
-					try {
-						await window.ethereum.request({
-							method: "wallet_switchEthereumChain",
-							params: [{ chainId: "0x13882" }], // 80002 in hex
-						});
-					} catch (switchError) {
-						// This error code indicates that the chain has not been added to MetaMask
-						if (switchError.code === 4902) {
-							try {
-								await window.ethereum.request({
-									method: "wallet_addEthereumChain",
-									params: [
-										{
-											chainId: "0x13882",
-											chainName: "Polygon Amoy",
-											nativeCurrency: {
-												name: "MATIC",
-												symbol: "MATIC",
-												decimals: 18,
-											},
-											rpcUrls: [
-												"https://polygon-amoy.infura.io/v3/58c6d521bff64b6fbb0ca83aba68e550",
-											],
-											blockExplorerUrls: ["https://www.oklink.com/amoy"],
-										},
-									],
-								});
-							} catch (addError) {
-								throw new Error(
-									`Failed to add Polygon Amoy network: ${addError.message}`
-								);
-							}
-						} else {
-							throw new Error(
-								`Failed to switch to Polygon Amoy network: ${switchError.message}`
-							);
-						}
-					}
-
-					// After switching/adding network, get updated network info
-					network = await provider.getNetwork();
-
-					// Verify the switch was successful
-					if (network.chainId !== 80002n) {
-						throw new Error(
-							"Please switch to the Polygon Amoy network in MetaMask. Current network: " +
-								network.name
+			} catch (error) {
+				if (error.response?.status === 404) {
+					console.log("User does not exist (confirmed by 404 response)");
+					if (window.location.pathname !== "/profile-setup") {
+						console.log(
+							"Redirecting to profile setup since user doesn't exist"
 						);
+						navigate("/profile-setup");
 					}
+					return {
+						success: false,
+						userExists: false,
+						shouldBeOnProfileSetup: true,
+						currentPath: window.location.pathname,
+					};
 				}
-
-				// Get account balance
-				balance = await provider.getBalance(account);
-
-				if (balance === 0n) {
-					message.warning({
-						content:
-							"Your wallet has 0 MATIC. You may need some MATIC for transactions.",
-						duration: 6,
-						key: messageKey,
-					});
-				}
-			} catch (err) {
-				if (err.message.includes("network")) {
-					throw err;
-				}
-				throw new Error(`Failed to initialize Web3: ${err.message}`);
-			}
-
-			setStatus({
-				status: "pending",
-				message: "Requesting signature...",
-				steps: [
-					"✓ Wallet connection established",
-					"✓ Network verified: Polygon Amoy",
-					"Waiting for signature...",
-				],
-			});
-
-			// Create message for signature with proper format
-			const timestamp = Date.now();
-			const signatureMessage =
-				`Welcome to Tredit!\n\nPlease sign this message to authenticate your wallet.\n\nWallet: ${account}\nChain ID: ${network.chainId}\nTimestamp: ${timestamp}\n\nThis signature will not trigger a blockchain transaction or cost any gas fees.`.trim();
-
-			// Request signature
-			let signature;
-			try {
-				setStatus({
-					status: "pending",
-					message: "Waiting for signature...",
-					steps: [
-						"✓ Wallet connection initiated",
-						"✓ Network verified: Polygon Amoy",
-						"Please sign the message in MetaMask to complete connection",
-					],
-				});
-
-				// Request signature using personal_sign (safer than eth_sign)
-				signature = await window.ethereum.request({
-					method: "personal_sign",
-					params: [signatureMessage, account],
-				});
-
-				// Verify the signature using ethers
-				const recoveredAddress = ethers.verifyMessage(
-					signatureMessage,
-					signature
-				);
-
-				if (recoveredAddress.toLowerCase() !== account.toLowerCase()) {
-					throw new Error("Signature verification failed: Address mismatch");
-				}
-			} catch (err) {
-				if (err.code === 4001) {
-					throw new Error(
-						"Connection cancelled: You rejected the signature request. Please try again to connect your wallet."
-					);
-				}
-				throw new Error(
-					`Connection incomplete: Failed to sign message: ${err.message}`
-				);
-			}
-
-			setStatus({
-				status: "pending",
-				message: "Verifying signature...",
-				steps: [
-					"✓ Wallet connection initiated",
-					"✓ Network verified: Polygon Amoy",
-					"✓ Message signed",
-					"✓ Signature verified",
-					"Completing connection...",
-				],
-			});
-
-			// Connect wallet with signature
-			try {
-				// Connect the wallet through AccountContext
-				const result = await connectWallet(signature, signatureMessage);
-
-				if (!result.success) {
-					throw new Error("Failed to authenticate wallet");
-				}
-
-				// If user doesn't exist, redirect to registration
-				if (!result.exists) {
-					setStatus({
-						status: "success",
-						message: "Wallet connected! Please complete registration.",
-						steps: [
-							"✓ Wallet connection initiated",
-							"✓ Network verified: Polygon Amoy",
-							"✓ Message signed",
-							"✓ Signature verified",
-							"✓ Wallet connected",
-							"Redirecting to profile setup...",
-						],
-					});
-
-					message.success({
-						content: "Please complete your profile setup to continue",
-						key: messageKey,
-						duration: 3,
-					});
-
-					setTimeout(() => navigate("/profile-setup"), 1500);
-					return;
-				}
-
-				setStatus({
-					status: "success",
-					message: "Wallet connected successfully!",
-					steps: [
-						"✓ Wallet connection initiated",
-						"✓ Network verified: Polygon Amoy",
-						"✓ Message signed",
-						"✓ Signature verified",
-						"✓ Wallet connected and authenticated",
-					],
-					data: {
-						address: result.address,
-						network: network.name,
-						chainId: result.chainId,
-						balance: `${ethers.formatEther(balance)} MATIC`,
-					},
-				});
-
-				message.success({
-					content: "Wallet connected and authenticated successfully!",
-					key: messageKey,
-					duration: 3,
-				});
-
-				// Check if user has a complete profile before navigating
-				if (result.hasProfile) {
-					setTimeout(() => navigate("/dashboard"), 1500);
-				} else {
-					setTimeout(() => navigate("/profile-setup"), 1500);
-				}
-			} catch (err) {
-				throw new Error(
-					`Authentication failed: ${err.message}. Please try connecting again.`
-				);
+				throw error;
 			}
 		} catch (error) {
-			console.error("Wallet connection error:", error);
-			let errorMessage = error.message || "Failed to connect wallet";
-			let steps = [];
-
-			if (error.code === 4001) {
-				steps = ["✗ Connection cancelled", "Signature was rejected"];
-			} else if (error.code === -32002) {
-				steps = ["✗ Connection request pending", "Please check MetaMask"];
-			} else if (error.message.includes("MetaMask is not installed")) {
-				steps = [
-					"✗ MetaMask not detected",
-					"Please install MetaMask to continue",
-				];
-			} else if (error.message.includes("network")) {
-				steps = ["✗ Wrong network", "Please switch to Polygon Amoy"];
-			} else if (error.message.includes("signature")) {
-				steps = ["✗ Signature required", "Please sign the message to connect"];
-			} else {
-				steps = ["✗ Connection failed", error.message];
-			}
-
-			setStatus({
-				status: "error",
-				message: "Connection not completed",
-				error: errorMessage,
-				steps,
-			});
-
-			message.error({
-				content: errorMessage,
-				key: messageKey,
-				duration: 6,
-			});
+			console.error("Error in fetchWalletDetails:", error);
+			return { success: false, error: error.message };
 		}
-	};
-
-	const getStepDescription = (step) => {
-		if (step.completed) {
-			return step.title === "Connect Wallet" && walletAddress
-				? `Connected: ${walletAddress.slice(0, 6)}...${walletAddress.slice(
-						-4
-				  )}${networkName ? ` (${networkName})` : ""}`
-				: "Completed";
-		}
-		if (step.current) {
-			if (step.title === "Install MetaMask") {
-				return "Get the MetaMask browser extension";
-			}
-			if (step.title === "Connect Wallet") {
-				return loading ? "Connecting..." : "Click to connect your wallet";
-			}
-			if (step.title === "Connect with Google") {
-				return "Link your Google account to complete setup";
-			}
-		}
-		return step.description;
-	};
-
-	const steps = [
-		{
-			title: "Install MetaMask",
-			description: isMetaMaskInstalled
-				? "MetaMask extension is installed"
-				: "Get the MetaMask browser extension",
-			completed: isMetaMaskInstalled,
-			current: !isMetaMaskInstalled,
-		},
-		{
-			title: "Connect Wallet",
-			description: getStepDescription({
-				title: "Connect Wallet",
-				completed: connectionState === "connected" && !!walletAddress,
-				current: isMetaMaskInstalled && !walletAddress,
-			}),
-			completed: connectionState === "connected" && !!walletAddress,
-			current:
-				isMetaMaskInstalled &&
-				(!walletAddress || connectionState !== "connected"),
-		},
-		{
-			title: "Connect with Google",
-			description: "Link your Google account to complete setup",
-			completed: false,
-			current: connectionState === "connected" && !!walletAddress,
-		},
-	];
-
-	const features = [
-		{
-			icon: <SecurityScanOutlined />,
-			text: "Secure Authentication",
-			desc: "Connect securely using your Web3 wallet",
-		},
-		{
-			icon: <UserOutlined />,
-			text: "Personalized Experience",
-			desc: "Create and manage your profile",
-		},
-		{
-			icon: <CloudOutlined />,
-			text: "Decentralized Storage",
-			desc: "Access all platform features securely",
-		},
-		{
-			icon: <LockOutlined />,
-			text: "Blockchain Integration",
-			desc: "Store your data securely on the blockchain",
-		},
-	];
-
-	const ConnectionStatus = () => {
-		// Only show status when there's actual connection activity or wallet is connected
-		if (
-			!loading &&
-			connectionState === "disconnected" &&
-			!connectionError &&
-			!walletAddress
-		)
-			return null;
-
-		const getStatusIcon = () => {
-			switch (connectionState) {
-				case "connecting":
-					return <LoadingOutlined className="text-blue-500" />;
-				case "connected":
-					return <CheckCircleFilled className="text-green-500" />;
-				case "error":
-					return <CloseCircleFilled className="text-red-500" />;
-				default:
-					return null;
-			}
-		};
-
-		const getStatusMessage = () => {
-			switch (connectionState) {
-				case "connecting":
-					return "Connecting Wallet";
-				case "connected":
-					return "Connection Successful";
-				case "error":
-					return "Connection Error";
-				default:
-					return "";
-			}
-		};
-
-		return (
-			<div className="mb-6 p-4 bg-white rounded-lg border border-gray-100">
-				<div className="flex items-center gap-2 mb-2">
-					{getStatusIcon()}
-					<Text
-						strong
-						className={
-							connectionState === "error"
-								? "text-red-500"
-								: connectionState === "connected"
-								? "text-green-500"
-								: "text-blue-500"
-						}
-					>
-						{getStatusMessage()}
-					</Text>
-				</div>
-
-				{connectionError && (
-					<Text className="text-red-500 text-sm block mt-1">
-						{connectionError}
-					</Text>
-				)}
-
-				{walletAddress && connectionState === "connected" && (
-					<div className="mt-2 pt-2 border-t border-gray-100">
-						<div className="text-sm text-gray-600">
-							<div className="flex items-center gap-2">
-								<WalletOutlined />
-								<span>
-									{walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-								</span>
-							</div>
-							{networkName && (
-								<div className="flex items-center gap-2 mt-1">
-									<GlobalOutlined />
-									<span>{networkName}</span>
-								</div>
-							)}
-							{balance && (
-								<div className="flex items-center gap-2 mt-1">
-									<AccountBookOutlined />
-									<span>{Number(balance).toFixed(4)} MATIC</span>
-								</div>
-							)}
-						</div>
-					</div>
-				)}
-			</div>
-		);
-	};
+	}, [walletAddress, connectionState, networkName, balance, token, navigate]);
 
 	return (
 		<div
@@ -673,7 +545,14 @@ const ConnectWallet = ({ className = "" }) => {
 							</Text>
 						</div>
 
-						<ConnectionStatus />
+						<ConnectionStatus
+							connectionState={connectionState}
+							connectionError={connectionError}
+							walletAddress={walletAddress}
+							networkName={networkName}
+							balance={balance}
+							loading={state.loading}
+						/>
 
 						{/* Steps */}
 						<div className="flex-grow mb-12">
@@ -726,36 +605,26 @@ const ConnectWallet = ({ className = "" }) => {
 
 						{/* Connect Button */}
 						<div className="flex-grow space-y-4">
-							<WalletStatus status={status} />
-							{!isMetaMaskInstalled ? (
-								<Button
-									href="https://metamask.io/download"
-									target="_blank"
-									rel="noopener noreferrer"
-									type="primary"
-									size="large"
-									className="w-full h-12"
-								>
-									Install MetaMask Extension
-								</Button>
-							) : (
-								<Button
-									onClick={handleConnect}
-									icon={
-										<img src={metamaskIcon} alt="" className="w-5 h-5 mr-2" />
-									}
-									className="w-full h-12"
-									type="primary"
-									loading={loading}
-									disabled={loading || connectionState === "connected"}
-									size="large"
-								>
-									{loading
-										? "Connecting..."
-										: connectionState === "connected"
-										? "Connected"
-										: "Connect with MetaMask"}
-								</Button>
+							<Button
+								size="lg"
+								colorScheme={errorMessage ? "red" : "blue"}
+								variant="solid"
+								{...buttonProps}
+							>
+								{buttonProps.children}
+							</Button>
+
+							{state.isMobileDevice && !state.isMetaMaskInstalled && (
+								<Text type="secondary" className="text-center text-sm">
+									<a
+										href="https://metamask.app.link/dapp/"
+										target="_blank"
+										rel="noopener noreferrer"
+										className="text-blue-500 hover:text-blue-600"
+									>
+										Open or Install MetaMask Mobile
+									</a>
+								</Text>
 							)}
 						</div>
 
@@ -771,6 +640,82 @@ const ConnectWallet = ({ className = "" }) => {
 								>
 									Learn about wallets
 								</a>
+								{/* Debug section - only visible when wallet is connected */}
+								{walletAddress && (
+									<div className="mt-4 space-y-2">
+										<Button
+											onClick={fetchWalletDetails}
+											size="small"
+											type="link"
+											className="text-xs"
+										>
+											Run connection diagnostics
+										</Button>
+
+										{window.location.pathname === "/profile-setup" && (
+											<>
+												<div className="text-xs mt-2 text-red-500">
+													⚠️ Stuck in profile setup page
+												</div>
+												<Button
+													onClick={() => {
+														console.log("Forcing navigation to dashboard");
+														navigate("/dashboard");
+													}}
+													size="small"
+													type="primary"
+													danger
+													className="text-xs"
+												>
+													Force navigate to dashboard
+												</Button>
+												<Button
+													onClick={async () => {
+														// Try direct authentication
+														try {
+															console.log("Attempting direct authentication");
+															const result = await connectWallet();
+															console.log(
+																"Direct authentication result:",
+																result
+															);
+
+															// Check for token after authentication
+															const newToken = localStorage.getItem(
+																STORAGE_KEYS.token
+															);
+															if (newToken) {
+																console.log(
+																	"Authentication successful, token acquired"
+																);
+																message.success("Token acquired successfully");
+																// After a short delay, force navigation to dashboard
+																setTimeout(() => navigate("/dashboard"), 1000);
+															} else {
+																message.error(
+																	"Authentication failed - no token received"
+																);
+															}
+														} catch (err) {
+															console.error(
+																"Direct authentication error:",
+																err
+															);
+															message.error(
+																"Authentication failed: " + err.message
+															);
+														}
+													}}
+													size="small"
+													type="primary"
+													className="text-xs mt-2"
+												>
+													Force authenticate
+												</Button>
+											</>
+										)}
+									</div>
+								)}
 							</Text>
 						</div>
 					</div>

@@ -8,7 +8,7 @@ const LoadingSpinner = ({ fullScreen = false, message = "Loading..." }) => {
 
 	return (
 		<div className={containerClasses}>
-			<div className="flex flex-col items-center justify-center">
+			<div className="flex flex-col items-center justify-center w-full h-full">
 				<div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
 				{message && <p className="text-gray-600 text-center">{message}</p>}
 			</div>

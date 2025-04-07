@@ -1,5 +1,6 @@
 const YouTubeService = require("../services/youtubeService");
-const Business = require("../models/Business");
+const { db } = require("../models");
+const { Business } = db;
 const { asyncHandler } = require("../utils/errorHandler");
 
 const youtubeController = {

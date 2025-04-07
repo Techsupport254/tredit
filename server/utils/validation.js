@@ -1,5 +1,5 @@
 const AppError = require("./appError");
-const BUSINESS_CONSTANTS = require("../config/businessConstants");
+const { BUSINESS_CONSTANTS } = require("../config/constants");
 
 const validateBusinessData = (data) => {
 	const errors = [];
@@ -10,7 +10,6 @@ const validateBusinessData = (data) => {
 		category,
 		businessModel,
 		operationMode,
-		walletAddress,
 		email,
 		paymentMethods = [],
 	} = data;
@@ -78,14 +77,6 @@ const validateBusinessData = (data) => {
 				BUSINESS_CONSTANTS.OPERATION_MODES
 			).join(", ")}`
 		);
-	}
-
-	if (!walletAddress) {
-		errors.push("Wallet address is required");
-	} else if (
-		!BUSINESS_CONSTANTS.VALIDATION.WALLET_ADDRESS_REGEX.test(walletAddress)
-	) {
-		errors.push("Invalid wallet address format");
 	}
 
 	// Optional fields with format validation

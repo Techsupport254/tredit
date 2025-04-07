@@ -3,13 +3,15 @@ import { useParams, useNavigate } from "react-router-dom";
 import BusinessForm from "../../Components/Business/BusinessForm";
 import LoadingSpinner from "../../Components/Common/LoadingSpinner";
 import ErrorMessage from "../../Components/Common/ErrorMessage";
-import { showSuccessMessage, showErrorNotification } from "../../utils/errors";
+import { showSuccess, showError } from "../../utils/notifications";
 
 const EditBusiness = () => {
 	const { id } = useParams();
 	const navigate = useNavigate();
 	const [business, setBusiness] = useState(null);
 	const [loading, setLoading] = useState(true);
+	const API_URL =
+		import.meta.env.VITE_PUBLIC_API_URL || "http://localhost:8000/api";
 
 	useEffect(() => {
 		fetchBusiness();
@@ -17,20 +19,18 @@ const EditBusiness = () => {
 
 	const fetchBusiness = async () => {
 		try {
-			const response = await fetch(
-				`http://localhost:8000/api/businesses/${id}`
-			);
+			const response = await fetch(`${API_URL}/businesses/${id}`);
 			if (response.ok) {
 				const data = await response.json();
 				setBusiness(data.data);
 			} else {
-				showErrorNotification(new Error("Failed to fetch business details"));
-				navigate("/businesses");
+				showError(new Error("Failed to fetch business details"));
+				navigate("/dashboard/businesses");
 			}
 		} catch (error) {
 			console.error("Error fetching business:", error);
-			showErrorNotification(error);
-			navigate("/businesses");
+			showError(error);
+			navigate("/dashboard/businesses");
 		} finally {
 			setLoading(false);
 		}
@@ -38,30 +38,25 @@ const EditBusiness = () => {
 
 	const handleSubmit = async (formData) => {
 		try {
-			const response = await fetch(
-				`http://localhost:8000/api/businesses/${id}`,
-				{
-					method: "PUT",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify(formData),
-				}
-			);
+			const response = await fetch(`${API_URL}/businesses/${id}`, {
+				method: "PUT",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(formData),
+			});
 
 			if (response.ok) {
 				const data = await response.json();
-				showSuccessMessage("Business updated successfully");
-				navigate(`/businesses/${data.data.id}`);
+				showSuccess("Business updated successfully");
+				navigate(`/dashboard/businesses/${data.data.id}`);
 			} else {
 				const error = await response.json();
-				showErrorNotification(
-					new Error(error.message || "Failed to update business")
-				);
+				showError(new Error(error.message || "Failed to update business"));
 			}
 		} catch (error) {
 			console.error("Error updating business:", error);
-			showErrorNotification(error);
+			showError(error);
 		}
 	};
 

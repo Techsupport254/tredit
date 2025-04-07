@@ -18,11 +18,7 @@ const successResponse = (data = null, message = "Operation successful") => ({
  * @param {Object} details - Additional error details
  * @returns {Object} Formatted error response
  */
-const errorResponse = (
-	message = "Operation failed",
-	code = "UNKNOWN_ERROR",
-	details = null
-) => ({
+const errorResponse = (message, code = "UNKNOWN_ERROR", details = null) => ({
 	success: false,
 	message,
 	code,
@@ -63,14 +59,20 @@ const blockchainError = (message, txDetails = null) => ({
  * Standard response codes
  */
 const ResponseCodes = {
-	// Authentication & Authorization
+	SUCCESS: "SUCCESS",
+	BAD_REQUEST: "BAD_REQUEST",
 	UNAUTHORIZED: "UNAUTHORIZED",
 	FORBIDDEN: "FORBIDDEN",
-	INVALID_TOKEN: "INVALID_TOKEN",
+	NOT_FOUND: "NOT_FOUND",
+	INTERNAL_ERROR: "INTERNAL_ERROR",
+	VALIDATION_ERROR: "VALIDATION_ERROR",
+	RESOURCE_EXISTS: "RESOURCE_EXISTS",
+	BLOCKCHAIN_ERROR: "BLOCKCHAIN_ERROR",
 	TOKEN_EXPIRED: "TOKEN_EXPIRED",
+	INVALID_TOKEN: "INVALID_TOKEN",
+	UNKNOWN_ERROR: "UNKNOWN_ERROR",
 
 	// Resource errors
-	NOT_FOUND: "NOT_FOUND",
 	ALREADY_EXISTS: "ALREADY_EXISTS",
 	CONFLICT: "CONFLICT",
 
@@ -94,7 +96,6 @@ const ResponseCodes = {
 	IPFS_UNAVAILABLE: "IPFS_UNAVAILABLE",
 
 	// System errors
-	INTERNAL_ERROR: "INTERNAL_ERROR",
 	SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
 	NETWORK_ERROR: "NETWORK_ERROR",
 };

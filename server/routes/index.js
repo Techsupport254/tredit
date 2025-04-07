@@ -5,6 +5,12 @@ const authRoutes = require("./auth.routes");
 const businessRoutes = require("./businessRoutes");
 const youtubeRoutes = require("./youtube");
 const teamMemberRoutes = require("./teamMemberRoutes");
+const servicesRoutes = require("./services");
+const productRoutes = require("./products");
+const cartRoutes = require("./cart");
+const uploadRoutes = require("./uploadRoutes");
+const chatRoutes = require("./chat");
+const disputeRoutes = require("./dispute");
 const AppError = require("../utils/appError");
 
 const router = express.Router();
@@ -25,6 +31,12 @@ router.use("/google", googleRoutes);
 router.use("/businesses", businessRoutes);
 router.use("/youtube", youtubeRoutes);
 router.use("/team-members", teamMemberRoutes);
+router.use("/services", servicesRoutes);
+router.use("/products", productRoutes);
+router.use("/cart", cartRoutes);
+router.use("/upload", uploadRoutes);
+router.use("/chat", chatRoutes);
+router.use("/disputes", disputeRoutes);
 
 // 404 handler for undefined routes
 router.use("*", (req, res, next) => {

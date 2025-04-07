@@ -113,7 +113,7 @@ const BusinessCard = ({ business, view = "grid" }) => {
 							<span>Created {formatDate(business.createdAt)}</span>
 						</div>
 						<Link
-							to={`/businesses/${business.id}`}
+							to={`/dashboard/businesses/${business.id}`}
 							className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
 						>
 							View Details

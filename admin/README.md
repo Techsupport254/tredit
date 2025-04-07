@@ -142,6 +142,26 @@ truffle migrate --network polygon
 
 ---
 
+## **🔐 Authentication Implementation**
+
+This application implements a seamless Web3 wallet-based authentication system that:
+
+- Securely connects to MetaMask and other Ethereum wallets
+- Persists user sessions using browser storage
+- Provides intelligent navigation and route protection
+- Handles various authentication edge cases
+
+For detailed implementation guidelines, see: [Authentication Guide](./AUTHENTICATION_GUIDE.md)
+
+### **Key Authentication Features:**
+
+- **Session Persistence**: Maintains user sessions across page refreshes
+- **Intelligent Redirects**: Remembers attempted paths for post-authentication redirection
+- **Robust Error Handling**: Provides clear feedback for various authentication scenarios
+- **Optimized UX**: Minimizes unnecessary wallet prompts and network requests
+
+---
+
 ## **👨‍💻 Author & Supervisor**
 
 - **👤 Victor Kipkorir Kirui** (Developer)

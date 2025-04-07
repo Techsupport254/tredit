@@ -24,7 +24,7 @@ export const sidebarData = [
 		pages: [
 			{
 				name: "My Businesses",
-				path: "/businesses",
+				path: "/dashboard/businesses",
 				exact: true, // Ensure exact path matching
 				icon: "fas fa-store",
 				roles: ["Vendor", "Freelancer"],
@@ -35,13 +35,13 @@ export const sidebarData = [
 			},
 			{
 				name: "Create New",
-				path: "/businesses/create",
+				path: "/dashboard/businesses/create",
 				icon: "fas fa-plus-circle",
 				roles: ["Vendor", "Freelancer"],
 			},
 			{
 				name: "Listings Manager",
-				path: "/businesses/listings",
+				path: "/dashboard/businesses/listings",
 				icon: "fas fa-tags",
 				roles: ["Vendor", "Freelancer"],
 				badge: {
@@ -51,7 +51,7 @@ export const sidebarData = [
 			},
 			{
 				name: "Stock Control",
-				path: "/businesses/inventory",
+				path: "/dashboard/businesses/inventory",
 				icon: "fas fa-boxes",
 				roles: ["Vendor"],
 				badge: {
@@ -62,19 +62,9 @@ export const sidebarData = [
 				},
 			},
 			{
-				name: "Service Contracts",
-				path: "/businesses/contracts",
-				icon: "fas fa-file-contract",
-				roles: ["Freelancer"],
-				badge: {
-					type: "counter",
-					content: (user) => user?.activeContracts || 0,
-				},
-			},
-			{
-				name: "Orders",
-				path: "/businesses/orders",
-				icon: "fas fa-shopping-cart",
+				name: "Business Orders",
+				path: "/dashboard/businesses/orders",
+				icon: "fas fa-file-invoice-dollar",
 				roles: ["Vendor", "Freelancer"],
 				badge: {
 					type: "counter",
@@ -84,7 +74,7 @@ export const sidebarData = [
 			},
 			{
 				name: "Analytics",
-				path: "/businesses/analytics",
+				path: "/dashboard/businesses/analytics",
 				icon: "fas fa-chart-bar",
 				roles: ["Vendor", "Freelancer"],
 			},
@@ -105,13 +95,13 @@ export const sidebarData = [
 		pages: [
 			{
 				name: "Transaction Overview",
-				path: "/transactions/overview",
+				path: "/dashboard/transactions/overview",
 				icon: "fas fa-chart-line",
 				quickAccess: true,
 			},
 			{
 				name: "Escrow Management",
-				path: "/transactions/escrow",
+				path: "/dashboard/transactions/escrow",
 				icon: "fas fa-lock",
 				badge: {
 					type: "status",
@@ -122,12 +112,12 @@ export const sidebarData = [
 			},
 			{
 				name: "Payment History",
-				path: "/transactions/history",
+				path: "/dashboard/transactions/history",
 				icon: "fas fa-history",
 			},
 			{
 				name: "Payout Settings",
-				path: "/transactions/payouts",
+				path: "/dashboard/transactions/payouts",
 				icon: "fas fa-money-check-alt",
 				quickAccess: true,
 			},
@@ -146,7 +136,7 @@ export const sidebarData = [
 		pages: [
 			{
 				name: "Active Disputes",
-				path: "/disputes/active",
+				path: "/dashboard/disputes/active",
 				icon: "fas fa-exclamation-circle",
 				badge: {
 					type: "counter",
@@ -155,12 +145,12 @@ export const sidebarData = [
 			},
 			{
 				name: "Resolution Center",
-				path: "/disputes/resolution",
+				path: "/dashboard/disputes/resolution",
 				icon: "fas fa-balance-scale",
 			},
 			{
 				name: "Dispute History",
-				path: "/disputes/history",
+				path: "/dashboard/disputes/history",
 				icon: "fas fa-history",
 			},
 		],
@@ -179,7 +169,7 @@ export const sidebarData = [
 		pages: [
 			{
 				name: "Messages",
-				path: "/communications/messages",
+				path: "/dashboard/communications/messages",
 				icon: "fas fa-inbox",
 				badge: {
 					type: "counter",
@@ -189,12 +179,12 @@ export const sidebarData = [
 			},
 			{
 				name: "Announcements",
-				path: "/communications/announcements",
+				path: "/dashboard/communications/announcements",
 				icon: "fas fa-bullhorn",
 			},
 			{
 				name: "Notification Settings",
-				path: "/communications/settings",
+				path: "/dashboard/communications/settings",
 				icon: "fas fa-bell",
 			},
 		],
@@ -208,7 +198,7 @@ export const sidebarData = [
 		pages: [
 			{
 				name: "Account Settings",
-				path: "/settings/account",
+				path: "/dashboard/settings/account",
 				icon: "fas fa-user-cog",
 				badge: {
 					type: "status",
@@ -219,7 +209,7 @@ export const sidebarData = [
 			},
 			{
 				name: "Security",
-				path: "/settings/security",
+				path: "/dashboard/settings/security",
 				icon: "fas fa-shield-alt",
 				badge: {
 					type: "status",
@@ -230,7 +220,7 @@ export const sidebarData = [
 			},
 			{
 				name: "API Keys",
-				path: "/settings/api",
+				path: "/dashboard/settings/api",
 				icon: "fas fa-key",
 			},
 		],
@@ -239,7 +229,7 @@ export const sidebarData = [
 	// 🔹 Logout
 	{
 		category: "Logout",
-		path: "/logout",
+		path: "/dashboard/logout",
 		icon: "fas fa-sign-out-alt",
 		roles: ["Vendor", "Freelancer"],
 		quickAccess: false,

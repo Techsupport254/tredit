@@ -11,11 +11,16 @@ class IPFSHelper {
 	 * @returns {Promise<{ipfsCid: string, ipfsUrl: string}>}
 	 */
 	async pinJSONToIPFS(data) {
-		const result = await this.pinataManager.pinJSONToIPFS(data);
-		return {
-			ipfsCid: result.cid,
-			ipfsUrl: `${process.env.PINATA_GATEWAY_URL}/ipfs/${result.cid}`,
-		};
+		try {
+			const result = await this.pinataManager.pinJSONToIPFS(data);
+			return {
+				ipfsCid: result.IpfsHash,
+				ipfsUrl: result.url,
+			};
+		} catch (error) {
+			console.error("Error pinning to IPFS:", error);
+			throw error;
+		}
 	}
 
 	/**
@@ -27,3 +32,5 @@ class IPFSHelper {
 		await this.pinataManager.unpin(cid);
 	}
 }
+
+module.exports = IPFSHelper;

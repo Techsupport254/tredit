@@ -11,10 +11,13 @@
 		"preview": "vite preview"
 	},
 	"dependencies": {
-		"@ant-design/charts": "^2.2.6",
+		"@ant-design/charts": "^2.2.7",
 		"@ant-design/plots": "^1.2.6",
 		"@fortawesome/fontawesome-free": "^6.5.1",
+		"@reown/walletkit": "^1.2.3",
 		"@tailwindcss/vite": "^4.0.9",
+		"@walletconnect/core": "^2.19.2",
+		"@walletconnect/utils": "^2.19.2",
 		"antd": "^5.14.2",
 		"axios": "^1.6.7",
 		"ethers": "^6.13.5",
@@ -24,17 +27,17 @@
 		"prop-types": "^15.8.1",
 		"react": "^18.2.0",
 		"react-dom": "^18.2.0",
+		"react-error-boundary": "^5.0.0",
 		"react-icons": "^5.0.1",
 		"react-router-dom": "^6.22.1",
 		"react-svg-worldmap": "^2.0.0-alpha.16",
 		"react-toastify": "^10.0.4",
 		"recharts": "^2.12.1",
-		"styled-components": "^6.1.8"
+		"styled-components": "^6.1.8",
+		"viem": "^2.25.0",
+		"wagmi": "^2.14.16"
 	},
 	"devDependencies": {
-		"@types/node": "^20.11.19",
-		"@types/react": "^18.2.57",
-		"@types/react-dom": "^18.2.19",
 		"@vitejs/plugin-react": "^4.2.1",
 		"autoprefixer": "^10.4.17",
 		"dotenv": "^16.4.7",
@@ -43,7 +46,6 @@
 		"eslint-plugin-react-hooks": "^4.6.0",
 		"postcss": "^8.4.35",
 		"tailwindcss": "^3.4.1",
-		"typescript": "^5.3.3",
 		"vite": "^5.1.3"
 	}
 }

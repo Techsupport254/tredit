@@ -94,9 +94,24 @@ async function createOrUpdateUserProfile(walletAddress, ipfsUrl) {
 		const contract = await getSignedContract(userProfileContract);
 		console.log("Got signed contract:", await contract.getAddress());
 
-		// Send the transaction
-		console.log("Sending createOrUpdateProfile transaction...");
-		const tx = await contract.createOrUpdateProfile(ipfsUrl);
+		// Validate IPFS URL
+		if (!ipfsUrl || ipfsUrl.length === 0) {
+			throw new Error("Invalid IPFS URL");
+		}
+
+		// Use gas settings that meet network requirements
+		const options = {
+			gasLimit: BigInt(500000),
+			maxFeePerGas: ethers.parseUnits("50", "gwei"),
+			maxPriorityFeePerGas: ethers.parseUnits("40", "gwei"),
+		};
+
+		// Send the transaction with the IPFS URL as a string
+		console.log(
+			"Sending createOrUpdateProfile transaction with gas settings:",
+			options
+		);
+		const tx = await contract.createOrUpdateProfile(ipfsUrl, options);
 		console.log("Transaction sent:", tx.hash);
 
 		// Wait for transaction confirmation
@@ -104,35 +119,55 @@ async function createOrUpdateUserProfile(walletAddress, ipfsUrl) {
 		const receipt = await tx.wait();
 		console.log("Transaction confirmed:", receipt);
 
+		// Verify the profile was updated by checking the event
+		const profileUpdatedEvent = receipt.logs.find(
+			(log) =>
+				log.eventName === "ProfileUpdated" || log.eventName === "ProfileCreated"
+		);
+
+		if (!profileUpdatedEvent) {
+			throw new Error("Profile update event not found in transaction receipt");
+		}
+
 		return {
 			success: true,
 			hash: tx.hash,
-			explorerUrl: `https://amoy.polygonscan.com/tx/${tx.hash}`,
 			receipt,
+			event: profileUpdatedEvent,
 		};
 	} catch (error) {
 		console.error("Blockchain error:", error);
+
+		// Handle specific contract errors
+		let errorMessage = error.message;
+		if (error.message.includes("InvalidIpfsUri")) {
+			errorMessage = "Invalid IPFS URI provided";
+		} else if (error.message.includes("insufficient funds")) {
+			errorMessage = "Insufficient funds for gas fees";
+		}
+
 		return {
 			success: false,
-			error: error.message || "Failed to update profile on blockchain",
+			error: errorMessage,
+			code: error.code,
+			details: {
+				gasLimit: error.gasLimit,
+				gasUsed: error.gasUsed,
+				gasPrice: error.gasPrice,
+				...error.info,
+			},
 		};
 	}
 }
 
 // Business Blockchain Functions
-async function createOrUpdateBusinessProfile(
-	walletAddress,
-	ipfsUrl,
-	businessData
-) {
+async function createOrUpdateBusinessProfile(ipfsUrl, businessData) {
 	try {
 		const contract = await getSignedContract(businessContract);
 		const contractAddress = await contract.getAddress();
 
 		console.log(
-			"Creating/Updating business profile for wallet:",
-			walletAddress,
-			"using contract:",
+			"Creating/Updating business profile using contract:",
 			contractAddress
 		);
 		console.log("IPFS URL:", ipfsUrl);
@@ -179,9 +214,9 @@ async function unpinFromPinata(ipfsCid) {
 	}
 }
 
-const createBusinessOnChain = async (walletAddress, ipfsUrl, businessData) => {
+const createBusinessOnChain = async (ipfsUrl, businessData) => {
 	try {
-		console.log("Creating business on blockchain for wallet:", walletAddress);
+		console.log("Creating business on blockchain");
 		console.log("IPFS URL:", ipfsUrl);
 		console.log("Business data:", businessData);
 
@@ -190,11 +225,7 @@ const createBusinessOnChain = async (walletAddress, ipfsUrl, businessData) => {
 			throw new Error("IPFS URL is required");
 		}
 
-		const result = await createOrUpdateBusinessProfile(
-			walletAddress,
-			ipfsUrl,
-			businessData
-		);
+		const result = await createOrUpdateBusinessProfile(ipfsUrl, businessData);
 
 		console.log("Blockchain result:", result);
 
@@ -218,10 +249,62 @@ const createBusinessOnChain = async (walletAddress, ipfsUrl, businessData) => {
 	}
 };
 
+// Generic blockchain update function for products
+async function updateBlockchain(action, data) {
+	try {
+		console.log(`Updating blockchain for action: ${action}`, data);
+
+		switch (action) {
+			case "addProduct":
+			case "updateProduct":
+				// Upload to IPFS first
+				const ipfsResult = await uploadToIPFS(data);
+
+				// Get the contract instance
+				const contract = await getSignedContract(businessContract);
+
+				// Execute the appropriate contract method
+				const method = action === "addProduct" ? "addProduct" : "updateProduct";
+				const tx = await contract[method](data.productId, ipfsResult.ipfsUrl);
+
+				// Wait for confirmation
+				const receipt = await tx.wait();
+
+				return {
+					success: true,
+					hash: tx.hash,
+					explorerUrl: `${process.env.BLOCKCHAIN_EXPLORER_URL}/tx/${tx.hash}`,
+					ipfsHash: ipfsResult.ipfsCid,
+				};
+
+			case "deleteProduct":
+				const deleteContract = await getSignedContract(businessContract);
+				const deleteTx = await deleteContract.removeProduct(data.productId);
+				const deleteReceipt = await deleteTx.wait();
+
+				return {
+					success: true,
+					hash: deleteTx.hash,
+					explorerUrl: `${process.env.BLOCKCHAIN_EXPLORER_URL}/tx/${deleteTx.hash}`,
+				};
+
+			default:
+				throw new Error(`Unsupported blockchain action: ${action}`);
+		}
+	} catch (error) {
+		console.error(`Blockchain ${action} error:`, error);
+		return {
+			success: false,
+			error: error.message,
+		};
+	}
+}
+
 module.exports = {
 	uploadToIPFS,
 	createOrUpdateUserProfile,
 	createOrUpdateBusinessProfile,
 	unpinFromPinata,
 	createBusinessOnChain,
+	updateBlockchain,
 };

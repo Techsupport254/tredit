@@ -1,7 +1,8 @@
 const jwt = require("jsonwebtoken");
+const { appConfig } = require("../config/config");
 
 const JWT_CONFIG = {
-	secret: process.env.JWT_SECRET || "your-secret-key",
+	secret: appConfig.jwtSecret,
 	algorithm: "HS256",
 	expiresIn: "30d",
 };
@@ -13,23 +14,20 @@ const generateToken = (user) => {
 			throw new Error("User data is required");
 		}
 
-		// Extract and normalize the wallet address
-		const walletAddress =
-			typeof user === "string"
-				? user.toLowerCase()
-				: user.walletAddress
-				? user.walletAddress.toLowerCase()
-				: null;
-
-		if (!walletAddress) {
-			throw new Error("Wallet address is required");
+		// If user is just a string (wallet address), create minimal payload
+		if (typeof user === "string") {
+			return jwt.sign({ walletAddress: user }, JWT_CONFIG.secret, {
+				algorithm: JWT_CONFIG.algorithm,
+				expiresIn: JWT_CONFIG.expiresIn,
+			});
 		}
 
-		// Create the token payload
+		// Only include essential user data in the token payload
 		const payload = {
-			walletAddress,
-			// Only include role if it's a user object and has a role
-			...(typeof user !== "string" && user.role && { role: user.role }),
+			id: user.id,
+			walletAddress: user.walletAddress,
+			name: user.name,
+			role: user.role,
 		};
 
 		// Generate and return the token

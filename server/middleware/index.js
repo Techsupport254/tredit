@@ -12,23 +12,7 @@ const setupMiddleware = (app) => {
 	app.use(helmet());
 
 	// CORS configuration
-	app.use((req, res, next) => {
-		const origin = req.headers.origin;
-		if (corsConfig.origins.includes(origin)) {
-			res.setHeader("Access-Control-Allow-Origin", origin);
-		}
-		res.setHeader("Access-Control-Allow-Methods", corsConfig.methods.join(","));
-		res.setHeader(
-			"Access-Control-Allow-Headers",
-			corsConfig.allowedHeaders.join(",")
-		);
-		res.setHeader(
-			"Access-Control-Expose-Headers",
-			corsConfig.exposedHeaders.join(",")
-		);
-		res.setHeader("Access-Control-Allow-Credentials", corsConfig.credentials);
-		next();
-	});
+	app.use(cors(corsConfig));
 
 	// Logging middleware
 	if (process.env.NODE_ENV === "development") {

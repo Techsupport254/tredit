@@ -35,3 +35,6 @@ pnpm-lock.yaml
 # Database
 database.sqlite
 dump.rdb
+
+# Temporary upload files
+/uploads

@@ -1,144 +1,139 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
-const { errorResponse, ResponseCodes } = require("../utils/responseHelper");
-const { appConfig } = require("../config/config");
+const { db, sequelize } = require("../models");
+const AppError = require("../utils/appError");
+const { JWT_CONFIG } = require("../utils/jwt");
 
 const protect = async (req, res, next) => {
-	// Skip authentication if not required
-	if (!appConfig.requireAuth) {
-		console.log("Authentication bypassed: requireAuth is false");
-		return next();
-	}
+	try {
+		const authHeader = req.headers.authorization;
+		console.log(
+			"Auth middleware - Authorization header present:",
+			!!authHeader
+		);
 
-	// Bypass authentication during development
-	if (process.env.NODE_ENV === "development") {
-		console.log("Authentication bypassed: development mode");
-		const user = await User.findOne({
-			where: { walletAddress: "0xe91388a436659f2c0b42bcea6f7a9b7004f2f265" },
-		});
-
-		if (!user) {
-			return res
-				.status(401)
-				.json(
-					errorResponse(
-						"Development user not found",
-						ResponseCodes.UNAUTHORIZED
-					)
-				);
+		if (!authHeader || !authHeader.startsWith("Bearer ")) {
+			return res.status(401).json({
+				success: false,
+				error: "No token provided",
+			});
 		}
 
-		req.user = user;
-		return next();
-	}
-
-	let token;
-
-	if (
-		req.headers.authorization &&
-		req.headers.authorization.startsWith("Bearer")
-	) {
-		try {
-			// Get token from header
-			token = req.headers.authorization.split(" ")[1];
-
-			// Verify token
-			const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-			// Get user from the token
-			req.user = await User.findOne({
-				where: { walletAddress: decoded.walletAddress },
-				attributes: { exclude: ["password"] },
+		const token = authHeader.split(" ")[1];
+		if (!token) {
+			return res.status(401).json({
+				success: false,
+				error: "Invalid token format",
 			});
+		}
 
-			if (!req.user) {
-				return res
-					.status(401)
-					.json(errorResponse("Not authorized", ResponseCodes.UNAUTHORIZED));
+		try {
+			console.log("Auth middleware - Verifying token");
+			const decoded = jwt.verify(token, JWT_CONFIG.secret);
+			console.log("Auth middleware - Token verified, decoded:", decoded);
+
+			let user;
+			// Try to find user by ID first
+			if (decoded.id) {
+				user = await db.User.findByPk(decoded.id);
+			}
+			// If not found by ID, try wallet address
+			if (!user && decoded.walletAddress) {
+				user = await db.User.findOne({
+					where: sequelize.where(
+						sequelize.fn("LOWER", sequelize.col("walletAddress")),
+						sequelize.fn("LOWER", decoded.walletAddress)
+					),
+				});
 			}
 
-			return next();
-		} catch (error) {
-			console.error("Auth error:", error);
-			return res
-				.status(401)
-				.json(errorResponse("Not authorized", ResponseCodes.UNAUTHORIZED));
-		}
-	}
+			if (!user) {
+				console.log(
+					"Auth middleware - User not found for decoded data:",
+					decoded
+				);
+				return res.status(401).json({
+					success: false,
+					error: "User not found",
+				});
+			}
 
-	return res
-		.status(401)
-		.json(
-			errorResponse("Not authorized, no token", ResponseCodes.UNAUTHORIZED)
-		);
+			console.log("Auth middleware - User found:", user.id);
+
+			// Add decoded token and user to request
+			req.token = decoded;
+			req.user = user;
+			next();
+		} catch (error) {
+			console.error("Token verification error:", error);
+
+			// Handle specific JWT errors
+			if (error.name === "JsonWebTokenError") {
+				return res.status(401).json({
+					success: false,
+					error: "Invalid token",
+				});
+			}
+
+			if (error.name === "TokenExpiredError") {
+				return res.status(401).json({
+					success: false,
+					error: "Token expired",
+				});
+			}
+
+			return res.status(401).json({
+				success: false,
+				error: "Authentication failed",
+			});
+		}
+	} catch (error) {
+		console.error("Auth middleware error:", error);
+		return res.status(500).json({
+			success: false,
+			error: "Internal server error",
+		});
+	}
 };
 
 const adminProtect = async (req, res, next) => {
-	// Skip authentication if not required
-	if (!appConfig.requireAuth) {
-		return next();
-	}
-
-	// Bypass authentication during development
-	if (process.env.NODE_ENV === "development") {
-		req.user = {
-			id: "0bf19417-7c79-4089-8b40-d2f30eebb806",
-			walletAddress: "0xe91388a436659f2c0b42bcea6f7a9b7004f2f265",
-			name: "Victor Quaint",
-			email: "kiruivictor097@gmail.com",
-			profileImage:
-				"https://lh3.googleusercontent.com/a/ACg8ocKcyVbisFX9dDFOFIwp88KBVQRW8_78F2EXZcr5znjhPot7JFyR=s64-c",
-			role: "admin",
-		};
-		return next();
-	}
-
 	try {
-		await protect(req, res, async () => {
-			if (req.user.role !== "admin") {
-				return res
-					.status(403)
-					.json(
-						errorResponse(
-							"Not authorized, admin access required",
-							ResponseCodes.FORBIDDEN
-						)
-					);
-			}
-			next();
-		});
-	} catch (error) {
-		console.error("Admin auth error:", error);
-		res
-			.status(401)
-			.json(errorResponse("Not authorized", ResponseCodes.UNAUTHORIZED));
-	}
-};
-
-const vendor = (req, res, next) => {
-	// Bypass authentication during development
-	if (process.env.NODE_ENV === "development") {
-		req.user = {
-			id: "25fcf193-73bb-497f-adbe-4bc1b68d9567",
-			walletAddress: "0xe91388a436659f2c0b42bcea6f7a9b7004f2f265",
-			name: "Victor Quaint",
-			email: "kiruivictor097@gmail.com",
-			profileImage:
-				"https://lh3.googleusercontent.com/a/ACg8ocKcyVbisFX9dDFOFIwp88KBVQRW8_78F2EXZcr5znjhPot7JFyR=s64-c",
-			role: "vendor",
-		};
-		return next();
-	}
-
-	if (req.user && (req.user.role === "vendor" || req.user.role === "admin")) {
+		if (req.user.role !== "admin" && req.user.role !== "superadmin") {
+			return res.status(403).json({
+				success: false,
+				error: "Admin access required",
+			});
+		}
 		next();
-	} else {
-		res
-			.status(401)
-			.json(
-				errorResponse("Not authorized as vendor", ResponseCodes.UNAUTHORIZED)
-			);
+	} catch (error) {
+		console.error("Admin check error:", error);
+		res.status(500).json({
+			success: false,
+			error: "Admin check failed",
+		});
 	}
 };
 
-module.exports = { protect, adminProtect, vendor };
+const vendor = async (req, res, next) => {
+	try {
+		if (req.user && (req.user.role === "vendor" || req.user.role === "admin")) {
+			next();
+		} else {
+			res.status(401).json({
+				success: false,
+				error: "Not authorized as vendor",
+			});
+		}
+	} catch (error) {
+		console.error("Vendor check error:", error);
+		res.status(500).json({
+			success: false,
+			error: "Vendor check failed",
+		});
+	}
+};
+
+module.exports = {
+	protect,
+	adminProtect,
+	vendor,
+};

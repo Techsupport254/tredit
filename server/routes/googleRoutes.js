@@ -2,18 +2,20 @@ const express = require("express");
 const router = express.Router();
 const { OAuth2Client } = require("google-auth-library");
 const { protect } = require("../middleware/authMiddleware");
-const { User, sequelize } = require("../models");
+const { db, sequelize } = require("../models");
+const { User } = db;
 const {
 	uploadToIPFS,
 	saveProfileToBlockchain,
 } = require("../utils/blockchainHelper");
-const { verifySignature } = require("../utils/web3");
 const {
 	successResponse,
 	errorResponse,
 	ResponseCodes,
 } = require("../utils/responseHelper");
 const catchAsync = require("../utils/catchAsync");
+const { generateToken } = require("../utils/jwt");
+const googleController = require("../controllers/googleController");
 
 // Initialize OAuth2 client
 const client = new OAuth2Client(
@@ -88,59 +90,11 @@ router.get(
 	})
 );
 
-// Get user info from Google
-router.get(
-	"/userinfo",
-	protect,
-	catchAsync(async (req, res) => {
-		const { tokens } = req.session;
+// OAuth callback route
+router.get("/oauth2callback", googleController.handleCallback);
 
-		if (!tokens) {
-			return res
-				.status(401)
-				.json(
-					errorResponse("No Google tokens found", ResponseCodes.UNAUTHORIZED)
-				);
-		}
-
-		try {
-			client.setCredentials(tokens);
-			const ticket = await client.verifyIdToken({
-				idToken: tokens.id_token,
-				audience: process.env.GOOGLE_CLIENT_ID,
-			});
-			const payload = ticket.getPayload();
-
-			res.json(
-				successResponse(
-					{
-						googleId: payload.sub,
-						email: payload.email,
-						name: payload.name,
-						picture: payload.picture,
-					},
-					"User info retrieved successfully"
-				)
-			);
-		} catch (error) {
-			console.error("Error getting user info:", error);
-
-			if (error.message.includes("Token expired")) {
-				return res
-					.status(401)
-					.json(
-						errorResponse("Google token expired", ResponseCodes.TOKEN_EXPIRED)
-					);
-			}
-
-			res
-				.status(500)
-				.json(
-					errorResponse("Failed to get user info", ResponseCodes.INTERNAL_ERROR)
-				);
-		}
-	})
-);
+// Get user info route (protected)
+router.get("/userinfo", protect, googleController.getUserInfo);
 
 // Revoke Google access
 router.post(

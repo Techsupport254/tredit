@@ -191,6 +191,11 @@ async function main() {
 		);
 		const userProfileAddress = await userProfile.getAddress();
 
+		// Deploy Dispute contract
+		const Dispute = await ethers.getContractFactory("Dispute");
+		const dispute = await deployContract("Dispute", Dispute);
+		const disputeAddress = await dispute.getAddress();
+
 		// Wait for confirmations
 		console.log(
 			`\n⏳ Waiting for ${CONFIRMATION_BLOCKS} block confirmations...`
@@ -198,12 +203,14 @@ async function main() {
 		await Promise.all([
 			setForwarderTx.wait(CONFIRMATION_BLOCKS),
 			userProfile.waitForDeployment(),
+			dispute.waitForDeployment(),
 		]);
 
 		// Save deployment info
 		const deployedAddresses = {
 			Business: businessAddress,
 			UserProfile: userProfileAddress,
+			Dispute: disputeAddress,
 			BiconomyForwarder: forwarderAddress,
 			network: hre.network.name,
 			chainId: hre.network.config.chainId,
@@ -214,23 +221,63 @@ async function main() {
 		await saveDeploymentInfo(deployedAddresses);
 
 		// Verify contracts
-		await verifyContract(businessAddress, [], "Business");
-		await new Promise((resolve) => setTimeout(resolve, VERIFICATION_DELAY));
-		await verifyContract(
-			userProfileAddress,
-			[forwarderAddress, businessAddress],
-			"UserProfile"
-		);
+		if (hre.network.name !== "localhost" && hre.network.name !== "hardhat") {
+			console.log(
+				"\n⏳ Waiting for 30 seconds before verification to ensure transaction propagation..."
+			);
+			await new Promise((resolve) => setTimeout(resolve, 30000));
+
+			// Verify Business
+			console.log("\n🔍 Verifying Business...");
+			await verifyContract(businessAddress, [], "Business");
+			await new Promise((resolve) => setTimeout(resolve, 5000));
+
+			// Verify UserProfile
+			console.log("\n🔍 Verifying UserProfile...");
+			await verifyContract(
+				userProfileAddress,
+				[forwarderAddress, businessAddress],
+				"UserProfile"
+			);
+			await new Promise((resolve) => setTimeout(resolve, 5000));
+
+			// Verify Dispute with retries
+			console.log("\n🔍 Verifying Dispute...");
+			let disputeVerified = false;
+			let retryCount = 0;
+			const maxRetries = 3;
+			const retryDelay = 10000; // 10 seconds
+
+			while (!disputeVerified && retryCount < maxRetries) {
+				try {
+					await verifyContract(disputeAddress, [], "Dispute");
+					disputeVerified = true;
+				} catch (error) {
+					retryCount++;
+					if (retryCount < maxRetries) {
+						console.log(
+							`\n⚠️ Verification attempt ${retryCount} failed. Retrying in ${
+								retryDelay / 1000
+							} seconds...`
+						);
+						await new Promise((resolve) => setTimeout(resolve, retryDelay));
+					} else {
+						console.error(
+							"\n❌ Failed to verify Dispute contract after multiple attempts:",
+							error.message
+						);
+					}
+				}
+			}
+		}
 
 		deploymentStatus.endTime = new Date().toISOString();
-		console.log("\n🎉 Deployment completed successfully!");
-
-		// Log deployment duration
-		const duration =
+		const totalTime =
 			(new Date(deploymentStatus.endTime) -
 				new Date(deploymentStatus.startTime)) /
 			1000;
-		console.log(`⏱️ Total deployment time: ${duration.toFixed(2)} seconds`);
+		console.log("\n🎉 Deployment completed successfully!");
+		console.log(`⏱️ Total deployment time: ${totalTime.toFixed(2)} seconds`);
 	} catch (error) {
 		console.error("\n❌ Deployment failed:", error.message);
 		if (error.error) {

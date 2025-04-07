@@ -1,5 +1,6 @@
 const express = require("express");
 const router = express.Router();
+const { Op } = require("sequelize");
 const {
 	Business,
 	BusinessTeamMember,
@@ -7,7 +8,6 @@ const {
 	sequelize,
 	Sequelize,
 } = require("../models");
-const { Op } = Sequelize;
 const { protect } = require("../middleware/authMiddleware");
 const {
 	errorResponse,

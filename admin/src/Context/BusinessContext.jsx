@@ -4,6 +4,7 @@ import {
 	useState,
 	useCallback,
 	useMemo,
+	useEffect,
 } from "react";
 import PropTypes from "prop-types";
 import axios from "axios";
@@ -24,6 +25,9 @@ const initialState = {
 	isLoading: false,
 	error: null,
 	teamMembers: [],
+	listings: [],
+	listingsLoading: false,
+	listingsError: null,
 };
 
 export const BusinessContext = createContext(initialState);
@@ -31,7 +35,49 @@ export const BusinessContext = createContext(initialState);
 export const BusinessProvider = ({ children }) => {
 	const { user } = useAuth();
 	const storedUser = useMemo(() => getStorageItem(STORAGE_KEYS.USER), []);
-	const [state, setState] = useState(initialState);
+	const [state, setState] = useState({
+		...initialState,
+		listings: [],
+		listingsLoading: false,
+		listingsError: null,
+	});
+
+	// Add effect to set up authorization token for API requests
+	useEffect(() => {
+		const setupAxiosInterceptors = () => {
+			// Get token directly from localStorage for reliability
+			const token = localStorage.getItem(STORAGE_KEYS.token);
+
+			if (!token) {
+				console.log("BusinessContext: No token found in localStorage");
+				return;
+			}
+
+			console.log("BusinessContext: Setting up axios interceptors with token");
+
+			// Set default Authorization header
+			axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+			// Add request interceptor
+			const interceptorId = axios.interceptors.request.use(
+				(config) => {
+					// Make sure every request has the token
+					if (token && !config.headers.Authorization) {
+						config.headers.Authorization = `Bearer ${token}`;
+					}
+					return config;
+				},
+				(error) => Promise.reject(error)
+			);
+
+			return () => {
+				// Clean up interceptor when component unmounts
+				axios.interceptors.request.eject(interceptorId);
+			};
+		};
+
+		return setupAxiosInterceptors();
+	}, []);
 
 	const fetchAllBusinesses = useCallback(async () => {
 		try {
@@ -42,12 +88,30 @@ export const BusinessProvider = ({ children }) => {
 				throw new Error("No wallet address found");
 			}
 
+			// Ensure token is included in this request
+			const token = localStorage.getItem(STORAGE_KEYS.token);
+			const config = {
+				headers: {
+					Authorization: `Bearer ${token}`,
+				},
+			};
+
+			console.log(
+				`Fetching businesses for wallet: ${currentUser.walletAddress.substring(
+					0,
+					10
+				)}...`
+			);
 			const response = await axios.get(
-				`/businesses/wallet/${currentUser.walletAddress}`
+				`/businesses/wallet/${currentUser.walletAddress}`,
+				config
 			);
 
 			if (response.data?.success) {
+				// Even if message is an empty array, it's a successful response
 				const businesses = response.data.message || [];
+				console.log(`Successfully fetched ${businesses.length} businesses`);
+
 				setState((prev) => ({
 					...prev,
 					businesses: businesses.map((business) => ({
@@ -68,9 +132,21 @@ export const BusinessProvider = ({ children }) => {
 				}));
 				return businesses;
 			} else {
-				throw new Error(response.data?.data || "Failed to fetch businesses");
+				// This is only an error if success is explicitly false
+				if (response.data?.success === false) {
+					throw new Error(response.data?.data || "Failed to fetch businesses");
+				}
+				// Otherwise treat it as an empty list
+				setState((prev) => ({
+					...prev,
+					businesses: [],
+					isLoading: false,
+				}));
+				return [];
 			}
 		} catch (error) {
+			console.error("Error fetching businesses:", error.response || error);
+			// Update state with empty businesses array rather than null
 			setState((prev) => ({
 				...prev,
 				businesses: [],
@@ -78,14 +154,60 @@ export const BusinessProvider = ({ children }) => {
 				isLoading: false,
 			}));
 			showErrorNotification(error.response?.data?.data || error.message);
-			return null;
+			return [];
 		}
 	}, [user, storedUser]);
 
 	const fetchBusinessById = useCallback(async (businessId) => {
 		try {
 			setState((prev) => ({ ...prev, isLoading: true, error: null }));
-			const response = await axios.get(`/businesses/${businessId}`);
+
+			// Validate business ID before making request
+			if (!businessId || businessId === "*" || businessId === "undefined") {
+				console.error("Invalid business ID:", businessId);
+				setState((prev) => ({
+					...prev,
+					error: "Invalid business ID provided",
+					isLoading: false,
+				}));
+				showErrorNotification("Invalid business ID provided");
+				return null;
+			}
+
+			// Ensure token is included in this request
+			const token = localStorage.getItem(STORAGE_KEYS.token);
+			if (!token) {
+				console.error("No token found when trying to fetch business by ID");
+				setState((prev) => ({
+					...prev,
+					error: "Authentication token required",
+					isLoading: false,
+				}));
+				showErrorNotification(
+					"Authentication required. Please reconnect your wallet."
+				);
+				return null;
+			}
+
+			const config = {
+				headers: {
+					Authorization: `Bearer ${token}`,
+				},
+			};
+
+			// Log the request for debugging
+			console.log(`Fetching business details for ID: ${businessId}`, {
+				hasToken: !!token,
+				tokenPreview: token
+					? `${token.substring(0, 10)}...${token.substring(token.length - 5)}`
+					: null,
+			});
+
+			// Make sure axios default headers are set
+			axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+			const response = await axios.get(`/businesses/${businessId}`, config);
+			console.log("Business API response:", response.data);
 
 			if (response.data?.success) {
 				const business = response.data.message;
@@ -104,6 +226,12 @@ export const BusinessProvider = ({ children }) => {
 					owner: business.owner || null,
 				};
 
+				console.log("Business processed successfully:", {
+					id: processedBusiness.id,
+					name: processedBusiness.name,
+					hasTeamMembers: processedBusiness.teamMembers.length > 0,
+				});
+
 				setState((prev) => ({
 					...prev,
 					selectedBusiness: processedBusiness,
@@ -112,15 +240,50 @@ export const BusinessProvider = ({ children }) => {
 				}));
 				return processedBusiness;
 			} else {
+				console.error(
+					"API returned success:false for business fetch:",
+					response.data
+				);
 				throw new Error(response.data?.data || "Failed to fetch business");
 			}
 		} catch (error) {
+			console.error("Error fetching business by ID:", error);
+			console.error("Error details:", error.response || error);
+
+			if (error.response) {
+				console.error("Response error data:", error.response.data);
+
+				if (error.response.status === 401) {
+					showErrorNotification(
+						"Your session has expired. Please reconnect your wallet."
+					);
+				} else if (error.response.status === 403) {
+					showErrorNotification(
+						"You don't have permission to view this business."
+					);
+				} else if (error.response.status === 404) {
+					showErrorNotification("Business not found. The ID may be invalid.");
+				} else if (error.response.status === 500) {
+					showErrorNotification(
+						"Server error encountered. Please try again later."
+					);
+				} else {
+					showErrorNotification(error.response?.data?.data || error.message);
+				}
+			} else if (error.request) {
+				console.error("No response received:", error.request);
+				showErrorNotification(
+					"No response from server. Please check your connection."
+				);
+			} else {
+				showErrorNotification("Failed to fetch business: " + error.message);
+			}
+
 			setState((prev) => ({
 				...prev,
 				error: error.response?.data?.data || error.message,
 				isLoading: false,
 			}));
-			showErrorNotification(error.response?.data?.data || error.message);
 			return null;
 		}
 	}, []);
@@ -154,9 +317,11 @@ export const BusinessProvider = ({ children }) => {
 					);
 				}
 
-				const response = await axios.post("/businesses", {
+				// Log the request payload for debugging
+				console.log("Business creation request payload:", {
 					...businessData,
 					walletAddress: currentUser.walletAddress,
+					owner: currentUser.id,
 					status: businessData.status || "active",
 					verificationStatus: "pending",
 					paymentMethods: businessData.paymentMethods || [
@@ -166,20 +331,59 @@ export const BusinessProvider = ({ children }) => {
 					currency: businessData.currency || "USD",
 				});
 
-				if (response.data?.success) {
-					const newBusiness = response.data.message.business;
+				try {
+					const response = await axios.post("/businesses", {
+						...businessData,
+						walletAddress: currentUser.walletAddress,
+						owner: currentUser.id,
+						status: businessData.status || "active",
+						verificationStatus: "pending",
+						paymentMethods: businessData.paymentMethods || [
+							"crypto",
+							"bank_transfer",
+						],
+						currency: businessData.currency || "USD",
+					});
+
+					if (response.data?.success) {
+						const newBusiness = response.data.message.business;
+						setState((prev) => ({
+							...prev,
+							businesses: [...prev.businesses, newBusiness],
+							selectedBusiness: newBusiness,
+							isLoading: false,
+						}));
+						showSuccessNotification("Business created successfully");
+						return response.data.message;
+					} else {
+						throw new Error(
+							response.data?.message || "Failed to create business"
+						);
+					}
+				} catch (error) {
+					console.error("Business creation failed with error:", error);
+					console.error("Error response:", error.response);
+					if (error.response?.data) {
+						console.error("Server error details:", error.response.data);
+					}
+
 					setState((prev) => ({
 						...prev,
-						businesses: [...prev.businesses, newBusiness],
-						selectedBusiness: newBusiness,
+						error: error.response?.data?.message || error.message,
 						isLoading: false,
 					}));
-					showSuccessNotification("Business created successfully");
-					return response.data.message;
-				} else {
-					throw new Error(
-						response.data?.message || "Failed to create business"
-					);
+
+					// Show more specific error message for server errors
+					if (error.response?.status === 500) {
+						showErrorNotification(
+							"The server encountered an internal error. Please try again or contact support."
+						);
+					} else {
+						showErrorNotification(
+							error.response?.data?.message || error.message
+						);
+					}
+					throw error;
 				}
 			} catch (error) {
 				setState((prev) => ({
@@ -487,6 +691,77 @@ export const BusinessProvider = ({ children }) => {
 		[fetchBusinessById]
 	);
 
+	const fetchBusinessListings = useCallback(
+		async (businessId) => {
+			try {
+				setState((prev) => ({
+					...prev,
+					listingsLoading: true,
+					listingsError: null,
+				}));
+
+				// First, get the business to determine its type
+				const business = await fetchBusinessById(businessId);
+				const isService = business?.type === "service";
+
+				// Fetch either services or products based on business type
+				const endpoint = isService
+					? `/services/business/${businessId}`
+					: `/products/business/${businessId}`;
+
+				const response = await axios.get(endpoint);
+
+				if (response.data?.success) {
+					const listings = response.data.data || [];
+					setState((prev) => ({
+						...prev,
+						listings,
+						listingsLoading: false,
+					}));
+					return listings;
+				} else {
+					throw new Error(
+						response.data?.message ||
+							`Failed to fetch ${isService ? "services" : "products"}`
+					);
+				}
+			} catch (error) {
+				setState((prev) => ({
+					...prev,
+					listings: [],
+					listingsError: error.response?.data?.message || error.message,
+					listingsLoading: false,
+				}));
+				showErrorNotification(error.response?.data?.message || error.message);
+				return null;
+			}
+		},
+		[fetchBusinessById]
+	);
+
+	const fetchBusinessOrders = useCallback(async (businessId) => {
+		try {
+			setState((prev) => ({ ...prev, isLoading: true, error: null }));
+			const response = await axios.get(`/orders/business/${businessId}`);
+
+			if (response.data?.success) {
+				return response.data.data;
+			} else {
+				throw new Error(response.data?.message || "Failed to fetch orders");
+			}
+		} catch (error) {
+			setState((prev) => ({
+				...prev,
+				error: error.response?.data?.message || error.message,
+				isLoading: false,
+			}));
+			showErrorNotification(error.response?.data?.message || error.message);
+			return null;
+		} finally {
+			setState((prev) => ({ ...prev, isLoading: false }));
+		}
+	}, []);
+
 	const contextValue = useMemo(
 		() => ({
 			...state,
@@ -498,6 +773,8 @@ export const BusinessProvider = ({ children }) => {
 			addTeamMember,
 			updateTeamMember,
 			removeTeamMember,
+			fetchBusinessListings,
+			fetchBusinessOrders,
 			connectYouTube: async (businessId) => {
 				console.log("Connecting YouTube");
 				try {
@@ -548,6 +825,8 @@ export const BusinessProvider = ({ children }) => {
 			addTeamMember,
 			updateTeamMember,
 			removeTeamMember,
+			fetchBusinessListings,
+			fetchBusinessOrders,
 		]
 	);
 

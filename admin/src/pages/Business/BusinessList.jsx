@@ -1,10 +1,21 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Link } from "react-router-dom";
-import { FaPlus, FaSearch, FaFilter, FaTimes, FaStore } from "react-icons/fa";
+import { Link, useNavigate } from "react-router-dom";
+import { FaPlus, FaSearch, FaFilter, FaTimes } from "react-icons/fa";
 import BusinessCard from "../../Components/Business/BusinessCard";
 import LoadingSpinner from "../../Components/Common/LoadingSpinner";
 import { useBusiness } from "../../Context/BusinessContext";
 import { useAuth } from "../../Context/AuthContext";
+import { STORAGE_KEYS } from "../../utils/storage";
+import { Tabs, Empty, Input, Button, Badge, Space, Card } from "antd";
+import {
+	PlusOutlined,
+	SearchOutlined,
+	FilterOutlined,
+	ShopOutlined,
+	CheckCircleOutlined,
+	ClockCircleOutlined,
+	CloseCircleOutlined,
+} from "@ant-design/icons";
 
 // Move helper functions outside component to prevent recreation
 const fuzzyMatch = (text, search) => {
@@ -51,16 +62,18 @@ const calculateSearchScore = (business, searchTerm) => {
 	return score;
 };
 
+// Define tabs for Ant Design Tabs component
 const tabs = [
-	{ id: "all", label: "All Businesses", icon: FaStore },
-	{ id: "active", label: "Active", icon: FaStore },
-	{ id: "pending", label: "Pending", icon: FaStore },
-	{ id: "closed", label: "Closed", icon: FaStore },
+	{ key: "all", label: "All Businesses", icon: <ShopOutlined /> },
+	{ key: "active", label: "Active", icon: <CheckCircleOutlined /> },
+	{ key: "pending", label: "Pending", icon: <ClockCircleOutlined /> },
+	{ key: "closed", label: "Closed", icon: <CloseCircleOutlined /> },
 ];
 
 const BusinessList = () => {
 	const { businesses, isLoading: loading, fetchAllBusinesses } = useBusiness();
 	const { user } = useAuth();
+	const navigate = useNavigate();
 
 	// Use refs to track mount state
 	const isMounted = useRef(false);
@@ -84,11 +97,43 @@ const BusinessList = () => {
 
 	// Fetch data only once on mount
 	useEffect(() => {
+		const loadBusinesses = async () => {
+			try {
+				// Check for token before making the request
+				const token = localStorage.getItem(STORAGE_KEYS.token);
+				if (!token) {
+					console.error(
+						"Authentication token not found when loading businesses"
+					);
+					navigate("/connect");
+					return;
+				}
+
+				console.log(
+					"Loading businesses with token:",
+					token.substring(0, 10) + "..." + token.substring(token.length - 5)
+				);
+				const result = await fetchAllBusinesses();
+
+				if (!result) {
+					console.warn("No businesses data returned from API");
+				} else {
+					console.log(`Loaded ${result.length} businesses successfully`);
+				}
+			} catch (error) {
+				console.error("Failed to load businesses:", error);
+				if (error.response?.status === 401 || error.response?.status === 403) {
+					// If unauthorized, redirect to connect page
+					navigate("/connect");
+				}
+			}
+		};
+
 		if (!isMounted.current) {
-			fetchAllBusinesses();
+			loadBusinesses();
 			isMounted.current = true;
 		}
-	}, [fetchAllBusinesses]);
+	}, [fetchAllBusinesses, navigate]);
 
 	// Memoized handlers
 	const handleFilterChange = useCallback((field, value) => {
@@ -103,8 +148,8 @@ const BusinessList = () => {
 		setSearchTerm(e.target.value);
 	}, []);
 
-	const handleTabChange = useCallback((tabId) => {
-		setActiveTab(tabId);
+	const handleTabChange = useCallback((tabKey) => {
+		setActiveTab(tabKey);
 	}, []);
 
 	// Memoized filtered businesses
@@ -148,133 +193,113 @@ const BusinessList = () => {
 		[filteredBusinesses]
 	);
 
+	// Generate items for Ant Design Tabs
+	const tabItems = useMemo(() => {
+		return tabs.map((tab) => ({
+			key: tab.key,
+			label: (
+				<Space align="center">
+					{tab.icon}
+					<span>{tab.label}</span>
+					<span className="inline-flex items-center justify-center text-xs font-medium rounded-full bg-blue-100 text-blue-800 min-w-[20px] h-5 px-1.5">
+						{tabCounts[tab.key]}
+					</span>
+				</Space>
+			),
+			children: (
+				<div className="business-list-content">
+					{loading ? (
+						<div className="flex flex-col items-center justify-center h-64">
+							<LoadingSpinner size={40} />
+							<p className="mt-4 text-sm text-gray-500">
+								Loading businesses...
+							</p>
+						</div>
+					) : filteredBusinesses.length === 0 ? (
+						<Empty
+							image={Empty.PRESENTED_IMAGE_SIMPLE}
+							description={
+								<span>
+									{activeTab === "all"
+										? "No businesses found. Create your first business!"
+										: `No ${activeTab} businesses found`}
+								</span>
+							}
+						>
+							<Button
+								type="primary"
+								icon={<PlusOutlined />}
+								onClick={() => navigate("/dashboard/businesses/create")}
+							>
+								Create Business
+							</Button>
+						</Empty>
+					) : (
+						<div
+							className={
+								view === "grid"
+									? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
+									: "space-y-4"
+							}
+						>
+							{filteredBusinesses.map((business) => (
+								<BusinessCard
+									key={business.id}
+									business={business}
+									view={view}
+								/>
+							))}
+						</div>
+					)}
+				</div>
+			),
+		}));
+	}, [loading, filteredBusinesses, tabCounts, activeTab, view, navigate]);
+
 	return (
-		<div className="min-h-screen bg-gray-50">
-			{/* Header Tabs */}
-			<div className="sticky top-0 z-20 bg-white border-b border-gray-200">
-				<div className="px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
-					{/* Search and Actions */}
-					<div className="flex items-center justify-between h-16 border-b border-gray-200 md:border-none">
-						<div className="relative flex-1 max-w-sm">
-							<FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-							<input
-								type="text"
-								placeholder="Filter businesses"
-								className="pl-10 pr-4 py-2 w-full text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-								value={searchTerm}
-								onChange={handleSearchChange}
-							/>
-						</div>
-						<div className="flex items-center gap-2 ml-2">
-							<button
-								onClick={toggleFilters}
-								className="flex items-center p-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-							>
-								<FaFilter className="w-4 h-4" />
-							</button>
-							<Link
-								to="/businesses/create"
-								className="hidden md:flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-							>
-								<FaPlus className="w-4 h-4 mr-2" />
-								New Business
-							</Link>
-						</div>
-					</div>
-
-					{/* Tabs */}
-					<div className="overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-						<div className="flex min-w-max space-x-1 h-14">
-							{tabs.map((tab) => {
-								const Icon = tab.icon;
-								return (
-									<button
-										key={tab.id}
-										onClick={() => handleTabChange(tab.id)}
-										className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-colors
-											${
-												activeTab === tab.id
-													? "bg-indigo-50 text-indigo-600"
-													: "text-gray-600 hover:bg-gray-100"
-											}`}
-									>
-										<Icon className="w-4 h-4 mr-2" />
-										<span>{tab.label}</span>
-										<span
-											className={`ml-2 px-2 py-0.5 text-xs rounded-full
-											${
-												activeTab === tab.id
-													? "bg-indigo-100 text-indigo-600"
-													: "bg-gray-100 text-gray-600"
-											}`}
-										>
-											{tabCounts[tab.id]}
-										</span>
-									</button>
-								);
-							})}
-						</div>
-					</div>
-				</div>
-			</div>
-
-			{/* Main Content */}
-			<div className="px-4 py-6 mx-auto max-w-7xl sm:px-6 lg:px-8">
-				{/* Results Count */}
-				<div className="mb-4">
-					<p className="text-sm text-gray-600">
-						Showing{" "}
-						<span className="font-medium text-gray-900">
-							{filteredBusinesses.length}
-						</span>{" "}
-						{filteredBusinesses.length === 1 ? "business" : "businesses"}
-					</p>
+		<div className="min-h-screen">
+			<Card className="border">
+				<div className="flex items-center justify-between">
+					<Input
+						placeholder="Search businesses"
+						prefix={<SearchOutlined />}
+						value={searchTerm}
+						onChange={handleSearchChange}
+						style={{ maxWidth: 300 }}
+					/>
+					<Space>
+						<Button icon={<FilterOutlined />} onClick={toggleFilters}>
+							Filter
+						</Button>
+						<Button
+							type="primary"
+							icon={<PlusOutlined />}
+							onClick={() => navigate("/dashboard/businesses/create")}
+						>
+							New Business
+						</Button>
+					</Space>
 				</div>
 
-				{/* Business List */}
-				{loading ? (
-					<div className="flex flex-col items-center justify-center h-64 bg-white rounded-lg">
-						<LoadingSpinner size={40} />
-						<p className="mt-4 text-sm text-gray-500">Loading businesses...</p>
-					</div>
-				) : filteredBusinesses.length === 0 ? (
-					<div className="flex flex-col items-center justify-center h-64 bg-white rounded-lg">
-						<div className="p-4 mb-4 text-gray-400 bg-gray-100 rounded-full">
-							<FaStore className="w-8 h-8" />
-						</div>
-						<h3 className="mb-2 text-lg font-medium text-gray-900">
-							No businesses found
-						</h3>
-						<p className="text-sm text-gray-500">
-							Try adjusting your search or filters
-						</p>
-					</div>
-				) : (
-					<div
-						className={
-							view === "grid"
-								? "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4"
-								: "space-y-4"
-						}
-					>
-						{filteredBusinesses.map((business) => (
-							<BusinessCard key={business.id} business={business} view={view} />
-						))}
-					</div>
-				)}
+				<Tabs
+					activeKey={activeTab}
+					onChange={handleTabChange}
+					items={tabItems}
+					tabBarGutter={24}
+				/>
+			</Card>
 
-				{/* Mobile FAB */}
-				<Link
-					to="/businesses/create"
-					className="fixed bottom-6 right-6 flex items-center justify-center w-16 h-16 text-white bg-indigo-600 rounded-full shadow-lg md:hidden hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-				>
-					<FaPlus className="w-7 h-7" />
-				</Link>
-			</div>
+			{/* Mobile FAB */}
+			<Link
+				to="/dashboard/businesses/create"
+				className="fixed bottom-6 right-6 flex items-center justify-center w-16 h-16 text-white bg-blue-600 rounded-full shadow-lg md:hidden hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+			>
+				<FaPlus className="w-7 h-7" />
+			</Link>
 
 			{/* Mobile Filters Modal */}
 			{showFilters && (
-				<div className="fixed inset-0 z-50 bg-black bg-opacity-50 md:hidden">
+				<div className="fixed inset-0 z-50 bg-black bg-opacity-50 md:hidden ">
 					<div className="absolute bottom-0 w-full bg-white rounded-t-xl">
 						<div className="flex items-center justify-between p-4 border-b">
 							<h3 className="text-lg font-medium">Filters</h3>

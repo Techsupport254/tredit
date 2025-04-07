@@ -7,39 +7,48 @@
   "deployer": "0xa5ac70878636Dd1B945f4f74fC36fD6430adCb5D",
   "timestamp": "2025-03-11T08:11:23.890Z",
   "polygonAmoy": {
-    "Business": "0x9dfC5B658A14DBF47ECb7532dE8c6203e25D24E9",
-    "UserProfile": "0xcC4dCC54B8DC975d7254FB8633E17Db9B08B7cb4",
+    "Business": "0xaBF8E588Ea9A791ec4b861Ba80688d817c658A62",
+    "UserProfile": "0x1E8C8a7ff284a97f3B131661Ea6548DFBfb21366",
+    "Dispute": "0x6b403f5B5726C79B8b5e144ff9979F6feB9E1884",
     "BiconomyForwarder": "0x3d5c5b61e39bf45e3cb0e733837ad6e74c3c7937",
     "network": "polygonAmoy",
     "chainId": 80002,
     "deployer": "0xb8CE9ab6943e0eCED004cDe8e3bBed6568B2Fa01",
-    "timestamp": "2025-03-12T15:32:43.022Z",
+    "timestamp": "2025-04-03T20:08:00.456Z",
     "deploymentStatus": {
-      "startTime": "2025-03-12T15:32:18.788Z",
+      "startTime": "2025-04-03T20:07:29.160Z",
       "endTime": null,
       "contracts": {
         "Business": {
           "name": "Business",
-          "startTime": "2025-03-12T15:32:21.506Z",
+          "startTime": "2025-04-03T20:07:32.637Z",
           "attempts": 1,
-          "address": "0x9dfC5B658A14DBF47ECb7532dE8c6203e25D24E9",
-          "endTime": "2025-03-12T15:32:29.371Z",
+          "address": "0xaBF8E588Ea9A791ec4b861Ba80688d817c658A62",
+          "endTime": "2025-04-03T20:07:38.575Z",
           "success": true
         },
         "UserProfile": {
           "name": "UserProfile",
-          "startTime": "2025-03-12T15:32:35.392Z",
+          "startTime": "2025-04-03T20:07:44.590Z",
           "attempts": 1,
-          "address": "0xcC4dCC54B8DC975d7254FB8633E17Db9B08B7cb4",
-          "endTime": "2025-03-12T15:32:41.169Z",
+          "address": "0x1E8C8a7ff284a97f3B131661Ea6548DFBfb21366",
+          "endTime": "2025-04-03T20:07:51.678Z",
+          "success": true
+        },
+        "Dispute": {
+          "name": "Dispute",
+          "startTime": "2025-04-03T20:07:51.684Z",
+          "attempts": 1,
+          "address": "0x6b403f5B5726C79B8b5e144ff9979F6feB9E1884",
+          "endTime": "2025-04-03T20:07:58.715Z",
           "success": true
         }
       },
       "transactions": [
         {
           "type": "setTrustedForwarder",
-          "hash": "0x958c37dd65efbd8af66a7a5b54f9c5704d627933a54398e342d6a61d2fa66bc1",
-          "timestamp": "2025-03-12T15:32:35.386Z"
+          "hash": "0xbecbd04bd40fa23a56359666449454529fe48f65e6c66528e40a949cebca2b53",
+          "timestamp": "2025-04-03T20:07:44.585Z"
         }
       ]
     }
