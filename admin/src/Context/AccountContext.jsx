@@ -29,6 +29,7 @@ import {
 } from "../utils/errors";
 import LoadingSpinner from "../Components/Common/LoadingSpinner";
 import { useWallet } from "../providers/WalletProvider";
+import { setupAxiosInterceptors } from "../App";
 
 // Update API URL to use the correct base URL for users
 const API_URL =
@@ -217,95 +218,19 @@ export const AccountProvider = ({ children }) => {
 		localStorage.removeItem(STORAGE_KEYS.WALLET_ADDRESS);
 	};
 
-	// Setup axios interceptors for authentication
-	const setupAxiosInterceptors = useCallback((token) => {
-		try {
-			// Clear any existing interceptors
-			if (axios.interceptors) {
-				// Handle case where handlers might not exist yet
-				try {
-					if (
-						axios.interceptors.request.handlers &&
-						axios.interceptors.request.handlers.length > 0
-					) {
-						axios.interceptors.request.handlers.forEach((handler) => {
-							if (handler && handler.id) {
-								axios.interceptors.request.eject(handler.id);
-							}
-						});
-					}
-				} catch (e) {
-					console.error("Error clearing request interceptors:", e);
-				}
-
-				try {
-					if (
-						axios.interceptors.response.handlers &&
-						axios.interceptors.response.handlers.length > 0
-					) {
-						axios.interceptors.response.handlers.forEach((handler) => {
-							if (handler && handler.id) {
-								axios.interceptors.response.eject(handler.id);
-							}
-						});
-					}
-				} catch (e) {
-					console.error("Error clearing response interceptors:", e);
-				}
-			}
-
-			// Configure request interceptor to add Authorization header
-			axios.interceptors.request.use(
-				(config) => {
-					// Clone config to avoid mutation
-					const newConfig = { ...config };
-
-					// Don't add token to requests to external domains
-					const isApiRequest =
-						!newConfig.url.startsWith("http") ||
-						newConfig.url.includes(API_URL);
-
-					if (token && isApiRequest) {
-						// Ensure headers object exists
-						newConfig.headers = newConfig.headers || {};
-						newConfig.headers.Authorization = `Bearer ${token}`;
-					}
-					return newConfig;
-				},
-				(error) => Promise.reject(error)
+	// Setup axios interceptors on token change
+	useEffect(() => {
+		if (state.token) {
+			setupAxiosInterceptors(state.token);
+			console.log(
+				"🔍 Setting up axios interceptors with token:",
+				state.token.substring(0, 15) + "..."
 			);
-
-			// Configure response interceptor for error handling
-			axios.interceptors.response.use(
-				(response) => response,
-				(error) => {
-					// Handle 401 Unauthorized errors
-					if (error.response?.status === 401) {
-						console.log("Unauthorized API request, clearing credentials");
-						clearUserData();
-
-						// Dispatch event to notify app of disconnection
-						window.dispatchEvent(new Event("walletDisconnected"));
-					}
-
-					return Promise.reject(error);
-				}
-			);
-
-			// Set default Authorization header for new requests
-			if (token) {
-				axios.defaults.headers.common.Authorization = `Bearer ${token}`;
-				console.log("🔍 Authorization header set");
-			} else {
-				delete axios.defaults.headers.common.Authorization;
-				console.log("🔍 Authorization header cleared");
-			}
-
-			console.log("🔍 Axios interceptors configured", { hasToken: !!token });
-		} catch (error) {
-			console.error("Error setting up axios interceptors:", error);
+		} else {
+			setupAxiosInterceptors(null);
+			console.log("🔍 Clearing axios interceptors (no token)");
 		}
-	}, []);
+	}, [state.token]);
 
 	// Update the initializeFromStorage function to properly set hasInitializedRef
 	useEffect(() => {
@@ -354,48 +279,71 @@ export const AccountProvider = ({ children }) => {
 					isAccountInitialized: true,
 					loading: false,
 				});
-			} else {
-				// We have complete credentials - parse user and set up
+
+				// Continue with provider check to see if wallet is available
 				try {
-					console.log(
-						"🔍 Complete stored credentials found, setting up authenticated state"
-					);
-					const storedUser = JSON.parse(storedUserString);
-
-					// Set axios authorization header
-					axios.defaults.headers.common[
-						"Authorization"
-					] = `Bearer ${storedToken}`;
-
-					// Update state with stored values
-					updateState({
-						connectionState: CONNECTION_STATES.CONNECTED,
-						userState: USER_STATES.HAS_PROFILE,
-						walletAddress: storedWalletAddress,
-						token: storedToken,
-						user: storedUser,
-						isAccountInitialized: true,
-						loading: false,
-					});
+					console.log("🔍 Checking Web3 provider after no credentials found");
+					await checkWeb3Provider();
 				} catch (error) {
-					console.error("❌ Error parsing stored user data:", error);
-
-					// Set fallback state on error
-					updateState({
-						connectionState: CONNECTION_STATES.DISCONNECTED,
-						userState: USER_STATES.NO_WALLET,
-						isAccountInitialized: true,
-						loading: false,
-					});
+					console.error("❌ Error in provider check:", error);
 				}
+				return;
 			}
 
-			// Continue with provider check
+			// We have complete credentials - parse user and set up
 			try {
-				console.log("🔍 Checking Web3 provider after initialization");
-				await checkWeb3Provider();
+				console.log(
+					"🔍 Complete stored credentials found, setting up authenticated state"
+				);
+				const storedUser = JSON.parse(storedUserString);
+
+				// Set axios authorization header
+				axios.defaults.headers.common[
+					"Authorization"
+				] = `Bearer ${storedToken}`;
+
+				// Update state with stored values
+				updateState({
+					connectionState: CONNECTION_STATES.CONNECTED,
+					userState: USER_STATES.HAS_PROFILE,
+					walletAddress: storedWalletAddress,
+					token: storedToken,
+					user: storedUser,
+					isAccountInitialized: true,
+					loading: false,
+				});
+
+				// Continue with provider check to update wallet connection status if available
+				try {
+					console.log(
+						"🔍 Checking Web3 provider after setting stored credentials"
+					);
+					await checkWeb3Provider();
+				} catch (error) {
+					console.error("❌ Error in provider check:", error);
+					// Even if provider check fails, we'll still use the stored credentials
+					console.log(
+						"⚠️ Using stored credentials despite provider check failure"
+					);
+				}
 			} catch (error) {
-				console.error("❌ Error in provider check:", error);
+				console.error("❌ Error parsing stored user data:", error);
+
+				// Set fallback state on error
+				updateState({
+					connectionState: CONNECTION_STATES.DISCONNECTED,
+					userState: USER_STATES.NO_WALLET,
+					isAccountInitialized: true,
+					loading: false,
+				});
+
+				// Continue with provider check
+				try {
+					console.log("🔍 Checking Web3 provider after error handling");
+					await checkWeb3Provider();
+				} catch (error) {
+					console.error("❌ Error in provider check:", error);
+				}
 			}
 		};
 
@@ -467,20 +415,6 @@ export const AccountProvider = ({ children }) => {
 			};
 		}
 	}, [state.walletAddress]);
-
-	// Setup axios interceptors when token changes
-	useEffect(() => {
-		if (state.token) {
-			setupAxiosInterceptors(state.token);
-			console.log(
-				"🔍 Setting up axios interceptors with token:",
-				state.token.substring(0, 15) + "..."
-			);
-		} else {
-			setupAxiosInterceptors(null);
-			console.log("🔍 Clearing axios interceptors (no token)");
-		}
-	}, [state.token, setupAxiosInterceptors]);
 
 	// Enhanced createProvider function with better error handling and provider detection
 	const createProvider = async () => {
@@ -1202,16 +1136,11 @@ export const AccountProvider = ({ children }) => {
 
 	// Simplified connectWallet function using RainbowKit
 	const connectWallet = useCallback(async () => {
-		if (!isInitialized || !walletKit) {
-			console.error("Wallet not initialized");
-			return;
-		}
-
 		try {
 			isConnectingRef.current = true;
 			updateState({ isConnecting: true });
 
-			// Connect using WalletKit
+			// Connect using ethers.js
 			const result = await connect();
 			if (!result) {
 				throw new Error("Failed to connect wallet");
@@ -1228,15 +1157,15 @@ export const AccountProvider = ({ children }) => {
 		} catch (error) {
 			console.error("Error connecting wallet:", error);
 			updateState({
-				errorMessage: error.message,
-				connectionState: CONNECTION_STATES.ERROR,
-				userState: USER_STATES.NO_WALLET,
+				isConnecting: false,
+				connectionState: "error",
+				error: error.message,
 			});
 		} finally {
 			isConnectingRef.current = false;
 			updateState({ isConnecting: false });
 		}
-	}, [connect, isInitialized, walletKit, updateState]);
+	}, [connect, authenticateWithWallet, updateState]);
 
 	// Disconnect handler
 	const disconnectWallet = useCallback(async () => {
@@ -1258,132 +1187,105 @@ export const AccountProvider = ({ children }) => {
 	// Update the autoAuthenticate function to handle stored data better
 	useEffect(() => {
 		const autoAuthenticate = async () => {
-			console.log("🔄 Running auto-authentication check");
-
 			try {
-				// IMPORTANT: First check localStorage directly for most reliable state
+				// Get stored values
 				const storedToken = localStorage.getItem(STORAGE_KEYS.token);
-				const storedUserString = localStorage.getItem(STORAGE_KEYS.USER);
-				const storedWalletAddress = localStorage.getItem(
-					STORAGE_KEYS.WALLET_ADDRESS
-				);
+				const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
+				const storedWallet = localStorage.getItem(STORAGE_KEYS.WALLET_ADDRESS);
 
-				// Check if we have complete stored authentication info
-				const hasCompleteStoredAuth =
-					storedToken && storedUserString && storedWalletAddress;
+				// If we have all required data, try to authenticate
+				if (storedToken && storedUser && storedWallet) {
+					// Check if we've already tried to authenticate recently
+					const now = Date.now();
+					const lastAttempt = state.lastAuthAttempt || 0;
+					const timeSinceLastAttempt = now - lastAttempt;
 
-				if (hasCompleteStoredAuth) {
-					console.log("💾 Found complete stored authentication data");
+					// Only attempt authentication if enough time has passed
+					if (timeSinceLastAttempt > 5000) {
+						// 5 second cooldown
+						console.log("🔄 Attempting auto-authentication...");
 
-					try {
-						// Try to parse the user data
-						const storedUser = JSON.parse(storedUserString);
+						// Update last attempt time
+						setState((prev) => ({
+							...prev,
+							lastAuthAttempt: now,
+							authRetries: (prev.authRetries || 0) + 1,
+						}));
 
-						// Set the auth state from storage immediately
-						updateState({
-							token: storedToken,
-							walletAddress: storedWalletAddress.toLowerCase(),
-							user: storedUser,
-							connectionState: CONNECTION_STATES.CONNECTED,
-							userState: USER_STATES.HAS_PROFILE,
-							isAccountInitialized: true,
-							errorMessage: null,
-						});
-
-						// Also make sure axios is configured properly
-						setupAxiosInterceptors(storedToken);
-
-						// Check current path and redirect if necessary
-						const currentPath = window.location.pathname;
-						if (
-							currentPath === "/profile-setup" ||
-							currentPath === "/connect"
-						) {
-							console.log(
-								"🔄 Redirecting from",
-								currentPath,
-								"to dashboard based on stored auth"
-							);
-							setTimeout(() => {
-								window.location.href = "/dashboard";
-							}, 200);
-						}
-
-						return true;
-					} catch (error) {
-						console.error("❌ Error parsing stored user data:", error);
-						// Continue with normal flow
-					}
-				}
-
-				// Only proceed with wallet check if we don't have complete stored auth
-				// or if we're connected but have no token
-				if (
-					!hasCompleteStoredAuth &&
-					state.connectionState === CONNECTION_STATES.CONNECTED &&
-					state.walletAddress &&
-					!state.token
-				) {
-					console.log(
-						"🔍 Connected wallet without token, attempting auto-authentication"
-					);
-
-					// Get the wallet address from state
-					const walletAddress = state.walletAddress;
-
-					// Directly try to authenticate with the wallet address
-					try {
-						console.log(
-							"Auto-authenticating with wallet address:",
-							walletAddress
+						// Try to authenticate with stored credentials
+						const response = await axios.post(
+							`${API_URL}/auth/wallet`,
+							{
+								walletAddress: storedWallet,
+								token: storedToken,
+							},
+							{
+								headers: {
+									Authorization: `Bearer ${storedToken}`,
+								},
+							}
 						);
-						const result = await authenticateWithWallet(walletAddress);
 
-						if (result?.success && result?.token) {
-							console.log("Auto-authentication successful, token acquired");
-
-							// Update state with authentication results
-							updateState({
-								token: result.token,
-								user: result.user,
-								userState: USER_STATES.HAS_PROFILE,
+						if (response.data?.token) {
+							// Authentication successful
+							console.log("✅ Auto-authentication successful");
+							setState((prev) => ({
+								...prev,
+								token: response.data.token,
+								user: JSON.parse(storedUser),
+								walletAddress: storedWallet,
 								connectionState: CONNECTION_STATES.CONNECTED,
-								isAccountInitialized: true,
-							});
-
+								userState: USER_STATES.HAS_PROFILE,
+								error: null,
+								authRetries: 0,
+							}));
 							return true;
-						} else {
-							console.log(
-								"Auto-authentication response without token:",
-								result
-							);
+						}
+					}
+				}
+
+				// If we don't have stored credentials or authentication failed,
+				// check if we have a connected wallet
+				if (
+					state.walletAddress &&
+					state.connectionState === CONNECTION_STATES.CONNECTED
+				) {
+					try {
+						// Check if user exists
+						const userResponse = await axios.get(
+							`${API_URL}/users/${state.walletAddress.toLowerCase()}`
+						);
+
+						if (userResponse.data?.user) {
+							// User exists, update state
+							setState((prev) => ({
+								...prev,
+								user: userResponse.data.user,
+								userState: USER_STATES.HAS_PROFILE,
+							}));
+							return true;
 						}
 					} catch (error) {
-						console.error("Error during auto-authentication:", error);
+						if (error.response?.status === 404) {
+							// User doesn't exist, set appropriate state
+							setState((prev) => ({
+								...prev,
+								userState: USER_STATES.NO_PROFILE,
+							}));
+							return false;
+						}
+						throw error;
 					}
-
-					// Fall back to connect wallet if direct authentication fails
-					try {
-						const result = await connectWallet();
-						console.log("🔄 Auto-authentication connect result:", result);
-						return result.success;
-					} catch (error) {
-						console.error("❌ Auto-authentication connectWallet error:", error);
-						return false;
-					}
-				} else {
-					// Already have token or not connected
-					if (state.token) {
-						console.log(
-							"✅ Auto-authentication skipped: Already authenticated"
-						);
-					} else if (state.connectionState !== CONNECTION_STATES.CONNECTED) {
-						console.log("ℹ️ Auto-authentication skipped: Not connected");
-					}
-					return false;
 				}
+
+				return false;
 			} catch (error) {
 				console.error("❌ Error in autoAuthenticate:", error);
+				// Clear invalid stored data
+				if (error.response?.status === 401 || error.response?.status === 403) {
+					localStorage.removeItem(STORAGE_KEYS.token);
+					localStorage.removeItem(STORAGE_KEYS.USER);
+				}
 				return false;
 			}
 		};

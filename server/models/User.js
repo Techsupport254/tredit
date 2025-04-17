@@ -71,11 +71,8 @@ class User extends Model {
 		},
 		phoneNumber: {
 			type: DataTypes.STRING,
-			allowNull: false,
+			allowNull: true,
 			defaultValue: "",
-			validate: {
-				is: USER_CONSTANTS.VALIDATION.PHONE_REGEX,
-			},
 		},
 		location: {
 			type: DataTypes.JSONB,

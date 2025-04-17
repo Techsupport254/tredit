@@ -226,9 +226,22 @@ const ConnectWallet = ({ className = "" }) => {
 	// Handle connect button click
 	const handleConnect = useCallback(async () => {
 		try {
+			setState((prev) => ({
+				...prev,
+				loading: true,
+			}));
 			await connectWallet();
 		} catch (error) {
 			console.error("Error in connect handler:", error);
+			setState((prev) => ({
+				...prev,
+				error: error.message,
+			}));
+		} finally {
+			setState((prev) => ({
+				...prev,
+				loading: false,
+			}));
 		}
 	}, [connectWallet]);
 
@@ -606,12 +619,15 @@ const ConnectWallet = ({ className = "" }) => {
 						{/* Connect Button */}
 						<div className="flex-grow space-y-4">
 							<Button
-								size="lg"
-								colorScheme={errorMessage ? "red" : "blue"}
-								variant="solid"
-								{...buttonProps}
+								type="primary"
+								size="large"
+								onClick={handleConnect}
+								loading={state.loading}
+								loadingtext="Connecting..."
+								colorscheme="blue"
+								disabled={state.loading}
 							>
-								{buttonProps.children}
+								{state.loading ? "Connecting..." : "Connect Wallet"}
 							</Button>
 
 							{state.isMobileDevice && !state.isMetaMaskInstalled && (

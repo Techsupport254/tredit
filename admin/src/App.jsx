@@ -1,4 +1,12 @@
-import { lazy, Suspense, useEffect, useState, useRef, useMemo } from "react";
+import {
+	lazy,
+	Suspense,
+	useEffect,
+	useState,
+	useRef,
+	useMemo,
+	useCallback,
+} from "react";
 import {
 	Routes,
 	Route,
@@ -29,6 +37,105 @@ import { BusinessProvider } from "./Context/BusinessContext";
 import { CloseCircleFilled } from "@ant-design/icons";
 import { LoadingOutlined } from "@ant-design/icons";
 import { Modal, Button, Spin } from "antd";
+import ConnectWallet from "./Components/Profile/ConnectWallet.jsx";
+
+// Define API URL from environment variable
+const API_URL = import.meta.env.VITE_PUBLIC_API_URL;
+
+/**
+ * Sets up Axios interceptors for adding auth tokens to requests
+ * and handling authentication errors
+ * @param {string} token - The JWT token to use for auth
+ */
+export const setupAxiosInterceptors = (token) => {
+	try {
+		// Clear any existing interceptors
+		if (axios.interceptors) {
+			try {
+				if (
+					axios.interceptors.request.handlers &&
+					axios.interceptors.request.handlers.length > 0
+				) {
+					axios.interceptors.request.handlers.forEach((handler) => {
+						if (handler && handler.id) {
+							axios.interceptors.request.eject(handler.id);
+						}
+					});
+				}
+			} catch (e) {
+				console.error("Error clearing request interceptors:", e);
+			}
+
+			try {
+				if (
+					axios.interceptors.response.handlers &&
+					axios.interceptors.response.handlers.length > 0
+				) {
+					axios.interceptors.response.handlers.forEach((handler) => {
+						if (handler && handler.id) {
+							axios.interceptors.response.eject(handler.id);
+						}
+					});
+				}
+			} catch (e) {
+				console.error("Error clearing response interceptors:", e);
+			}
+		}
+
+		// Configure request interceptor to add Authorization header
+		axios.interceptors.request.use(
+			(config) => {
+				// Clone config to avoid mutation
+				const newConfig = { ...config };
+
+				// Don't add token to requests to external domains
+				const isApiRequest =
+					!newConfig.url.startsWith("http") || newConfig.url.includes(API_URL);
+
+				if (token && isApiRequest) {
+					// Ensure headers object exists
+					newConfig.headers = newConfig.headers || {};
+					newConfig.headers.Authorization = `Bearer ${token}`;
+				}
+				return newConfig;
+			},
+			(error) => Promise.reject(error)
+		);
+
+		// Configure response interceptor for error handling
+		axios.interceptors.response.use(
+			(response) => response,
+			(error) => {
+				// Handle 401 Unauthorized errors
+				if (error.response?.status === 401) {
+					console.log("Unauthorized API request, clearing credentials");
+					// Clear user data
+					localStorage.removeItem(STORAGE_KEYS.token);
+					localStorage.removeItem(STORAGE_KEYS.USER);
+					localStorage.removeItem(STORAGE_KEYS.WALLET_ADDRESS);
+
+					// Dispatch event to notify app of disconnection
+					window.dispatchEvent(new Event("walletDisconnected"));
+				}
+
+				return Promise.reject(error);
+			}
+		);
+
+		// Set default Authorization header for new requests
+		if (token) {
+			axios.defaults.headers.common.Authorization = `Bearer ${token}`;
+			console.log("🔍 Authorization header set");
+		} else {
+			delete axios.defaults.headers.common.Authorization;
+			console.log("🔍 Authorization header cleared");
+		}
+
+		console.log("🔍 Axios interceptors configured", { hasToken: !!token });
+	} catch (error) {
+		console.error("Error setting up axios interceptors:", error);
+	}
+};
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = ["/connect", "/profile-setup"];
@@ -46,10 +153,10 @@ const DashboardLayout = lazyWithPreload(() =>
 );
 
 // Preload commonly accessed components
-const ConnectWallet = lazy(() =>
-	import("./Components/Profile/ConnectWallet.jsx")
-);
 const ProfileSetup = lazy(() => import("./pages/settings/ProfileSetup.jsx"));
+const AccountSettings = lazy(() =>
+	import("./pages/settings/AccountSettings.jsx")
+);
 
 // Product & Service Details
 const ProductDetails = lazy(() =>
@@ -111,9 +218,6 @@ const NotificationSettings = lazy(() =>
 );
 
 // Settings components
-const AccountSettings = lazy(() =>
-	import("./pages/settings/AccountSettings.jsx")
-);
 const Security = lazy(() => import("./pages/settings/Security.jsx"));
 const ApiKeys = lazy(() => import("./pages/settings/ApiKeys.jsx"));
 
@@ -144,97 +248,171 @@ const ContentLoadingWrapper = ({ children, isLoading, message }) => {
 };
 
 // ProtectedRoute component - updated for faster navigation
-const ProtectedRoute = ({ children }) => {
+const ProtectedRoute = ({
+	children,
+	requireAuth = true,
+	requireProfile = false,
+}) => {
 	const navigate = useNavigate();
-	const {
-		token,
+	const location = useLocation();
+	const { connectionState, userState, user, isLoading } = useAccount();
+	const { isAuthenticated } = useAuth();
+	const [routeDecision, setRouteDecision] = useState("pending"); // pending, allowed, redirect
+	const [redirectPath, setRedirectPath] = useState(null);
+	const hasCheckedStorage = useRef(false);
+
+	// First check localStorage for authentication data
+	useEffect(() => {
+		if (hasCheckedStorage.current) return;
+		hasCheckedStorage.current = true;
+
+		// Get stored credentials
+		const storedToken = localStorage.getItem(STORAGE_KEYS.token);
+		const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
+		const storedWallet = localStorage.getItem(STORAGE_KEYS.WALLET_ADDRESS);
+		const hasStoredCreds = storedToken && storedUser && storedWallet;
+
+		console.log("ProtectedRoute - localStorage check:", {
+			path: location.pathname,
+			hasStoredToken: !!storedToken,
+			hasStoredUser: !!storedUser,
+			hasStoredWallet: !!storedWallet,
+			requireAuth,
+		});
+
+		// If public route, no need to check credentials
+		if (!requireAuth) return;
+
+		// For auth routes, check if we have stored credentials
+		if (!hasStoredCreds) {
+			// If no stored credentials and requiring auth, prepare to redirect
+			if (location.pathname !== "/connect") {
+				setRouteDecision("redirect");
+				setRedirectPath("/connect");
+			}
+		}
+	}, [location.pathname, requireAuth]);
+
+	// Determine whether this route can be accessed
+	useEffect(() => {
+		// If still loading, maintain current decision
+		if (isLoading) return;
+
+		// Skip if already decided to redirect based on localStorage check
+		if (routeDecision === "redirect" && redirectPath) return;
+
+		// Start with a clean decision
+		let decision = "pending";
+		let redirectTo = null;
+
+		// Public routes don't need auth checks
+		if (!requireAuth) {
+			decision = "allowed";
+		}
+		// Handle auth required routes
+		else {
+			// First check for stored credentials as backup
+			const storedToken = localStorage.getItem(STORAGE_KEYS.token);
+			const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
+			const storedWallet = localStorage.getItem(STORAGE_KEYS.WALLET_ADDRESS);
+			const hasStoredCreds = storedToken && storedUser && storedWallet;
+
+			// If no active connection but we have stored credentials, consider authenticated
+			if (connectionState === "disconnected" && hasStoredCreds) {
+				console.log("Using stored credentials since wallet is disconnected");
+				decision = "allowed";
+			}
+			// Check connection state
+			else if (connectionState === "disconnected" && !hasStoredCreds) {
+				decision = "redirect";
+				redirectTo = "/connect";
+			}
+			// Then authentication
+			else if (!isAuthenticated && !hasStoredCreds) {
+				decision = "redirect";
+				redirectTo = "/connect";
+			}
+			// Then profile requirements
+			else if (requireProfile && userState === USER_STATES.NO_PROFILE) {
+				decision = "redirect";
+				redirectTo = "/profile-setup";
+			}
+			// All checks passed
+			else {
+				decision = "allowed";
+			}
+		}
+
+		// Update component state with decision
+		setRouteDecision(decision);
+		setRedirectPath(redirectTo);
+
+		// Apply redirect if needed
+		if (decision === "redirect" && redirectTo) {
+			console.log(`Protected route redirecting to: ${redirectTo}`);
+			navigate(redirectTo, { replace: true });
+		}
+	}, [
 		connectionState,
 		userState,
-		walletAddress,
-		isInitialized,
+		isAuthenticated,
+		requireAuth,
+		requireProfile,
+		navigate,
 		isLoading,
-		checkWeb3Provider,
-	} = useAccount();
+		routeDecision,
+		redirectPath,
+	]);
 
-	// Add state to track authentication check completion
-	const [authCheckComplete, setAuthCheckComplete] = useState(false);
-	const authCheckRef = useRef(false);
-	const location = useLocation();
-
-	// Store wallet address in localStorage when available
+	// Log for debugging
 	useEffect(() => {
-		if (walletAddress) {
-			localStorage.setItem(STORAGE_KEYS.WALLET_ADDRESS, walletAddress);
-		}
-	}, [walletAddress]);
+		console.log("ProtectedRoute state:", {
+			path: location.pathname,
+			requireAuth,
+			requireProfile,
+			decision: routeDecision,
+			redirectPath,
+			connectionState,
+			userState,
+			isAuthenticated,
+			isLoading,
+		});
+	}, [
+		location.pathname,
+		requireAuth,
+		requireProfile,
+		routeDecision,
+		redirectPath,
+		connectionState,
+		userState,
+		isAuthenticated,
+		isLoading,
+	]);
 
-	// Check for stored token and wallet address on mount
-	useEffect(() => {
-		const storedToken = localStorage.getItem(STORAGE_KEYS.token);
-		const storedWallet = localStorage.getItem(STORAGE_KEYS.WALLET_ADDRESS);
-
-		if (storedToken && storedWallet && !token) {
-			// We have stored credentials but no token in state, trigger a recheck
-			checkWeb3Provider();
-		}
-	}, [token, checkWeb3Provider]);
-
-	// Perform initial web3 provider check only once at mount
-	useEffect(() => {
-		if (!authCheckRef.current && !isLoading) {
-			authCheckRef.current = true;
-			// Use a small delay to prevent blocking rendering
-			setTimeout(() => {
-				checkWeb3Provider();
-				setAuthCheckComplete(true);
-			}, 100);
-		}
-	}, [isLoading, checkWeb3Provider]);
-
-	// Handle direct redirects for clearly unauthenticated states
-	if (connectionState === CONNECTION_STATES.NO_PROVIDER) {
+	// Show loading while determining access
+	if (isLoading || routeDecision === "pending") {
 		return (
-			<Navigate to="/connect" replace state={{ from: location.pathname }} />
-		);
-	}
-
-	if (
-		userState === USER_STATES.NO_PROFILE &&
-		connectionState === CONNECTION_STATES.CONNECTED
-	) {
-		return (
-			<Navigate
-				to="/profile-setup"
-				replace
-				state={{ from: location.pathname }}
+			<LoadingSpinner
+				fullScreen
+				size="large"
+				message="Checking authorization..."
 			/>
 		);
 	}
 
-	// Check if we're on a public route
-	const isPublicRoute = PUBLIC_ROUTES.includes(location.pathname);
-	if (isPublicRoute) {
-		// If we're on a public route and fully authenticated, redirect to dashboard
-		if (token && walletAddress && userState === USER_STATES.HAS_PROFILE) {
-			return <Navigate to="/dashboard" replace />;
-		}
-		// Otherwise, allow access to public routes
-		return <>{children}</>;
+	// Only render children if explicitly allowed
+	if (routeDecision === "allowed") {
+		return children;
 	}
 
-	// Fast path - if we have both a token and wallet address, or auth is complete,
-	// render children immediately, authentication will happen in background
-	if ((token && walletAddress) || authCheckComplete) {
-		// User appears authenticated, render children immediately
-		return <>{children}</>;
-	}
-
-	// Only show loading for short duration while checking authentication
-	return <LoadingSpinner message="Verifying access..." />;
+	// Fallback loading state while redirect happens
+	return <LoadingSpinner fullScreen size="large" message="Redirecting..." />;
 };
 
 ProtectedRoute.propTypes = {
 	children: PropTypes.node.isRequired,
+	requireAuth: PropTypes.bool,
+	requireProfile: PropTypes.bool,
 };
 
 // Business redirect components to handle ID parameters
@@ -270,9 +448,42 @@ const App = () => {
 		loading: accountLoading,
 		walletAddress,
 	} = useAccount();
+	const [isInitialCheckComplete, setIsInitialCheckComplete] = useState(false);
 
 	// Check if we're still loading
 	const isLoading = authLoading || accountLoading;
+
+	// Initialize Axios interceptors on mount - this should happen BEFORE any other useEffect
+	useEffect(() => {
+		const storedToken = localStorage.getItem(STORAGE_KEYS.token);
+		if (storedToken) {
+			console.log(
+				"🔒 Setting up axios interceptors on app mount with stored token"
+			);
+			setupAxiosInterceptors(storedToken);
+		} else {
+			console.log("⚠️ No token found in localStorage on app mount");
+		}
+	}, []);
+
+	// Perform initial app loading check before rendering any routes
+	useEffect(() => {
+		if (!isLoading) {
+			// Wait a bit to ensure all connections and checks are complete
+			const timer = setTimeout(() => {
+				// Double check token setup before completing initialization
+				const storedToken = localStorage.getItem(STORAGE_KEYS.token);
+				if (storedToken) {
+					// Make sure axios interceptors are set up
+					setupAxiosInterceptors(storedToken);
+				}
+
+				setIsInitialCheckComplete(true);
+				console.log("🚀 Initial app check complete, ready to render routes");
+			}, 500);
+			return () => clearTimeout(timer);
+		}
+	}, [isLoading]);
 
 	// Skip debug logging in production
 	if (process.env.NODE_ENV !== "production") {
@@ -284,7 +495,29 @@ const App = () => {
 				: null,
 			hasToken: !!token,
 			isLoading,
+			isInitialCheckComplete,
 		});
+	}
+
+	// Show initial loading screen until all checks are complete
+	if (!isInitialCheckComplete) {
+		return (
+			<ConfigProvider
+				theme={{
+					token: {
+						colorPrimary: "#3b81f6",
+						colorLink: "#3b81f6",
+					},
+				}}
+			>
+				<LoadingSpinner
+					fullScreen={true}
+					message="Initializing application..."
+					size="large"
+					delay={200}
+				/>
+			</ConfigProvider>
+		);
 	}
 
 	return (
@@ -300,25 +533,26 @@ const App = () => {
 				<div className="min-h-screen">
 					<Routes>
 						{/* Public Routes */}
-						<Route path="/" element={<Navigate to="/connect" replace />} />
+						<Route
+							path="/"
+							element={
+								<ProtectedRoute requireAuth={false}>
+									<ConnectWallet />
+								</ProtectedRoute>
+							}
+						/>
 						<Route
 							path="/connect"
 							element={
-								<Suspense
-									fallback={
-										<LoadingSpinner message="Loading connect page..." />
-									}
-								>
+								<ProtectedRoute requireAuth={false}>
 									<ConnectWallet />
-								</Suspense>
+								</ProtectedRoute>
 							}
 						/>
-
-						{/* User must be connected but profile not required */}
 						<Route
 							path="/profile-setup"
 							element={
-								<ProtectedRoute>
+								<ProtectedRoute requireAuth={true}>
 									<Suspense
 										fallback={
 											<LoadingSpinner message="Loading profile setup..." />
@@ -330,11 +564,10 @@ const App = () => {
 							}
 						/>
 
-						{/* Protected Routes - require both connection and profile */}
+						{/* Protected Routes with DashboardLayout */}
 						<Route
-							path="/dashboard/*"
 							element={
-								<ProtectedRoute>
+								<ProtectedRoute requireAuth={true}>
 									<Suspense
 										fallback={<LoadingSpinner message="Loading dashboard..." />}
 									>
@@ -342,40 +575,46 @@ const App = () => {
 									</Suspense>
 								</ProtectedRoute>
 							}
-						/>
+						>
+							<Route path="/dashboard" element={<Dashboard />} />
+							<Route path="/dashboard/businesses" element={<MyBusinesses />} />
+							<Route path="/settings" element={<AccountSettings />} />
+							<Route path="/dashboard/*" element={<Dashboard />} />
 
-						{/* Add direct routes outside of nested routes for common paths - fast redirect */}
-						<Route
-							path="/businesses"
-							element={<Navigate to="/dashboard/businesses" replace />}
-						/>
-						<Route
-							path="/businesses/create"
-							element={<Navigate to="/dashboard/businesses/create" replace />}
-						/>
-						<Route path="/businesses/:id" element={<BusinessRedirect />} />
-						<Route
-							path="/businesses/:id/edit"
-							element={<BusinessEditRedirect />}
-						/>
-						{/* Keep other direct routes for common paths */}
-						{[
-							"/analytics/*",
-							"/transactions/*",
-							"/disputes/*",
-							"/communications/*",
-							"/settings/*",
-							"/products/*",
-							"/services/*",
-						].map((path) => (
+							{/* Business Routes */}
 							<Route
-								key={path}
-								path={path}
-								element={<Navigate to={`/dashboard${path}`} replace />}
+								path="/businesses"
+								element={<Navigate to="/dashboard/businesses" replace />}
 							/>
-						))}
+							<Route
+								path="/businesses/create"
+								element={<Navigate to="/dashboard/businesses/create" replace />}
+							/>
+							<Route path="/businesses/:id" element={<BusinessRedirect />} />
+							<Route
+								path="/businesses/:id/edit"
+								element={<BusinessEditRedirect />}
+							/>
 
-						{/* Keep a catch-all route at the root level for unauthenticated users */}
+							{/* Other Protected Routes */}
+							{[
+								"/analytics/*",
+								"/transactions/*",
+								"/disputes/*",
+								"/communications/*",
+								"/settings/*",
+								"/products/*",
+								"/services/*",
+							].map((path) => (
+								<Route
+									key={path}
+									path={path}
+									element={<Navigate to={`/dashboard${path}`} replace />}
+								/>
+							))}
+						</Route>
+
+						{/* Catch-all route */}
 						<Route path="*" element={<NotFoundPage />} />
 					</Routes>
 				</div>

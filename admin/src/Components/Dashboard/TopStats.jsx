@@ -1,41 +1,92 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { Card, Col, Row, Progress, Skeleton } from "antd";
+import {
+	Card,
+	Col,
+	Row,
+	Progress,
+	Skeleton,
+	Statistic,
+	Badge,
+	Tooltip,
+} from "antd";
 import {
 	UserOutlined,
 	ShoppingCartOutlined,
 	DollarOutlined,
 	ArrowUpOutlined,
+	ArrowDownOutlined,
+	InboxOutlined,
+	RiseOutlined,
+	UserAddOutlined,
 } from "@ant-design/icons";
 
-// Move data outside component
+// Create a formatter for KES currency
+const currencyFormatter = new Intl.NumberFormat("en-KE", {
+	style: "currency",
+	currency: "KES",
+	minimumFractionDigits: 2,
+	maximumFractionDigits: 2,
+});
+
+// Updated stats data with improved styling information
 const statsData = [
 	{
 		title: "Total Sales",
-		value: "11,250",
+		value: 11250,
+		formatter: (value) => currencyFormatter.format(value),
 		icon: <DollarOutlined />,
-		color: "bg-blue-100 text-blue-700",
+		prefix: <DollarOutlined className="text-blue-500 mr-2" />,
+		color: "blue",
 		progress: 70,
+		changeValue: 8.5,
+		changeDirection: "up",
+		statusMessage: "from last week",
+		badgeStatus: "success",
+		valueStyle: { color: "#3b82f6" },
+		borderColor: "border-l-blue-500",
 	},
 	{
 		title: "New Customers",
-		value: "325",
-		icon: <UserOutlined />,
-		color: "bg-green-100 text-green-700",
+		value: 325,
+		icon: <UserAddOutlined />,
+		prefix: <UserAddOutlined className="text-green-500 mr-2" />,
+		color: "green",
 		progress: 50,
+		changeValue: 12.3,
+		changeDirection: "up",
+		statusMessage: "from last month",
+		badgeStatus: "success",
+		valueStyle: { color: "#10b981" },
+		borderColor: "border-l-green-500",
 	},
 	{
 		title: "Pending Orders",
-		value: "85",
-		icon: <ShoppingCartOutlined />,
-		color: "bg-red-100 text-red-700",
+		value: 85,
+		icon: <InboxOutlined />,
+		prefix: <InboxOutlined className="text-amber-500 mr-2" />,
+		color: "amber",
 		progress: 30,
+		changeValue: 5,
+		changeDirection: "none",
+		statusMessage: "orders require attention",
+		badgeStatus: "warning",
+		valueStyle: { color: "#f59e0b" },
+		borderColor: "border-l-amber-500",
 	},
 	{
 		title: "Revenue Growth",
-		value: "18.7%",
-		icon: <ArrowUpOutlined />,
-		color: "bg-orange-100 text-orange-700",
+		value: 18.7,
+		suffix: "%",
+		icon: <RiseOutlined />,
+		prefix: <RiseOutlined className="text-indigo-500 mr-2" />,
+		color: "indigo",
 		progress: 18.7,
+		changeValue: 4.3,
+		changeDirection: "up",
+		statusMessage: "this month",
+		badgeStatus: "success",
+		valueStyle: { color: "#6366f1" },
+		borderColor: "border-l-indigo-500",
 	},
 ];
 
@@ -51,69 +102,91 @@ const TopStats = () => {
 	}, []);
 
 	const renderStatCard = useMemo(
-		() => (stat, index) =>
-			(
-				<Col key={index} xs={12} sm={12} md={6} lg={6} className="flex p-0">
+		() => (stat, index) => {
+			// Get the appropriate change icon
+			const getChangeIcon = () => {
+				if (stat.changeDirection === "up") {
+					return (
+						<RiseOutlined
+							className="text-green-500 mr-1"
+							style={{ fontSize: "16px" }}
+						/>
+					);
+				} else if (stat.changeDirection === "down") {
+					return (
+						<RiseOutlined
+							className="text-red-500 mr-1"
+							style={{ fontSize: "16px", transform: "rotate(180deg)" }}
+						/>
+					);
+				}
+				return null;
+			};
+
+			return (
+				<Col key={index} xs={24} sm={12} lg={6}>
 					<Card
-						className="rounded-xl shadow-lg flex flex-col justify-between w-full bg-white 
-				px-0 py-3 sm:px-3 sm:py-4 md:px-4 md:py-0 lg:px-5 lg:py-8"
+						hoverable
+						className={`h-full shadow-sm transition-all hover:shadow-md border-l-4 ${stat.borderColor}`}
 					>
-						<div className="flex flex-col items-center text-center w-full">
-							<div
-								className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 flex items-center justify-center rounded-full ${stat.color}`}
-								style={{ fontSize: "1.5rem", minWidth: "50px" }}
-							>
-								{stat.icon}
-							</div>
-
-							<p className="text-gray-500 text-xs sm:text-sm md:text-base mt-2 font-medium">
-								{stat.title}
-							</p>
-
-							<p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-800 mt-1">
-								{stat.value}
-							</p>
-
-							<div className="w-full mt-3">
-								<Progress
-									percent={stat.progress}
-									status="active"
-									showInfo={false}
-									strokeColor="#1890ff"
-									strokeWidth={4}
-									className="w-full"
-								/>
-							</div>
+						<Statistic
+							title={stat.title}
+							value={stat.value}
+							formatter={stat.formatter}
+							prefix={stat.prefix}
+							suffix={stat.suffix}
+							valueStyle={stat.valueStyle}
+						/>
+						<div className="mt-2 text-xs text-gray-500">
+							{stat.changeDirection !== "none" && (
+								<Tooltip
+									title={`${
+										stat.changeDirection === "up" ? "Increased" : "Decreased"
+									} by ${stat.changeValue}%`}
+								>
+									<span>
+										{getChangeIcon()}
+										<span
+											className={
+												stat.changeDirection === "up"
+													? "text-green-500"
+													: "text-red-500"
+											}
+										>
+											{stat.changeValue}%
+										</span>{" "}
+										{stat.statusMessage}
+									</span>
+								</Tooltip>
+							)}
+							{stat.changeDirection === "none" && (
+								<span>
+									{stat.changeValue} {stat.statusMessage}
+								</span>
+							)}
 						</div>
 					</Card>
 				</Col>
-			),
+			);
+		},
 		[]
 	);
 
 	if (loading) {
 		return (
-			<div className="w-full px-0 sm:px-4 lg:px-8 xl:px-12 py-0 sm:py-4 lg:py-6">
-				<Row gutter={[12, 12]} justify="center">
-					{[1, 2, 3, 4].map((key) => (
-						<Col key={key} xs={12} sm={12} md={6} lg={6} className="flex p-0">
-							<Card className="rounded-xl shadow-lg w-full">
-								<Skeleton active paragraph={{ rows: 2 }} />
-							</Card>
-						</Col>
-					))}
-				</Row>
-			</div>
+			<Row gutter={[16, 16]}>
+				{[1, 2, 3, 4].map((key) => (
+					<Col key={key} xs={24} sm={12} lg={6}>
+						<Card className="shadow-sm">
+							<Skeleton active paragraph={{ rows: 1 }} />
+						</Card>
+					</Col>
+				))}
+			</Row>
 		);
 	}
 
-	return (
-		<div className="w-full px-0 sm:px-4 lg:px-8 xl:px-12 py-0 sm:py-4 lg:py-6">
-			<Row gutter={[12, 12]} justify="center">
-				{statsData.map(renderStatCard)}
-			</Row>
-		</div>
-	);
+	return <Row gutter={[16, 16]}>{statsData.map(renderStatCard)}</Row>;
 };
 
 export default React.memo(TopStats);

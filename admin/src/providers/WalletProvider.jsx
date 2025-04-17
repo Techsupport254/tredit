@@ -1,80 +1,88 @@
-import { Core } from "@walletconnect/core";
-import { WalletKit } from "@reown/walletkit";
-import { createContext, useContext, useState, useEffect } from "react";
-
-const core = new Core({
-	projectId: "c935f3c835b235ec185a68211c30ee16",
-});
-
-const metadata = {
-	name: "Tredit",
-	description: "AppKit Example",
-	url: window.location.origin,
-	icons: ["https://assets.reown.com/reown-profile-pic.png"],
-};
+import { ethers } from "ethers";
+import { createContext, useContext, useState } from "react";
 
 const WalletContext = createContext();
 
 export const WalletProvider = ({ children }) => {
-	const [walletKit, setWalletKit] = useState(null);
-	const [isInitialized, setIsInitialized] = useState(false);
+	const [provider, setProvider] = useState(null);
+	const [signer, setSigner] = useState(null);
+	const [address, setAddress] = useState(null);
 	const [error, setError] = useState(null);
 
-	useEffect(() => {
-		const initializeWalletKit = async () => {
-			try {
-				const kit = await WalletKit.init({
-					core,
-					metadata,
-				});
-				console.log("WalletKit initialized:", kit);
-				setWalletKit(kit);
-				setIsInitialized(true);
-			} catch (error) {
-				console.error("Failed to initialize WalletKit:", error);
-				setError(error);
-			}
-		};
-
-		initializeWalletKit();
-	}, []);
-
 	const connect = async () => {
-		if (!walletKit) {
-			throw new Error("WalletKit not initialized");
-		}
 		try {
-			console.log("Connecting wallet...");
-			console.log("WalletKit instance structure:", Object.keys(walletKit));
-			
-			// Direct connection using available methods on the WalletKit instance
-			const session = await walletKit.connectWallet({
-				requiredNamespaces: {
-					eip155: {
-						methods: ["eth_sendTransaction", "personal_sign"],
-						chains: ["eip155:1", "eip155:137"], // Ethereum and Polygon
-					},
-				},
+			// Check if MetaMask is installed
+			if (!window.ethereum) {
+				throw new Error("Please install MetaMask to use this application");
+			}
+
+			// Request account access
+			const accounts = await window.ethereum.request({
+				method: "eth_requestAccounts",
 			});
-			console.log("Wallet connected:", session);
+
+			if (accounts.length === 0) {
+				throw new Error("No accounts found");
+			}
+
+			// Create ethers provider and signer
+			const ethersProvider = new ethers.BrowserProvider(window.ethereum);
+			const ethersSigner = await ethersProvider.getSigner();
+
+			// Get the connected address
+			const connectedAddress = await ethersSigner.getAddress();
+
+			// Update state
+			setProvider(ethersProvider);
+			setSigner(ethersSigner);
+			setAddress(connectedAddress);
+
+			// Set up event listeners
+			window.ethereum.on("accountsChanged", handleAccountsChanged);
+			window.ethereum.on("chainChanged", handleChainChanged);
+
 			return {
-				address: session.accounts[0],
-				chainId: session.chainId,
+				address: connectedAddress,
+				chainId: await ethersSigner.provider
+					.getNetwork()
+					.then((network) => network.chainId),
 			};
 		} catch (error) {
-			console.error("Error connecting wallet:", error);
+			console.error("Wallet connection failed:", error);
+			setError(error);
 			throw error;
 		}
 	};
 
-	const disconnect = async () => {
-		if (!walletKit) {
-			throw new Error("WalletKit not initialized");
+	const handleAccountsChanged = (accounts) => {
+		if (accounts.length === 0) {
+			// User disconnected their wallet
+			disconnect();
+		} else {
+			setAddress(accounts[0]);
 		}
+	};
+
+	const handleChainChanged = () => {
+		// Reload the page when the chain changes
+		window.location.reload();
+	};
+
+	const disconnect = async () => {
 		try {
-			console.log("Disconnecting wallet...");
-			await walletKit.disconnect();
-			console.log("Wallet disconnected");
+			// Remove event listeners
+			if (window.ethereum) {
+				window.ethereum.removeListener(
+					"accountsChanged",
+					handleAccountsChanged
+				);
+				window.ethereum.removeListener("chainChanged", handleChainChanged);
+			}
+
+			// Reset state
+			setProvider(null);
+			setSigner(null);
+			setAddress(null);
 		} catch (error) {
 			console.error("Error disconnecting wallet:", error);
 			throw error;
@@ -82,20 +90,13 @@ export const WalletProvider = ({ children }) => {
 	};
 
 	const value = {
-		walletKit,
-		isInitialized,
+		provider,
+		signer,
+		address,
 		error,
 		connect,
 		disconnect,
 	};
-
-	if (error) {
-		return <div>Error initializing wallet: {error.message}</div>;
-	}
-
-	if (!isInitialized) {
-		return <div>Initializing wallet...</div>;
-	}
 
 	return (
 		<WalletContext.Provider value={value}>{children}</WalletContext.Provider>

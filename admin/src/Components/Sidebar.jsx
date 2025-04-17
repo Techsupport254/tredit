@@ -458,18 +458,18 @@ const Sidebar = () => {
 						{/* Main User Info - Always Visible */}
 						<div className="bg-white rounded-xl p-3">
 							<div className="flex items-center gap-3">
-						<Avatar
+								<Avatar
 									size={40}
-							src={user.photoURL || user.profileImage}
-							icon={<UserOutlined />}
-									className="flex-shrink-0"
-							crossOrigin="anonymous"
-							referrerPolicy="no-referrer"
+									src={user.photoURL || user.profileImage}
+									icon={<UserOutlined />}
+									className="flex-shrink-0 bg-blue-100"
+									crossOrigin="anonymous"
+									referrerPolicy="no-referrer"
 								/>
 								<div className="flex-1 min-w-0">
 									<div className="flex items-center gap-2">
 										<h3 className="text-sm font-medium text-gray-900 truncate">
-								{user.name || "User"}
+											{user.name || "User"}
 										</h3>
 										<Tag className="text-[10px] px-1.5 py-0 uppercase border-0 bg-gray-100 text-gray-600">
 											{user.role || "USER"}
@@ -533,7 +533,7 @@ const Sidebar = () => {
 															0,
 															6
 														)}...${walletAddress.slice(-4)}`}
-							</span>
+													</span>
 													<i
 														className="fas fa-copy text-gray-400 cursor-pointer hover:text-blue-500 transition-colors"
 														onClick={() =>
@@ -547,12 +547,12 @@ const Sidebar = () => {
 													<div className="flex items-center justify-between">
 														<span className="text-sm text-gray-600">
 															Network
-									</span>
+														</span>
 														<Tag className="m-0 border-0 bg-blue-50 text-blue-600">
 															{networkName === "Polygon Amoy Testnet"
-												? "Amoy"
+																? "Amoy"
 																: networkName}
-										</Tag>
+														</Tag>
 													</div>
 
 													{balance && (
@@ -604,7 +604,9 @@ const Sidebar = () => {
 						<div className="animate-pulse space-y-3">
 							<div className="bg-white rounded-xl p-3">
 								<div className="flex items-center gap-3">
-									<div className="w-10 h-10 rounded-full bg-gray-100"></div>
+									<div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+										<UserOutlined className="text-gray-300" />
+									</div>
 									<div className="flex-1 space-y-2">
 										<div className="h-4 bg-gray-100 rounded w-3/4"></div>
 										<div className="h-3 bg-gray-100 rounded w-1/2"></div>
@@ -619,13 +621,13 @@ const Sidebar = () => {
 				<div className="px-4 py-3 border-t border-gray-100">
 					<div className="flex items-center justify-center gap-3 text-xs text-gray-400 mb-2">
 						<Link to="/privacy-policy" className="hover:text-gray-600">
-						Privacy Policy
-					</Link>
+							Privacy Policy
+						</Link>
 						<span>•</span>
 						<Link to="/terms-of-service" className="hover:text-gray-600">
-						Terms of Service
-					</Link>
-				</div>
+							Terms of Service
+						</Link>
+					</div>
 					<p className="text-center text-xs text-gray-400">
 						© {new Date().getFullYear()} Vendor Panel
 					</p>

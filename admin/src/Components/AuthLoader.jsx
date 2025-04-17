@@ -30,11 +30,17 @@ const AuthLoader = () => {
 
 		const currentPath = window.location.pathname;
 
+		// Get callback URL from session storage
+		const callbackUrl = sessionStorage.getItem("auth_callback_url");
+
 		// Determine target path based on auth state
 		let targetPath = currentPath;
 		if (isConnected) {
-			if (hasProfile && currentPath === "/connect") {
-				targetPath = "/dashboard";
+			if (hasProfile) {
+				// Use callback URL if available, otherwise default to dashboard
+				targetPath = callbackUrl || "/dashboard";
+				// Clear the callback URL from session storage
+				sessionStorage.removeItem("auth_callback_url");
 			} else if (needsProfile && !currentPath.includes("/profile-setup")) {
 				targetPath = "/profile-setup";
 			}

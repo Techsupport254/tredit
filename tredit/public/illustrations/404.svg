@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="800" viewBox="0 0 1200 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Gradients -->
+    <defs>
+        <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#F3F4F6;stop-opacity:1" />
+            <stop offset="100%" style="stop-color:#E5E7EB;stop-opacity:1" />
+        </linearGradient>
+        <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" style="stop-color:#93C5FD;stop-opacity:0.2" />
+            <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:0.2" />
+        </linearGradient>
+    </defs>
+
+    <!-- Background -->
+    <rect width="1200" height="800" fill="white"/>
+
+    <!-- Large Feint 404 -->
+    <g transform="translate(600, 400)" opacity="0.05">
+        <text x="-300" y="0" font-family="Inter, sans-serif" font-size="400" font-weight="bold" fill="#3B82F6" text-anchor="middle">4</text>
+        <text x="0" y="0" font-family="Inter, sans-serif" font-size="400" font-weight="bold" fill="#3B82F6" text-anchor="middle">0</text>
+        <text x="300" y="0" font-family="Inter, sans-serif" font-size="400" font-weight="bold" fill="#3B82F6" text-anchor="middle">4</text>
+    </g>
+
+    <!-- Blockchain Network -->
+    <g transform="translate(600, 400)">
+        <!-- Central Node -->
+        <circle cx="0" cy="0" r="60" fill="url(#blueGrad)" stroke="#3B82F6" stroke-width="2"/>
+        <text x="0" y="10" font-family="Inter, sans-serif" font-size="24" fill="#3B82F6" text-anchor="middle">ESCROW</text>
+
+        <!-- Surrounding Nodes -->
+        <g id="nodes">
+            <!-- Node 1 - Buyer -->
+            <g transform="translate(-200, -150)">
+                <circle cx="0" cy="0" r="40" fill="url(#blueGrad)" stroke="#3B82F6" stroke-width="2"/>
+                <text x="0" y="5" font-family="Inter, sans-serif" font-size="14" fill="#3B82F6" text-anchor="middle">BUYER</text>
+            </g>
+
+            <!-- Node 2 - Seller -->
+            <g transform="translate(200, -150)">
+                <circle cx="0" cy="0" r="40" fill="url(#blueGrad)" stroke="#3B82F6" stroke-width="2"/>
+                <text x="0" y="5" font-family="Inter, sans-serif" font-size="14" fill="#3B82F6" text-anchor="middle">SELLER</text>
+            </g>
+
+            <!-- Node 3 - M-PESA -->
+            <g transform="translate(-200, 150)">
+                <circle cx="0" cy="0" r="40" fill="url(#blueGrad)" stroke="#3B82F6" stroke-width="2"/>
+                <text x="0" y="5" font-family="Inter, sans-serif" font-size="14" fill="#3B82F6" text-anchor="middle">M-PESA</text>
+            </g>
+
+            <!-- Node 4 - Smart Contract -->
+            <g transform="translate(200, 150)">
+                <circle cx="0" cy="0" r="40" fill="url(#blueGrad)" stroke="#3B82F6" stroke-width="2"/>
+                <text x="0" y="5" font-family="Inter, sans-serif" font-size="14" fill="#3B82F6" text-anchor="middle">POLYGON</text>
+            </g>
+        </g>
+
+        <!-- Connecting Lines -->
+        <g stroke="#3B82F6" stroke-width="2" opacity="0.3">
+            <line x1="-200" y1="-150" x2="0" y2="0"/>
+            <line x1="200" y1="-150" x2="0" y2="0"/>
+            <line x1="-200" y1="150" x2="0" y2="0"/>
+            <line x1="200" y1="150" x2="0" y2="0"/>
+            <line x1="-200" y1="-150" x2="200" y2="-150"/>
+            <line x1="-200" y1="150" x2="200" y2="150"/>
+            <line x1="-200" y1="-150" x2="-200" y2="150"/>
+            <line x1="200" y1="-150" x2="200" y2="150"/>
+        </g>
+
+        <!-- Floating Blockchain Elements -->
+        <g opacity="0.1">
+            <circle cx="-300" cy="-250" r="20" fill="#3B82F6"/>
+            <circle cx="300" cy="-250" r="15" fill="#3B82F6"/>
+            <circle cx="-300" cy="250" r="25" fill="#3B82F6"/>
+            <circle cx="300" cy="250" r="18" fill="#3B82F6"/>
+        </g>
+
+        <!-- Small Decorative Dots -->
+        <g fill="#3B82F6" opacity="0.2">
+            <circle cx="-150" cy="-300" r="3"/>
+            <circle cx="150" cy="-300" r="3"/>
+            <circle cx="-150" cy="300" r="3"/>
+            <circle cx="150" cy="300" r="3"/>
+            <circle cx="-350" cy="0" r="3"/>
+            <circle cx="350" cy="0" r="3"/>
+        </g>
+    </g>
+
+    <!-- Animated Pulse Effect -->
+    <g>
+        <circle cx="600" cy="400" r="80" stroke="#3B82F6" stroke-width="2" fill="none" opacity="0.1">
+            <animate attributeName="r" values="80;100;80" dur="3s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0.1;0.3;0.1" dur="3s" repeatCount="indefinite"/>
+        </circle>
+    </g>
+</svg> 

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="800" height="600" viewBox="0 0 800 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- Definitions for gradients and filters -->
+    <defs>
+        <!-- Area gradient -->
+        <linearGradient id="areaGradient" x1="400" y1="100" x2="400" y2="500" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:0.2"/>
+            <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:0"/>
+        </linearGradient>
+        
+        <!-- Line gradient -->
+        <linearGradient id="lineGradient" x1="0" y1="0" x2="800" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" style="stop-color:#60A5FA"/>
+            <stop offset="100%" style="stop-color:#3B82F6"/>
+        </linearGradient>
+        
+        <!-- Bar chart gradient -->
+        <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" style="stop-color:#60A5FA"/>
+            <stop offset="100%" style="stop-color:#3B82F6"/>
+        </linearGradient>
+        
+        <!-- Glow effect -->
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+            <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.376471 0 0 0 0 0.509804 0 0 0 0 0.964706 0 0 0 1 0"/>
+        </filter>
+    </defs>
+
+    <!-- Background grid -->
+    <pattern id="grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" stroke-width="0.5"/>
+    </pattern>
+    <rect width="800" height="600" fill="#0A101C"/>
+    <rect width="800" height="600" fill="url(#grid)"/>
+
+    <!-- Main chart group -->
+    <g transform="translate(0, 50)">
+        <!-- Area chart -->
+        <path d="M 0 400 
+                 L 0 300 
+                 C 160 280, 320 350, 480 200 
+                 S 640 100, 800 150 
+                 L 800 400 Z" 
+              fill="url(#areaGradient)"/>
+
+        <!-- Main trend line -->
+        <path d="M 0 300 
+                 C 160 280, 320 350, 480 200 
+                 S 640 100, 800 150" 
+              stroke="url(#lineGradient)" 
+              stroke-width="3"
+              fill="none"
+              filter="url(#glow)"/>
+
+        <!-- Bar chart -->
+        <g transform="translate(100, 250)">
+            <!-- Bars -->
+            <g>
+                <rect x="0" y="0" width="20" height="100" fill="url(#barGradient)" opacity="0.8"/>
+                <rect x="60" y="-20" width="20" height="120" fill="url(#barGradient)" opacity="0.8"/>
+                <rect x="120" y="-40" width="20" height="140" fill="url(#barGradient)" opacity="0.8"/>
+                <rect x="180" y="-10" width="20" height="110" fill="url(#barGradient)" opacity="0.8"/>
+                <rect x="240" y="-50" width="20" height="150" fill="url(#barGradient)" opacity="0.8"/>
+            </g>
+        </g>
+
+        <!-- Glowing dots -->
+        <circle cx="480" cy="200" r="4" fill="#60A5FA" filter="url(#glow)"/>
+        <circle cx="640" cy="100" r="4" fill="#60A5FA" filter="url(#glow)"/>
+        <circle cx="320" cy="350" r="4" fill="#60A5FA" filter="url(#glow)"/>
+    </g>
+
+    <!-- Stats overlay -->
+    <g transform="translate(50, 100)">
+        <!-- Growth stat -->
+        <rect x="0" y="0" width="120" height="60" rx="8" fill="#1E293B" fill-opacity="0.8"/>
+        <text x="20" y="25" fill="#60A5FA" font-family="system-ui" font-size="14">Growth</text>
+        <text x="20" y="45" fill="white" font-family="system-ui" font-size="20" font-weight="bold">+147%</text>
+    </g>
+
+    <g transform="translate(630, 100)">
+        <!-- Revenue stat -->
+        <rect x="0" y="0" width="120" height="60" rx="8" fill="#1E293B" fill-opacity="0.8"/>
+        <text x="20" y="25" fill="#60A5FA" font-family="system-ui" font-size="14">Revenue</text>
+        <text x="20" y="45" fill="white" font-family="system-ui" font-size="20" font-weight="bold">$1.2M</text>
+    </g>
+</svg> 

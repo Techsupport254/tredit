@@ -20,12 +20,15 @@ import {
 } from "../utils/storage";
 import axios from "axios";
 import { useAccount, CONNECTION_STATES } from "./AccountContext";
+import { setupAxiosInterceptors } from "../App";
 import {
 	showSuccessMessage,
 	showErrorNotification,
 	showInfoMessage,
 } from "../utils/errors";
 import { ethers } from "ethers";
+import { signInWithPopup } from "firebase/auth";
+import { auth, googleProvider } from "../../firebaseConfig";
 
 export const AuthContext = createContext({
 	user: null,
@@ -73,8 +76,7 @@ const logTokenDetails = (token, source) => {
 };
 
 export const AuthProvider = ({ children }) => {
-	const { walletAddress, provider, chainId, setupAxiosInterceptors } =
-		useAccount();
+	const { walletAddress, provider, chainId } = useAccount();
 	const hasInitialized = useRef(false);
 	const currentFetchRef = useRef(null);
 	const [authState, setAuthState] = useState({
@@ -719,88 +721,59 @@ export const AuthProvider = ({ children }) => {
 		currentFetchRef.current = null;
 	}, [walletAddress]);
 
-	const signInWithGoogle = useCallback(async () => {
+	const signInWithGoogle = async () => {
 		try {
-			setAuthState((prev) => ({
-				...prev,
-				isLoading: true,
-				error: null,
-				status: "pending",
-			}));
+			setAuthState((prev) => ({ ...prev, isLoading: true }));
 
-			showInfoMessage("Initializing Google Sign-in...");
+			// Get the callback URL from the current URL
+			const urlParams = new URLSearchParams(window.location.search);
+			const callbackUrl = urlParams.get("callbackUrl") || "/dashboard";
 
-			const result = await firebaseSignInWithGoogle();
-			console.log("Firebase sign-in result:", result);
+			const result = await signInWithPopup(auth, googleProvider);
+			if (result.user) {
+				// Store the callback URL in session storage
+				sessionStorage.setItem("auth_callback_url", callbackUrl);
 
-			if (!result?.userData) {
-				throw new Error("Failed to get Google user data");
+				// Get the ID token
+				const idToken = await result.user.getIdToken();
+
+				// Call your backend to verify the token and get your JWT
+				const response = await axios.post(`${API_URL}/auth/google`, {
+					idToken,
+					walletAddress: localStorage.getItem(STORAGE_KEYS.WALLET_ADDRESS),
+				});
+
+				if (response.data.token) {
+					// Store the token
+					localStorage.setItem(STORAGE_KEYS.token, response.data.token);
+					localStorage.setItem(
+						STORAGE_KEYS.USER,
+						JSON.stringify(response.data.user)
+					);
+
+					// Update auth state
+					setAuthState((prev) => ({
+						...prev,
+						token: response.data.token,
+						user: response.data.user,
+						isLoading: false,
+					}));
+
+					// Redirect to the callback URL
+					window.location.href = callbackUrl;
+					return response.data;
+				}
 			}
-
-			const { token: firebaseToken, userData } = result;
-
-			// Log token from Google sign-in
-			if (firebaseToken) {
-				logTokenDetails(firebaseToken, "Google sign-in");
-			}
-
-			// Store token in localStorage for recovery
-			if (firebaseToken) {
-				localStorage.setItem("firebaseToken", firebaseToken);
-				console.log("Stored Firebase token in localStorage");
-			}
-
-			// Store Firebase token using storage utility
-			if (firebaseToken) {
-				setStorageItem(STORAGE_KEYS.FIREBASE_TOKEN, firebaseToken);
-
-				const googleUser = {
-					uid: userData.uid,
-					name: userData.name || userData.displayName,
-					email: userData.email,
-					photoURL: userData.photoURL || null,
-				};
-
-				setAuthState((prev) => ({
-					...prev,
-					firebaseToken,
-					googleUser,
-					isLoading: false,
-					error: null,
-					status: "success",
-				}));
-
-				setStorageItem(STORAGE_KEYS.GOOGLE_USER, googleUser);
-				showSuccessMessage(`Welcome back, ${googleUser.name}!`);
-				return { userData: googleUser, firebaseToken };
-			}
-
-			throw new Error("Failed to get Google user data");
 		} catch (error) {
-			let errorMessage = "";
-
-			if (error.code === "auth/popup-closed-by-user") {
-				errorMessage = "Sign-in cancelled. Please try again.";
-			} else if (error.code === "auth/popup-blocked") {
-				errorMessage = "Pop-up blocked. Please allow pop-ups for this site.";
-			} else {
-				errorMessage = "Failed to sign in with Google";
-			}
-
+			console.error("Google sign-in error:", error);
 			setAuthState((prev) => ({
 				...prev,
-				error: errorMessage,
+				error: error.message,
 				isLoading: false,
-				googleUser: null,
-				token: null,
-				firebaseToken: null,
-				status: "error",
 			}));
-
-			showErrorNotification(new Error(errorMessage));
 			throw error;
 		}
-	}, [walletAddress]);
+	};
 
 	const logout = async () => {
 		try {
@@ -830,12 +803,80 @@ export const AuthProvider = ({ children }) => {
 		}
 	};
 
+	const authenticateWithWallet = async (walletAddress) => {
+		try {
+			// First check if user exists
+			const userResponse = await axios.get(
+				`${API_URL}/users/${walletAddress.toLowerCase()}`
+			);
+
+			if (userResponse.data?.user) {
+				// User exists, get authentication token
+				const authResponse = await axios.post(`${API_URL}/auth/wallet`, {
+					walletAddress: walletAddress.toLowerCase(),
+				});
+
+				if (authResponse.data?.token) {
+					// Store authentication data
+					localStorage.setItem(STORAGE_KEYS.token, authResponse.data.token);
+					localStorage.setItem(
+						STORAGE_KEYS.USER,
+						JSON.stringify(userResponse.data.user)
+					);
+					localStorage.setItem(
+						STORAGE_KEYS.WALLET_ADDRESS,
+						walletAddress.toLowerCase()
+					);
+
+					// Update state
+					setAuthState((prev) => ({
+						...prev,
+						token: authResponse.data.token,
+						user: userResponse.data.user,
+						error: null,
+						isInitialized: true,
+						isFetchingCriticalData: false,
+						isLoading: false,
+					}));
+
+					return {
+						success: true,
+						token: authResponse.data.token,
+						user: userResponse.data.user,
+					};
+				}
+			}
+
+			// User doesn't exist or no token received
+			return {
+				success: false,
+				needsProfile: true,
+			};
+		} catch (error) {
+			if (error.response?.status === 404) {
+				// User doesn't exist, clear any existing data
+				localStorage.removeItem(STORAGE_KEYS.token);
+				localStorage.removeItem(STORAGE_KEYS.USER);
+				localStorage.removeItem(STORAGE_KEYS.WALLET_ADDRESS);
+
+				return {
+					success: false,
+					needsProfile: true,
+				};
+			}
+
+			console.error("Error in authenticateWithWallet:", error);
+			throw error;
+		}
+	};
+
 	const value = {
 		...authState,
 		signInWithGoogle,
 		logout,
 		isAuthenticated: !!authState.googleUser,
 		fetchUserData,
+		authenticateWithWallet,
 	};
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

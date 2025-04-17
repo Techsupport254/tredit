@@ -102,6 +102,8 @@ const ProfileSetup = () => {
 	const reconnectAttemptsRef = useRef(0);
 	const retryTimeoutRef = useRef(null);
 	const isNavigatingRef = useRef(false);
+	const lastUserStateRef = useRef(null);
+	const lastConnectionStateRef = useRef(null);
 
 	// Memoize steps to avoid re-rendering when they don't change
 	const steps = useMemo(
@@ -169,26 +171,34 @@ const ProfileSetup = () => {
 
 	// Check if user exists and redirect to dashboard
 	useEffect(() => {
-		if (
-			userState === USER_STATES.HAS_PROFILE &&
-			user &&
-			!changingAccount &&
-			!isNavigatingRef.current
-		) {
-			console.log("User has profile, redirecting to dashboard");
-			isNavigatingRef.current = true;
+		const checkUserAndRedirect = async () => {
+			// Only proceed if state has actually changed
+			if (lastUserStateRef.current === userState) return;
+			lastUserStateRef.current = userState;
 
-			// Clear any existing timeout
-			if (redirectTimeoutRef.current) {
-				clearTimeout(redirectTimeoutRef.current);
+			if (
+				userState === USER_STATES.HAS_PROFILE &&
+				user &&
+				!changingAccount &&
+				!isNavigatingRef.current
+			) {
+				console.log("User has profile, redirecting to dashboard");
+				isNavigatingRef.current = true;
+
+				// Clear any existing timeout
+				if (redirectTimeoutRef.current) {
+					clearTimeout(redirectTimeoutRef.current);
+				}
+
+				// Use timeout to ensure state updates complete
+				redirectTimeoutRef.current = setTimeout(() => {
+					navigate("/dashboard", { replace: true });
+					isNavigatingRef.current = false;
+				}, 500);
 			}
+		};
 
-			// Use timeout to ensure state updates complete
-			redirectTimeoutRef.current = setTimeout(() => {
-				navigate("/dashboard");
-				isNavigatingRef.current = false;
-			}, 500);
-		}
+		checkUserAndRedirect();
 
 		return () => {
 			if (redirectTimeoutRef.current) {
@@ -199,14 +209,22 @@ const ProfileSetup = () => {
 
 	// Handle connection state changes with debounce
 	useEffect(() => {
-		if (connectionState === "disconnected" && !isNavigatingRef.current) {
-			isNavigatingRef.current = true;
-			const timeout = setTimeout(() => {
-				navigate("/connect");
-				isNavigatingRef.current = false;
-			}, 500);
-			return () => clearTimeout(timeout);
-		}
+		const handleConnectionChange = () => {
+			// Only proceed if state has actually changed
+			if (lastConnectionStateRef.current === connectionState) return;
+			lastConnectionStateRef.current = connectionState;
+
+			if (connectionState === "disconnected" && !isNavigatingRef.current) {
+				isNavigatingRef.current = true;
+				const timeout = setTimeout(() => {
+					navigate("/connect", { replace: true });
+					isNavigatingRef.current = false;
+				}, 500);
+				return () => clearTimeout(timeout);
+			}
+		};
+
+		handleConnectionChange();
 	}, [connectionState, navigate]);
 
 	// Handle Google user changes
@@ -513,7 +531,7 @@ const ProfileSetup = () => {
 			});
 
 			// Correct API endpoint for user registration
-			const response = await axios.post(`${API_URL}/register`, {
+			const response = await axios.post(`${API_URL}/users/register`, {
 				walletAddress: walletAddress?.toLowerCase(),
 				name: googleUser?.name,
 				email: googleUser?.email,

@@ -1,9 +1,10 @@
-import { Suspense, memo } from "react";
+import { Suspense, memo, useState, useEffect } from "react";
 import { Outlet, Routes, Route, Navigate } from "react-router-dom";
 import Sidebar from "../Components/Sidebar";
 import Mainbar from "../Components/Mainbar";
 import Breadcrumbs from "../Components/Breadcrumb";
 import LoadingOverlay from "../components/LoadingOverlay";
+import LoadingSpinner from "../Components/Common/LoadingSpinner";
 import { Dashboard404Page } from "../pages/NotFoundPage.jsx";
 import { lazy } from "react";
 
@@ -137,6 +138,28 @@ const SuspenseRoute = ({ component: Component }) => (
 
 // Memoize the DashboardLayout to prevent unnecessary re-renders
 const DashboardLayout = memo(() => {
+	const [isReady, setIsReady] = useState(false);
+
+	// Add a small delay before rendering content to reduce flickering
+	useEffect(() => {
+		const timer = setTimeout(() => {
+			setIsReady(true);
+		}, 100);
+		return () => clearTimeout(timer);
+	}, []);
+
+	// Show a loading indicator until ready
+	if (!isReady) {
+		return (
+			<LoadingSpinner
+				fullScreen
+				size="large"
+				message="Loading dashboard..."
+				delay={100}
+			/>
+		);
+	}
+
 	return (
 		<div className="flex h-screen bg-gray-100">
 			<Sidebar />
@@ -145,11 +168,7 @@ const DashboardLayout = memo(() => {
 				<div className="flex-1 overflow-auto">
 					<Mainbar>
 						<Suspense
-							fallback={
-								<div className="p-4 flex items-center justify-center">
-									<LoadingOverlay message="Loading content..." />
-								</div>
-							}
+							fallback={<LoadingSpinner overlay message="Loading content..." />}
 						>
 							<Routes>
 								<Route

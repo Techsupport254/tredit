@@ -27,6 +27,7 @@ const {
 	updateUserRole,
 } = require("../controllers/userController");
 const { setupSSE } = require("../utils/sseHelper");
+const { getUserAnalytics } = require("../controllers/userAnalyticsController");
 
 // Public Routes (No Protection)
 
@@ -712,6 +713,9 @@ router.post(
 		}
 	})
 );
+
+// User Analytics Route
+router.get("/analytics", protect, getUserAnalytics);
 
 // Add a router-level error handler
 router.use((err, req, res, next) => {
