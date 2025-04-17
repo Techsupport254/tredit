@@ -85,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({ email, password }),
+				credentials: "include",
 			});
 
 			const data = await res.json();
@@ -112,10 +113,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		try {
 			await fetch("/api/auth/logout", {
 				method: "POST",
+				credentials: "include",
 			});
 			setUser(null);
 			console.log("Logout successful, redirecting to login");
-			window.location.href = "/login";
+			window.location.assign("/login");
 		} catch (error) {
 			console.error("Logout error:", error);
 		} finally {

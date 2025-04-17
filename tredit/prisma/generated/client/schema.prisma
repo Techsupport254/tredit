@@ -6,9 +6,9 @@ datasource db {
 }
 
 generator client {
-  provider   = "prisma-client-js"
-  output     = "./generated/client"
-  engineType = "binary"
+  provider      = "prisma-client-js"
+  output        = "./generated/client"
+  engineType    = "binary"
 }
 
 // --- Enums ---
@@ -114,174 +114,175 @@ enum UserStatus {
   INACTIVE
 }
 
+
 // --- Models ---
 
 model User {
   // Required fields for initial registration
-  id                      String  @id @default(uuid())
-  name                    String // Required: User's full name
-  email                   String  @unique // Required: Email for notifications and login
-  password                String // Required: Hashed password
-  walletAddress           String  @unique // Required: Blockchain wallet address
+  id                 String   @id @default(uuid())
+  name               String   // Required: User's full name
+  email              String   @unique  // Required: Email for notifications and login
+  password           String   // Required: Hashed password
+  walletAddress      String   @unique  // Required: Blockchain wallet address
   acceptBlockchainStorage Boolean @default(true) // Required: User consent
-
+  
   // System-managed fields (automatically set)
-  status             UserStatus         @default(ACTIVE)
-  role               String             @default("USER")
+  status             UserStatus @default(ACTIVE)
+  role               String   @default("USER")
   verificationStatus VerificationStatus @default(PENDING)
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  lastLogin          DateTime           @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  lastLogin          DateTime @default(now())
 
   // Optional fields (can be updated later)
-  blockchainTxHash String? // Set when user data is stored on blockchain
-  ipfsUrl          String? // Set when user data is stored on IPFS
-  ipfsMetadata     Json? // Additional IPFS metadata
-  profileImage     String? // Profile picture URL
-  gender           Gender? // User's gender
-  dob              DateTime? // Date of birth
-  phoneNumber      String? // Contact number
-  bio              String?   @db.Text // User biography
-  preferences      Json? // User preferences {theme: "light", notifications: {email: true, push: true}, language: "en"}
-  metadata         Json? // Additional metadata {businesses: []}
+  blockchainTxHash   String?  // Set when user data is stored on blockchain
+  ipfsUrl            String?  // Set when user data is stored on IPFS
+  ipfsMetadata       Json?    // Additional IPFS metadata
+  profileImage       String?  // Profile picture URL
+  gender             Gender?  // User's gender
+  dob                DateTime? // Date of birth
+  phoneNumber        String?  // Contact number
+  bio                String?  @db.Text // User biography
+  preferences        Json?    // User preferences {theme: "light", notifications: {email: true, push: true}, language: "en"}
+  metadata           Json?    // Additional metadata {businesses: []}
 
   // Relationships (established as needed)
-  business         Business?
-  orders           Order[]
-  cart             Cart?
-  sentMessages     Message[]            @relation("SenderMessages")
-  receivedMessages Message[]            @relation("ReceiverMessages")
-  disputes         Dispute[]
-  teamMemberships  BusinessTeamMember[]
-  chatSessions     ChatSession[]
-  ratings          Rating[]
+  business           Business?
+  orders             Order[]
+  cart               Cart?
+  sentMessages       Message[]             @relation("SenderMessages")
+  receivedMessages   Message[]             @relation("ReceiverMessages")
+  disputes           Dispute[]
+  teamMemberships    BusinessTeamMember[]
+  chatSessions       ChatSession[]
+  ratings            Rating[]
 }
 
 model Business {
-  id                 String             @id @default(uuid())
-  userId             String             @unique // Assuming one business per user
-  user               User               @relation(fields: [userId], references: [id])
+  id                 String   @id @default(uuid())
+  userId             String   @unique // Assuming one business per user
+  user               User     @relation(fields: [userId], references: [id])
   name               String
-  description        String?            @db.Text
-  bio                String?            @db.Text // Added bio field
+  description        String?  @db.Text
+  bio                String?  @db.Text  // Added bio field
   type               BusinessType
-  category           String // General category (e.g., "Electronics", "Consulting")
+  category           String   // General category (e.g., "Electronics", "Consulting")
   productCategories  String[] // Specific product tags/categories
   serviceCategories  String[] // Specific service tags/categories
-  status             BusinessStatus     @default(ACTIVE)
+  status             BusinessStatus @default(ACTIVE)
   verificationStatus VerificationStatus @default(PENDING)
-
+  
   // Contact Information
-  email   String @unique
-  phone   String
-  address String // Physical address
-
+  email              String   @unique
+  phone              String
+  address            String   // Physical address
+  
   // Media
-  logo       String?
-  coverImage String?
-  images     String[] // Array of image URLs
-
+  logo               String?
+  coverImage         String?
+  images             String[] // Array of image URLs
+  
   // Business Configuration
-  businessModel  String // e.g., "B2B", "B2C", "D2C"
-  operationMode  String // e.g., "ONLINE", "PHYSICAL", "HYBRID"
-  paymentMethods String[] // Accepted payment methods
-  currency       String   @default("KES") // Default to KES
-  revenue        Decimal  @default(0) @db.Decimal(10, 2)
-  businessHours  Json? // Business operating hours
-
+  businessModel      String   // e.g., "B2B", "B2C", "D2C"
+  operationMode      String   // e.g., "ONLINE", "PHYSICAL", "HYBRID"
+  paymentMethods     String[] // Accepted payment methods
+  currency           String   @default("KES") // Default to KES
+  revenue            Decimal  @default(0) @db.Decimal(10, 2)
+  businessHours      Json?    // Business operating hours
+  
   // Blockchain and IPFS
-  blockchainTxHash String? // Transaction hash on the blockchain
-  ipfsUrl          String? // IPFS URL for business data
-  ipfsMetadata     Json? // Additional IPFS metadata
-
+  blockchainTxHash   String?  // Transaction hash on the blockchain
+  ipfsUrl            String?  // IPFS URL for business data
+  ipfsMetadata       Json?    // Additional IPFS metadata
+  
   // Ratings (calculated from Rating model)
-  averageRating Float    @default(0)
-  reviewCount   Int      @default(0)
-  ratings       Rating[] // Relationship to ratings
-
+  averageRating      Float    @default(0)
+  reviewCount        Int      @default(0)
+  ratings            Rating[] // Relationship to ratings
+  
   // Additional Data
-  documents   Json? // Store document URLs and metadata
-  metadata    Json? // Additional flexible metadata
-  socialMedia Json? // Social media links and integration status
+  documents          Json?    // Store document URLs and metadata
+  metadata           Json?    // Additional flexible metadata
+  socialMedia        Json?    // Social media links and integration status
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   // Relationships
-  products            Product[]
-  services            Service[]
-  orders              Order[]
-  teamMembers         BusinessTeamMember[]
-  socialMediaContent  SocialMediaContent[]
-  chatSessions        ChatSession[]
-  whatsAppIntegration WhatsApp?
+  products             Product[]
+  services             Service[]
+  orders               Order[]
+  teamMembers          BusinessTeamMember[]
+  socialMediaContent   SocialMediaContent[]
+  chatSessions         ChatSession[]
+  whatsAppIntegration  WhatsApp?
 }
 
 model Product {
-  id          String        @id @default(uuid())
-  businessId  String
-  business    Business      @relation(fields: [businessId], references: [id])
-  name        String
-  description String?       @db.Text
-  price       Decimal       @db.Decimal(10, 2) // Example precision: 10 total digits, 2 decimal places
-  stock       Int           @default(0)
-  status      ProductStatus @default(ACTIVE)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id            String   @id @default(uuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id])
+  name          String
+  description   String?  @db.Text
+  price         Decimal  @db.Decimal(10, 2) // Example precision: 10 total digits, 2 decimal places
+  stock         Int      @default(0)
+  status        ProductStatus @default(ACTIVE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relationships
-  orderItems OrderItem[]
-  cartItems  CartItem[]
-  variants   ProductVariant[]
-  analytics  ProductAnalytics?
-  seo        ProductSEO?
+  orderItems     OrderItem[]
+  cartItems      CartItem[]
+  variants       ProductVariant[]
+  analytics      ProductAnalytics?
+  seo            ProductSEO?
 }
 
 model Service {
-  id          String        @id @default(uuid())
-  businessId  String
-  business    Business      @relation(fields: [businessId], references: [id])
-  name        String
-  description String?       @db.Text
-  price       Decimal       @db.Decimal(10, 2)
-  duration    Int? // Duration in minutes, perhaps? Optional.
-  status      ServiceStatus @default(ACTIVE)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id            String   @id @default(uuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id])
+  name          String
+  description   String?  @db.Text
+  price         Decimal  @db.Decimal(10, 2)
+  duration      Int?     // Duration in minutes, perhaps? Optional.
+  status        ServiceStatus @default(ACTIVE)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relationships
-  orderItems OrderItem[]
-  cartItems  CartItem[]
+  orderItems     OrderItem[]
+  cartItems      CartItem[]
 }
 
 model Order {
-  id            String        @id @default(uuid())
+  id            String   @id @default(uuid())
   userId        String
-  user          User          @relation(fields: [userId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
   businessId    String
-  business      Business      @relation(fields: [businessId], references: [id])
-  status        OrderStatus   @default(PENDING)
-  totalAmount   Decimal       @db.Decimal(12, 2) // Higher precision for totals
+  business      Business @relation(fields: [businessId], references: [id])
+  status        OrderStatus @default(PENDING)
+  totalAmount   Decimal  @db.Decimal(12, 2) // Higher precision for totals
   paymentStatus PaymentStatus @default(PENDING)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relationships
-  items    OrderItem[]
-  disputes Dispute[]
+  items          OrderItem[]
+  disputes       Dispute[]
 }
 
 model OrderItem {
-  id        String   @id @default(uuid())
-  orderId   String
-  order     Order    @relation(fields: [orderId], references: [id])
-  productId String? // Can be null if it's a service
-  product   Product? @relation(fields: [productId], references: [id])
-  serviceId String? // Can be null if it's a product
-  service   Service? @relation(fields: [serviceId], references: [id])
-  quantity  Int
-  price     Decimal  @db.Decimal(10, 2) // Price per unit at the time of order
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  productId  String?  // Can be null if it's a service
+  product    Product? @relation(fields: [productId], references: [id])
+  serviceId  String?  // Can be null if it's a product
+  service    Service? @relation(fields: [serviceId], references: [id])
+  quantity   Int
+  price      Decimal  @db.Decimal(10, 2) // Price per unit at the time of order
+  createdAt  DateTime @default(now())
 
   // You might add a CHECK constraint in the DB manually
   // to ensure either productId or serviceId is non-null, but not both.
@@ -297,92 +298,92 @@ model Cart {
   updatedAt DateTime   @updatedAt
 
   // Relationships
-  items CartItem[]
+  items      CartItem[]
 }
 
 model CartItem {
-  id        String   @id @default(uuid())
-  cartId    String
-  cart      Cart     @relation(fields: [cartId], references: [id])
-  productId String?
-  product   Product? @relation(fields: [productId], references: [id])
-  serviceId String?
-  service   Service? @relation(fields: [serviceId], references: [id])
-  quantity  Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt // Track when item was last updated in cart
+  id         String   @id @default(uuid())
+  cartId     String
+  cart       Cart     @relation(fields: [cartId], references: [id])
+  productId  String?
+  product    Product? @relation(fields: [productId], references: [id])
+  serviceId  String?
+  service    Service? @relation(fields: [serviceId], references: [id])
+  quantity   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt // Track when item was last updated in cart
 
   @@unique([cartId, productId]) // Prevent duplicate product in the same cart (adjust if variants change this)
   @@unique([cartId, serviceId]) // Prevent duplicate service in the same cart
 }
 
 model Message {
-  id            String        @id @default(uuid())
+  id            String   @id @default(uuid())
   senderId      String
-  sender        User          @relation("SenderMessages", fields: [senderId], references: [id])
+  sender        User     @relation("SenderMessages", fields: [senderId], references: [id])
   receiverId    String
-  receiver      User          @relation("ReceiverMessages", fields: [receiverId], references: [id])
-  content       String        @db.Text
+  receiver      User     @relation("ReceiverMessages", fields: [receiverId], references: [id])
+  content       String   @db.Text
   status        MessageStatus @default(SENT)
-  createdAt     DateTime      @default(now())
-  chatSessionId String? // Link to a specific chat session
-  chatSession   ChatSession?  @relation(fields: [chatSessionId], references: [id])
+  createdAt     DateTime @default(now())
+  chatSessionId String?  // Link to a specific chat session
+  chatSession   ChatSession? @relation(fields: [chatSessionId], references: [id])
 
-  @@index([senderId])
-  @@index([receiverId])
-  @@index([chatSessionId])
+   @@index([senderId])
+   @@index([receiverId])
+   @@index([chatSessionId])
 }
 
 model Dispute {
-  id         String        @id @default(uuid())
-  orderId    String // Link directly to the order being disputed
-  order      Order         @relation(fields: [orderId], references: [id])
-  userId     String // User who initiated the dispute
-  user       User          @relation(fields: [userId], references: [id])
+  id         String   @id @default(uuid())
+  orderId    String   // Link directly to the order being disputed
+  order      Order    @relation(fields: [orderId], references: [id])
+  userId     String   // User who initiated the dispute
+  user       User     @relation(fields: [userId], references: [id])
   status     DisputeStatus @default(OPEN)
-  reason     String        @db.Text
-  resolution String?       @db.Text // Details of how it was resolved
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  reason     String   @db.Text
+  resolution String?  @db.Text // Details of how it was resolved
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  @@index([orderId])
-  @@index([userId])
+   @@index([orderId])
+   @@index([userId])
 }
 
 model BusinessTeamMember {
-  id          String   @id @default(uuid())
-  businessId  String
-  business    Business @relation(fields: [businessId], references: [id])
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  role        TeamRole
+  id         String   @id @default(uuid())
+  businessId String
+  business   Business @relation(fields: [businessId], references: [id])
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  role       TeamRole
   permissions String[] // List of specific permissions keys
-  createdAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   @@unique([businessId, userId]) // A user can only have one role per business
 }
 
 model ProductVariant {
-  id        String   @id @default(uuid())
-  productId String
-  product   Product  @relation(fields: [productId], references: [id])
-  name      String // e.g., "Color", "Size"
-  value     String // e.g., "Red", "Large" - Consider separate Option/Value models for more structure
-  price     Decimal  @db.Decimal(10, 2) // Price for this specific variant
-  stock     Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(uuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  name          String   // e.g., "Color", "Size"
+  value         String   // e.g., "Red", "Large" - Consider separate Option/Value models for more structure
+  price         Decimal  @db.Decimal(10, 2) // Price for this specific variant
+  stock         Int
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@unique([productId, name, value]) // Ensure unique variant combination per product
 }
 
 model ProductAnalytics {
-  id          String   @id @default(uuid())
-  productId   String   @unique // One analytics entry per product
-  product     Product  @relation(fields: [productId], references: [id])
-  views       Int      @default(0)
-  purchases   Int      @default(0)
-  revenue     Decimal  @default(0.00) @db.Decimal(12, 2)
+  id         String   @id @default(uuid())
+  productId  String   @unique // One analytics entry per product
+  product    Product  @relation(fields: [productId], references: [id])
+  views      Int      @default(0)
+  purchases  Int      @default(0)
+  revenue    Decimal  @default(0.00) @db.Decimal(12, 2)
   lastUpdated DateTime @updatedAt
 }
 
@@ -397,59 +398,59 @@ model ProductSEO {
 }
 
 model SocialMediaContent {
-  id          String        @id @default(uuid())
+  id          String   @id @default(uuid())
   businessId  String
-  business    Business      @relation(fields: [businessId], references: [id])
-  platform    String // e.g., "FACEBOOK", "TWITTER", "INSTAGRAM"
-  content     String        @db.Text
+  business    Business @relation(fields: [businessId], references: [id])
+  platform    String   // e.g., "FACEBOOK", "TWITTER", "INSTAGRAM"
+  content     String   @db.Text
   status      ContentStatus @default(DRAFT)
   scheduledAt DateTime? // Time it's scheduled to be posted
   postedAt    DateTime? // Time it was actually posted
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([businessId])
 }
 
 model ChatSession {
-  id            String     @id @default(uuid())
+  id            String   @id @default(uuid())
   userId        String
-  user          User       @relation(fields: [userId], references: [id])
+  user          User     @relation(fields: [userId], references: [id])
   businessId    String
-  business      Business   @relation(fields: [businessId], references: [id])
+  business      Business @relation(fields: [businessId], references: [id])
   status        ChatStatus @default(OPEN)
-  createdAt     DateTime   @default(now())
+  createdAt     DateTime @default(now())
   lastMessageAt DateTime? // Timestamp of the last message in the session
-  updatedAt     DateTime   @updatedAt
+  updatedAt     DateTime @updatedAt
 
-  messages Message[] // Messages belonging to this session
+  messages      Message[] // Messages belonging to this session
 
   @@unique([userId, businessId]) // Only one open session between a user and a business
 }
 
 model WhatsApp {
-  id          String            @id @default(uuid())
-  businessId  String            @unique // One WhatsApp config per business
-  business    Business          @relation(fields: [businessId], references: [id])
-  phoneNumber String            @unique // The WhatsApp Business API number
+  id          String   @id @default(uuid())
+  businessId  String   @unique // One WhatsApp config per business
+  business    Business @relation(fields: [businessId], references: [id])
+  phoneNumber String   @unique // The WhatsApp Business API number
   status      IntegrationStatus @default(PENDING_VERIFICATION)
-  apiKey      String? // Potentially sensitive, manage access carefully
+  apiKey      String?  // Potentially sensitive, manage access carefully
   lastSync    DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model Rating {
-  id         String   @id @default(uuid())
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id])
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  rating     Float // The actual rating value (e.g., 1-5)
-  review     String?  @db.Text
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id            String   @id @default(uuid())
+  businessId    String
+  business      Business @relation(fields: [businessId], references: [id])
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  rating        Float    // The actual rating value (e.g., 1-5)
+  review        String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   @@index([businessId])
   @@index([userId])
-}
+} 

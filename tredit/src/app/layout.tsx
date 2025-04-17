@@ -1,21 +1,15 @@
+import "./globals.css";
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import "./globals.css";
-import ClientLayout from "@/components/ClientLayout";
+import { AuthProvider } from "@/lib/auth/AuthContext";
+import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-	title: "Tredit - Business Management Platform",
+	title: "TredIt - Secure Escrow Platform",
 	description:
-		"The all-in-one platform for businesses to manage, grow, and succeed in the digital age.",
-	icons: {
-		icon: [
-			{ url: "/favicon.ico", sizes: "32x32", type: "image/x-icon" },
-			{ url: "/favicon.svg", sizes: "any", type: "image/svg+xml" },
-		],
-		apple: { url: "/logo.svg", sizes: "any" },
-	},
+		"Kenya's leading blockchain-powered escrow platform for secure online transactions",
 };
 
 export default function RootLayout({
@@ -24,9 +18,12 @@ export default function RootLayout({
 	children: React.ReactNode;
 }) {
 	return (
-		<html lang="en" className="h-full">
-			<body className={`${inter.className} min-h-full flex flex-col`}>
-				<ClientLayout>{children}</ClientLayout>
+		<html lang="en">
+			<body className={inter.className}>
+				<AuthProvider>
+					<Toaster position="top-center" />
+					{children}
+				</AuthProvider>
 			</body>
 		</html>
 	);

@@ -61,33 +61,14 @@ export default function Login() {
 
 		try {
 			setIsLoading(true);
-			const callback = searchParams.get("callbackUrl");
-			console.log("Current URL params:", {
-				callback,
-				fullSearchParams: Object.fromEntries(searchParams.entries()),
-			});
-
-			console.log("Calling login function...");
 			const response = await login(data.email, data.password);
 			console.log("Login response:", response);
 
 			if (response.success) {
 				console.log("Login successful, preparing navigation");
 				toast.success("Login successful!");
-
-				const redirectTo = callback ? `/${callback}` : "/dashboard";
-				console.log("Redirect target:", redirectTo);
-
-				// Try both navigation methods
-				console.log("Attempting navigation with router.push...");
-				try {
-					await router.push(redirectTo);
-					console.log("Router push completed");
-				} catch (navError) {
-					console.error("Router navigation failed:", navError);
-					console.log("Falling back to window.location...");
-					window.location.href = redirectTo;
-				}
+				// Force a hard navigation to dashboard
+				window.location.assign("/dashboard");
 			} else {
 				console.log("Login failed");
 				toast.error("Invalid email or password");

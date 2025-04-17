@@ -1,50 +1,75 @@
-@import "tailwindcss";
+@import "tailwindcss/preflight";
+@tailwind utilities;
 
+/* Base styles using CSS variables for light/dark mode */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --foreground-rgb: 0, 0, 0;
+  --background-rgb: 255, 255, 255;
+  /* Simplified background variable */
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --foreground-rgb: 255, 255, 255;
+    --background-rgb: 15, 23, 42;
+    /* Use navy.dark directly */
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: rgb(var(--foreground-rgb));
+  background-color: rgb(var(--background-rgb));
+  /* Use background-color */
+  font-family: var(--font-sans, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");
 }
 
-@keyframes growBar {
-  from {
-    height: 0;
-    opacity: 0;
+/* Custom utility components */
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors;
   }
 
-  to {
-    opacity: 1;
+  .input-field {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500;
+  }
+
+  .card {
+    @apply bg-white dark:bg-gray-800 rounded-lg shadow-md p-6;
+    /* Add dark mode support */
+  }
+
+  .glass-card {
+    background: rgba(15, 23, 42, 0.8);
+    /* Use navy.dark with alpha */
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(30, 41, 59, 0.4);
   }
 }
 
-@keyframes fadeInBar {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
+/* Custom animations */
+@layer utilities {
+  @keyframes growBar {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
   }
 
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  @keyframes fadeInBar {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 }
 
@@ -58,12 +83,4 @@ body {
 /* Enhance hover effects */
 .hover\:scale-105:hover {
   transform: scale(1.05);
-}
-
-/* Add glass morphism effects */
-.glass-card {
-  background: rgba(15, 23, 42, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(30, 41, 59, 0.4);
 }
