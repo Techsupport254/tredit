@@ -28,6 +28,7 @@ interface Config {
 		userProfileContract: string;
 		userProfileAbi: any[];
 		businessContract: string;
+		businessAbi: any[];
 		biconomyForwarder: string;
 		rpcUrl: string;
 		chainId: number;
@@ -124,6 +125,7 @@ const development: Config = {
 		userProfileContract: process.env.USER_PROFILE_CONTRACT_ADDRESS || "",
 		userProfileAbi: JSON.parse(process.env.USER_PROFILE_ABI || "[]"),
 		businessContract: process.env.BUSINESS_CONTRACT_ADDRESS || "",
+		businessAbi: JSON.parse(process.env.BUSINESS_ABI || "[]"),
 		biconomyForwarder: process.env.BICONOMY_FORWARDER || "",
 		rpcUrl: process.env.RPC_URL || "",
 		chainId: Number(process.env.CHAIN_ID) || 80002,

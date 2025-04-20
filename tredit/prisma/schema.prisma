@@ -28,38 +28,38 @@ model User {
   dob                        DateTime?
   phoneNumber                String?
   bio                        String?
-  preferences                Json?                      @default("{\"notifications\":{\"channels\":[\"EMAIL\"],\"types\":[],\"emailNotifications\":true,\"pushNotifications\":true,\"inAppNotifications\":true,\"smsNotifications\":false,\"webhookNotifications\":false}}")
+  preferences                Json?                     @default("{\"notifications\":{\"channels\":[\"EMAIL\"],\"types\":[],\"emailNotifications\":true,\"pushNotifications\":true,\"inAppNotifications\":true,\"smsNotifications\":false,\"webhookNotifications\":false}}")
   metadata                   Json?
   lastNotificationAt         DateTime?
   unreadCount                Int                       @default(0)
-  business                   Business?
-  teamMemberships            BusinessTeamMember[]
-  initiatedCalls             Call[]                    @relation("InitiatedCalls")
-  callParticipations         CallParticipant[]
-  cart                       Cart?
-  chatSessions               ChatSession[]
+  businesses                 Business[]
+  teamMemberships           BusinessTeamMember[]
+  initiatedCalls            Call[]                    @relation("InitiatedCalls")
+  callParticipations        CallParticipant[]
+  cart                      Cart?
+  chatSessions              ChatSession[]
   conversationParticipations ConversationParticipant[]
   disputes                   Dispute[]
-  formSubmissions            FormSubmission[]
-  receivedMessages           Message[]                 @relation("ReceivedMessages")
-  sentMessages               Message[]                 @relation("SentMessages")
-  messageReactions           MessageReaction[]
-  messageReads               MessageRead[]
-  notifications              Notification[]            @relation("ReceivedNotifications")
-  sentNotifications          Notification[]            @relation("SentNotifications")
-  notificationPreferences    NotificationPreference[]
-  notificationSettings       NotificationSettings[]
-  orders                     Order[]
-  pollVotes                  PollVote[]
-  ratings                    Rating[]
-  clientAgreements           ServiceAgreement[]        @relation("ClientAgreements")
-  serviceProviders           ServiceProvider[]
-  notificationGroups         NotificationGroup[]       @relation("UserNotificationGroups")
+  formSubmissions           FormSubmission[]
+  receivedMessages          Message[]                 @relation("ReceivedMessages")
+  sentMessages              Message[]                 @relation("SentMessages")
+  messageReactions          MessageReaction[]
+  messageReads              MessageRead[]
+  notifications             Notification[]            @relation("ReceivedNotifications")
+  sentNotifications         Notification[]            @relation("SentNotifications")
+  notificationPreferences   NotificationPreference[]
+  notificationSettings      NotificationSettings[]
+  orders                    Order[]
+  pollVotes                 PollVote[]
+  ratings                   Rating[]
+  clientAgreements          ServiceAgreement[]        @relation("ClientAgreements")
+  serviceProviders          ServiceProvider[]
+  notificationGroups        NotificationGroup[]       @relation("UserNotificationGroups")
 }
 
 model Business {
   id                  String                 @id @default(uuid())
-  userId              String                 @unique
+  userId              String
   name                String
   description         String?
   bio                 String?
@@ -67,7 +67,7 @@ model Business {
   category            String
   status              BusinessStatus         @default(ACTIVE)
   verificationStatus  VerificationStatus     @default(PENDING)
-  email               String                 @unique
+  email               String
   phone               String
   address             String
   logo                String?
@@ -137,6 +137,8 @@ model Business {
   @@index([category])
   @@index([city])
   @@index([verificationStatus])
+  @@index([userId])
+  @@index([email])
 }
 
 model Product {

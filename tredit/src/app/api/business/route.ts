@@ -5,58 +5,124 @@ import { z } from "zod";
 
 // Business schema validation
 const businessSchema = z.object({
-	name: z.string().min(2).max(100),
+	name: z
+		.string()
+		.min(2, "Business name must be at least 2 characters")
+		.max(100, "Business name cannot exceed 100 characters"),
 	description: z.string().optional(),
 	bio: z.string().optional(),
-	type: z.enum(["PRODUCT", "SERVICE"]),
-	category: z.string(),
+	type: z.enum(["PRODUCT", "SERVICE"], {
+		required_error: "Business type is required",
+		invalid_type_error: "Business type must be either PRODUCT or SERVICE",
+	}),
+	category: z.string().min(1, "Category is required"),
 	productCategories: z.array(z.string()).optional(),
 	serviceCategories: z.array(z.string()).optional(),
-	email: z.string().email(),
-	phone: z.string(),
-	address: z.string(),
-	businessModel: z.string(),
-	operationMode: z.string(),
-	paymentMethods: z.array(z.string()),
-	businessHours: z.record(z.any()),
-	socialMedia: z.record(z.string().url()).optional(),
+	email: z.string().email("Invalid email format"),
+	phone: z.string().min(10, "Phone number must be at least 10 digits"),
+	alternativePhone: z
+		.string()
+		.min(10, "Alternative phone number must be at least 10 digits")
+		.optional(),
+	address: z.string().min(1, "Address is required"),
+	city: z.string().min(1, "City is required"),
+	country: z.string().default("Kenya"),
+	postalCode: z.string().optional(),
+	businessModel: z.string().min(1, "Business model is required"),
+	operationMode: z.string().min(1, "Operation mode is required"),
+	size: z.string().min(1, "Business size is required"),
+	stage: z.string().min(1, "Business stage is required"),
+	currency: z.string().min(1, "Currency is required"),
+	paymentMethods: z
+		.array(z.string())
+		.min(1, "At least one payment method is required"),
+	taxCategory: z.string().min(1, "Tax category is required"),
+	shippingMethod: z.string().min(1, "Shipping method is required"),
+	registrationNumber: z.string().optional(),
+	taxId: z.string().optional(),
+	logo: z.any().optional(),
+	coverImage: z.any().optional(),
+	images: z.array(z.any()).optional(),
+	documents: z.array(z.any()).optional(),
 	businessId: z.string(),
 	blockchainTxHash: z.string(),
 	ipfsUrl: z.string().url(),
 });
 
 export async function POST(req: Request) {
+	console.debug("Received business creation request");
+
 	try {
+		// Check authentication
 		const session = await getServerSession();
 		if (!session?.user) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		const body = await req.json();
-		const validatedData = businessSchema.parse(body);
-
-		// Create business in database
-		const business = await prisma.business.create({
-			data: {
-				...validatedData,
-				userId: session.user.id,
-				status: "ACTIVE",
-				verificationStatus: "PENDING",
-			},
-		});
-
-		return NextResponse.json(business);
-	} catch (error) {
-		if (error instanceof z.ZodError) {
+			console.error("Unauthorized access attempt");
 			return NextResponse.json(
-				{ error: "Invalid request data", details: error.errors },
-				{ status: 400 }
+				{ error: "Unauthorized", details: "User session not found" },
+				{ status: 401 }
 			);
 		}
 
-		console.error("Error creating business:", error);
+		// Parse request body
+		const body = await req.json();
+		console.debug("Request body:", body);
+
+		// Validate request data
+		try {
+			const validatedData = businessSchema.parse(body);
+			console.debug("Validated data:", validatedData);
+		} catch (validationError) {
+			if (validationError instanceof z.ZodError) {
+				console.error("Validation error:", validationError.errors);
+				return NextResponse.json(
+					{
+						error: "Invalid request data",
+						details: validationError.errors.map((err) => ({
+							field: err.path.join("."),
+							message: err.message,
+						})),
+					},
+					{ status: 400 }
+				);
+			}
+			throw validationError;
+		}
+
+		// Create business in database
+		try {
+			const business = await prisma.business.create({
+				data: {
+					...validatedData,
+					userId: session.user.id,
+					status: "ACTIVE",
+					verificationStatus: "PENDING",
+				},
+			});
+
+			console.debug("Business created successfully:", business.id);
+
+			return NextResponse.json({
+				success: true,
+				message: "Business created successfully",
+				data: business,
+			});
+		} catch (dbError) {
+			console.error("Database error:", dbError);
+			return NextResponse.json(
+				{
+					error: "Database error",
+					details: "Failed to create business record",
+				},
+				{ status: 500 }
+			);
+		}
+	} catch (error) {
+		console.error("Unexpected error:", error);
 		return NextResponse.json(
-			{ error: "Internal server error" },
+			{
+				error: "Internal server error",
+				details: "An unexpected error occurred",
+			},
 			{ status: 500 }
 		);
 	}
