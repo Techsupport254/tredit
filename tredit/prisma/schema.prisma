@@ -28,33 +28,33 @@ model User {
   dob                        DateTime?
   phoneNumber                String?
   bio                        String?
-  preferences                Json?                     @default("{\"notifications\":{\"channels\":[\"EMAIL\"],\"types\":[],\"emailNotifications\":true,\"pushNotifications\":true,\"inAppNotifications\":true,\"smsNotifications\":false,\"webhookNotifications\":false}}")
+  preferences                Json?                     @default("{\"notifications\": {\"types\": [], \"channels\": [\"EMAIL\"], \"smsNotifications\": false, \"pushNotifications\": true, \"emailNotifications\": true, \"inAppNotifications\": true, \"webhookNotifications\": false}}")
   metadata                   Json?
   lastNotificationAt         DateTime?
   unreadCount                Int                       @default(0)
   businesses                 Business[]
-  teamMemberships           BusinessTeamMember[]
-  initiatedCalls            Call[]                    @relation("InitiatedCalls")
-  callParticipations        CallParticipant[]
-  cart                      Cart?
-  chatSessions              ChatSession[]
+  teamMemberships            BusinessTeamMember[]
+  initiatedCalls             Call[]                    @relation("InitiatedCalls")
+  callParticipations         CallParticipant[]
+  cart                       Cart?
+  chatSessions               ChatSession[]
   conversationParticipations ConversationParticipant[]
   disputes                   Dispute[]
-  formSubmissions           FormSubmission[]
-  receivedMessages          Message[]                 @relation("ReceivedMessages")
-  sentMessages              Message[]                 @relation("SentMessages")
-  messageReactions          MessageReaction[]
-  messageReads              MessageRead[]
-  notifications             Notification[]            @relation("ReceivedNotifications")
-  sentNotifications         Notification[]            @relation("SentNotifications")
-  notificationPreferences   NotificationPreference[]
-  notificationSettings      NotificationSettings[]
-  orders                    Order[]
-  pollVotes                 PollVote[]
-  ratings                   Rating[]
-  clientAgreements          ServiceAgreement[]        @relation("ClientAgreements")
-  serviceProviders          ServiceProvider[]
-  notificationGroups        NotificationGroup[]       @relation("UserNotificationGroups")
+  formSubmissions            FormSubmission[]
+  receivedMessages           Message[]                 @relation("ReceivedMessages")
+  sentMessages               Message[]                 @relation("SentMessages")
+  messageReactions           MessageReaction[]
+  messageReads               MessageRead[]
+  notifications              Notification[]            @relation("ReceivedNotifications")
+  sentNotifications          Notification[]            @relation("SentNotifications")
+  notificationPreferences    NotificationPreference[]
+  notificationSettings       NotificationSettings[]
+  orders                     Order[]
+  pollVotes                  PollVote[]
+  ratings                    Rating[]
+  clientAgreements           ServiceAgreement[]        @relation("ClientAgreements")
+  serviceProviders           ServiceProvider[]
+  notificationGroups         NotificationGroup[]       @relation("UserNotificationGroups")
 }
 
 model Business {
@@ -132,6 +132,7 @@ model Business {
   socialMediaContent  SocialMediaContent[]
   suppliers           Supplier[]
   whatsAppIntegration WhatsApp?
+  socialMediaConnections SocialMediaConnection[]
 
   @@index([type])
   @@index([category])
@@ -1204,6 +1205,23 @@ model VerificationCode {
 
   @@index([email])
   @@index([code])
+}
+
+model SocialMediaConnection {
+  id            String    @id @default(cuid())
+  platform      String
+  accessToken   String?
+  refreshToken  String?
+  expiresAt     DateTime?
+  channelId     String?
+  connected     Boolean   @default(false)
+  businessId    String
+  business      Business  @relation(fields: [businessId], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([businessId, platform])
+  @@index([businessId])
 }
 
 enum Gender {

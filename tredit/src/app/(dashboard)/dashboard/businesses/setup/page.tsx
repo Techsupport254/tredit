@@ -30,6 +30,7 @@ import {
 	ShopOutlined,
 	BankOutlined,
 	PictureOutlined,
+	DollarOutlined,
 } from "@ant-design/icons";
 import type { UploadProps } from "antd";
 
@@ -136,7 +137,6 @@ const STEP_FIELDS = {
 	1: ["email", "phone", "address", "city"],
 	2: ["businessModel", "operationMode", "size", "stage"],
 	3: ["currency", "paymentMethods", "taxCategory", "shippingMethod"],
-	4: ["logo", "coverImage"],
 } as const;
 
 interface FormValues {
@@ -246,7 +246,8 @@ const BusinessSetupPage = () => {
 			),
 		},
 		{
-			title: "Contact & Location",
+			title: "Contact Details",
+			icon: <ShopOutlined />,
 			content: (
 				<>
 					<Form.Item
@@ -303,7 +304,8 @@ const BusinessSetupPage = () => {
 			),
 		},
 		{
-			title: "Business Details",
+			title: "Business Model",
+			icon: <BankOutlined />,
 			content: (
 				<>
 					<Form.Item
@@ -376,7 +378,8 @@ const BusinessSetupPage = () => {
 			),
 		},
 		{
-			title: "Financial & Legal",
+			title: "Payment & Shipping",
+			icon: <DollarOutlined />,
 			content: (
 				<>
 					<Form.Item
@@ -458,76 +461,6 @@ const BusinessSetupPage = () => {
 
 					<Form.Item name="taxId" label="Tax ID">
 						<Input placeholder="Enter tax ID" />
-					</Form.Item>
-				</>
-			),
-		},
-		{
-			title: "Media & Documents",
-			content: (
-				<>
-					<Form.Item
-						name="logo"
-						label="Business Logo"
-						valuePropName="fileList"
-						getValueFromEvent={(e) => {
-							if (Array.isArray(e)) {
-								return e;
-							}
-							return e?.fileList;
-						}}
-					>
-						<Upload listType="picture" maxCount={1} beforeUpload={() => false}>
-							<Button icon={<UploadOutlined />}>Upload Logo</Button>
-						</Upload>
-					</Form.Item>
-
-					<Form.Item
-						name="coverImage"
-						label="Cover Image"
-						valuePropName="fileList"
-						getValueFromEvent={(e) => {
-							if (Array.isArray(e)) {
-								return e;
-							}
-							return e?.fileList;
-						}}
-					>
-						<Upload listType="picture" maxCount={1} beforeUpload={() => false}>
-							<Button icon={<UploadOutlined />}>Upload Cover Image</Button>
-						</Upload>
-					</Form.Item>
-
-					<Form.Item
-						name="images"
-						label="Additional Images"
-						valuePropName="fileList"
-						getValueFromEvent={(e) => {
-							if (Array.isArray(e)) {
-								return e;
-							}
-							return e?.fileList;
-						}}
-					>
-						<Upload listType="picture" multiple beforeUpload={() => false}>
-							<Button icon={<UploadOutlined />}>Upload Images</Button>
-						</Upload>
-					</Form.Item>
-
-					<Form.Item
-						name="documents"
-						label="Business Documents"
-						valuePropName="fileList"
-						getValueFromEvent={(e) => {
-							if (Array.isArray(e)) {
-								return e;
-							}
-							return e?.fileList;
-						}}
-					>
-						<Upload multiple beforeUpload={() => false}>
-							<Button icon={<UploadOutlined />}>Upload Documents</Button>
-						</Upload>
 					</Form.Item>
 				</>
 			),
@@ -733,7 +666,6 @@ const BusinessSetupPage = () => {
 				1: ["email", "phone", "address", "city"],
 				2: ["businessModel", "operationMode", "size", "stage"],
 				3: ["currency", "paymentMethods", "taxCategory", "shippingMethod"],
-				4: ["logo", "coverImage"],
 			};
 
 			// Validate current step fields
@@ -1389,52 +1321,6 @@ const BusinessSetupPage = () => {
 														</Select.Option>
 													))}
 												</Select>
-											</Form.Item>
-										</>
-									)}
-
-									{currentStep === 4 && (
-										<>
-											<Form.Item
-												name="logo"
-												label="Business Logo"
-												valuePropName="fileList"
-												getValueFromEvent={(e) => {
-													if (Array.isArray(e)) {
-														return e;
-													}
-													return e?.fileList;
-												}}
-											>
-												<Upload
-													listType="picture"
-													maxCount={1}
-													beforeUpload={() => false}
-												>
-													<Button icon={<UploadOutlined />}>Upload Logo</Button>
-												</Upload>
-											</Form.Item>
-
-											<Form.Item
-												name="coverImage"
-												label="Cover Image"
-												valuePropName="fileList"
-												getValueFromEvent={(e) => {
-													if (Array.isArray(e)) {
-														return e;
-													}
-													return e?.fileList;
-												}}
-											>
-												<Upload
-													listType="picture"
-													maxCount={1}
-													beforeUpload={() => false}
-												>
-													<Button icon={<UploadOutlined />}>
-														Upload Cover Image
-													</Button>
-												</Upload>
 											</Form.Item>
 										</>
 									)}

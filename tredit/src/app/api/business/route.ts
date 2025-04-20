@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { prisma } from "@/lib/prisma";
+import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
+
+const prisma = new PrismaClient();
 
 // Business schema validation
 const businessSchema = z.object({
@@ -49,23 +51,71 @@ const businessSchema = z.object({
 	ipfsUrl: z.string().url(),
 });
 
-export async function POST(req: Request) {
-	console.debug("Received business creation request");
+export async function GET(req: Request) {
+	try {
+		const session = await getServerSession();
+		if (!session?.user?.email) {
+			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		}
 
+		// Get user's businesses
+		const user = await prisma.user.findUnique({
+			where: { email: session.user.email },
+		});
+
+		if (!user) {
+			return NextResponse.json({ error: "User not found" }, { status: 404 });
+		}
+
+		// Get all businesses for this user
+		const businesses = await prisma.business.findMany({
+			where: { userId: user.id },
+			select: {
+				id: true,
+				name: true,
+				description: true,
+				type: true,
+				category: true,
+				logo: true,
+				averageRating: true,
+				reviewCount: true,
+			},
+		});
+
+		return NextResponse.json(businesses);
+	} catch (error) {
+		console.error("Error fetching businesses:", error);
+		return NextResponse.json(
+			{ error: "Internal server error" },
+			{ status: 500 }
+		);
+	} finally {
+		await prisma.$disconnect();
+	}
+}
+
+export async function POST(req: Request) {
 	try {
 		// Check authentication
 		const session = await getServerSession();
-		if (!session?.user) {
-			console.error("Unauthorized access attempt");
+		if (!session?.user?.email) {
 			return NextResponse.json(
-				{ error: "Unauthorized", details: "User session not found" },
+				{ error: "Unauthorized: Please sign in to continue" },
 				{ status: 401 }
 			);
 		}
 
+		// Get user from database first
+		const user = await prisma.user.findUnique({
+			where: { email: session.user.email },
+		});
+
+		if (!user) {
+			return NextResponse.json({ error: "User not found" }, { status: 404 });
+		}
+
 		// Parse request body
 		const body = await req.json();
-		console.debug("Request body:", body);
 
 		// Validate request data
 		try {
@@ -73,7 +123,6 @@ export async function POST(req: Request) {
 			console.debug("Validated data:", validatedData);
 		} catch (validationError) {
 			if (validationError instanceof z.ZodError) {
-				console.error("Validation error:", validationError.errors);
 				return NextResponse.json(
 					{
 						error: "Invalid request data",
@@ -92,14 +141,12 @@ export async function POST(req: Request) {
 		try {
 			const business = await prisma.business.create({
 				data: {
-					...validatedData,
-					userId: session.user.id,
+					...body,
+					userId: user.id,
 					status: "ACTIVE",
 					verificationStatus: "PENDING",
 				},
 			});
-
-			console.debug("Business created successfully:", business.id);
 
 			return NextResponse.json({
 				success: true,
@@ -125,51 +172,7 @@ export async function POST(req: Request) {
 			},
 			{ status: 500 }
 		);
-	}
-}
-
-export async function GET(req: Request) {
-	try {
-		const session = await getServerSession();
-		if (!session?.user) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		const { searchParams } = new URL(req.url);
-		const userId = searchParams.get("userId");
-
-		// If userId is provided and matches the session user's id, get their businesses
-		if (userId && userId === session.user.id) {
-			const businesses = await prisma.business.findMany({
-				where: { userId },
-			});
-			return NextResponse.json(businesses);
-		}
-
-		// Otherwise, get all active and verified businesses
-		const businesses = await prisma.business.findMany({
-			where: {
-				status: "ACTIVE",
-				verificationStatus: "VERIFIED",
-			},
-			select: {
-				id: true,
-				name: true,
-				description: true,
-				type: true,
-				category: true,
-				logo: true,
-				averageRating: true,
-				reviewCount: true,
-			},
-		});
-
-		return NextResponse.json(businesses);
-	} catch (error) {
-		console.error("Error fetching businesses:", error);
-		return NextResponse.json(
-			{ error: "Internal server error" },
-			{ status: 500 }
-		);
+	} finally {
+		await prisma.$disconnect();
 	}
 }

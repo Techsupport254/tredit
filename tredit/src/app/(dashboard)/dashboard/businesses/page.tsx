@@ -1,79 +1,226 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Skeleton } from "@/components/ui/Skeleton";
+import {
+	Card,
+	Button,
+	Empty,
+	Row,
+	Col,
+	Typography,
+	Rate,
+	Tag,
+	Spin,
+	message,
+	theme,
+} from "antd";
+import {
+	PlusOutlined,
+	ShopOutlined,
+	GlobalOutlined,
+	PhoneOutlined,
+	MailOutlined,
+	TeamOutlined,
+	AppstoreOutlined,
+	TagOutlined,
+} from "@ant-design/icons";
+import axios from "axios";
+
+const { Title, Text } = Typography;
+
+interface Business {
+	id: string;
+	name: string;
+	description: string | null;
+	type: "PRODUCT" | "SERVICE";
+	category: string;
+	email: string;
+	phone: string;
+	city: string;
+	country: string;
+	employeeCount: number;
+	averageRating: number;
+	reviewCount: number;
+}
 
 export default function BusinessesPage() {
 	const router = useRouter();
-	const [isLoading] = useState(false);
+	const [businesses, setBusinesses] = useState<Business[]>([]);
+	const [isLoading, setIsLoading] = useState(true);
+	const { token } = theme.useToken();
+
+	useEffect(() => {
+		fetchBusinesses();
+	}, []);
+
+	const fetchBusinesses = async () => {
+		try {
+			const response = await axios.get("/api/business");
+			if (response.data) {
+				setBusinesses(response.data);
+			}
+		} catch (error: any) {
+			message.error(
+				error.response?.data?.error || "Failed to fetch businesses"
+			);
+			console.error("Error fetching businesses:", error);
+		} finally {
+			setIsLoading(false);
+		}
+	};
 
 	if (isLoading) {
 		return (
-			<div className="space-y-6">
-				<div className="flex justify-between items-center">
-					<Skeleton className="h-8 w-64" />
-					<Skeleton className="h-10 w-32" />
-				</div>
-				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-					{[1, 2, 3].map((i) => (
-						<Skeleton key={i} className="h-48" />
-					))}
-				</div>
+			<div className="flex items-center justify-center min-h-[400px]">
+				<Spin size="large" />
 			</div>
 		);
 	}
 
 	return (
-		<div className="space-y-6">
-			<div className="flex justify-between items-center">
+		<div className="p-6">
+			<div className="flex justify-between items-center mb-8">
 				<div>
-					<h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+					<Title level={2} className="!mb-1">
 						Businesses
-					</h1>
-					<p className="text-sm text-gray-500 dark:text-gray-400">
+					</Title>
+					<Text type="secondary">
 						Manage your business profiles and settings
-					</p>
+					</Text>
 				</div>
-				<button
-					className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-blue-600 text-white hover:bg-blue-700 h-10 px-4 py-2"
+				<Button
+					type="primary"
+					icon={<PlusOutlined />}
+					size="large"
 					onClick={() => router.push("/dashboard/businesses/setup")}
+					style={{ backgroundColor: token.colorPrimary }}
 				>
 					Add Business
-				</button>
+				</Button>
 			</div>
-			<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-				{/* Empty state */}
-				<div className="col-span-full flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 dark:border-gray-800 p-8 text-center">
-					<div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-900/50">
-						<svg
-							className="h-6 w-6 text-blue-600 dark:text-blue-400"
-							fill="none"
-							viewBox="0 0 24 24"
-							stroke="currentColor"
-						>
-							<path
-								strokeLinecap="round"
-								strokeLinejoin="round"
-								strokeWidth={2}
-								d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+
+			{businesses.length === 0 ? (
+				<Card className="text-center">
+					<Empty
+						image={
+							<ShopOutlined
+								style={{ fontSize: 64, color: token.colorPrimary }}
 							/>
-						</svg>
-					</div>
-					<h3 className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
-						No businesses
-					</h3>
-					<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-						Get started by creating a new business.
-					</p>
-					<button
-						className="mt-4 text-sm font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300"
-						onClick={() => router.push("/dashboard/businesses/setup")}
-					>
-						Add your first business
-					</button>
-				</div>
-			</div>
+						}
+						description={
+							<div>
+								<Title level={4}>No businesses yet</Title>
+								<Text type="secondary">
+									Get started by creating a new business
+								</Text>
+								<div className="mt-4">
+									<Button
+										type="primary"
+										onClick={() => router.push("/dashboard/businesses/setup")}
+										style={{ backgroundColor: token.colorPrimary }}
+									>
+										Add your first business
+									</Button>
+								</div>
+							</div>
+						}
+					/>
+				</Card>
+			) : (
+				<Row gutter={[24, 24]}>
+					{businesses.map((business) => (
+						<Col xs={24} md={12} key={business.id}>
+							<Card
+								hoverable
+								className="overflow-hidden shadow-sm hover:shadow-md transition-all"
+								onClick={() =>
+									router.push(`/dashboard/businesses/${business.id}` as any)
+								}
+							>
+								<div className="flex items-start gap-6">
+									<div
+										className="flex-shrink-0 w-20 h-20 bg-blue-50 rounded-lg flex items-center justify-center"
+										style={{ backgroundColor: token.colorBgLayout }}
+									>
+										<ShopOutlined
+											style={{ fontSize: 32, color: token.colorPrimary }}
+										/>
+									</div>
+
+									<div className="flex-grow min-w-0">
+										<Title level={4} className="!mb-1 !mt-0">
+											{business.name}
+										</Title>
+										<Text type="secondary" className="block mb-4">
+											{business.description || business.name}
+										</Text>
+
+										<div className="flex flex-wrap gap-2 mb-4">
+											<Tag
+												icon={<AppstoreOutlined />}
+												color="blue"
+												className="flex items-center"
+											>
+												{business.type}
+											</Tag>
+											<Tag
+												icon={<TagOutlined />}
+												color="purple"
+												className="flex items-center"
+											>
+												{business.category}
+											</Tag>
+										</div>
+
+										<div className="grid grid-cols-2 gap-y-2 text-sm mb-4">
+											{business.email && (
+												<div className="flex items-center gap-2">
+													<MailOutlined className="text-gray-400" />
+													<Text className="truncate">{business.email}</Text>
+												</div>
+											)}
+											{business.phone && (
+												<div className="flex items-center gap-2">
+													<PhoneOutlined className="text-gray-400" />
+													<Text>{business.phone}</Text>
+												</div>
+											)}
+											{(business.city || business.country) && (
+												<div className="flex items-center gap-2">
+													<GlobalOutlined className="text-gray-400" />
+													<Text>
+														{[business.city, business.country]
+															.filter(Boolean)
+															.join(", ")}
+													</Text>
+												</div>
+											)}
+											{business.employeeCount > 0 && (
+												<div className="flex items-center gap-2">
+													<TeamOutlined className="text-gray-400" />
+													<Text>{business.employeeCount} employees</Text>
+												</div>
+											)}
+										</div>
+
+										<div className="flex items-center justify-between pt-3 border-t border-gray-100">
+											<Rate
+												disabled
+												defaultValue={business.averageRating}
+												className="text-sm !text-blue-500"
+											/>
+											<Text type="secondary" className="text-sm">
+												({business.reviewCount} reviews)
+											</Text>
+										</div>
+									</div>
+								</div>
+							</Card>
+						</Col>
+					))}
+				</Row>
+			)}
 		</div>
 	);
 }
