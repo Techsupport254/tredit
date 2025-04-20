@@ -10,6 +10,7 @@ import { z } from "zod";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import toast from "react-hot-toast";
 import { Toaster } from "react-hot-toast";
+import { signIn } from "next-auth/react";
 
 // --- Zod Schema ---
 const passwordSchema = z
@@ -155,10 +156,19 @@ export default function Register() {
 				);
 			}
 
-			toast.success("Registration successful! Redirecting to login...");
-			setTimeout(() => {
-				router.push("/login");
-			}, 2000);
+			// After successful registration, sign in using NextAuth
+			const signInResult = await signIn("credentials", {
+				email: data.email,
+				password: data.password,
+				redirect: false,
+			});
+
+			if (signInResult?.error) {
+				throw new Error(signInResult.error);
+			}
+
+			toast.success("Registration successful! Redirecting to dashboard...");
+			router.push("/dashboard");
 		} catch (err) {
 			const error = err as Error;
 			console.error("Submit error:", error);
@@ -201,9 +211,9 @@ export default function Register() {
 				<div className="w-full max-w-md mx-auto space-y-6">
 					{/* Logo and Title */}
 					<div className="flex flex-col items-center">
-					<Image
+						<Image
 							src="/favicon.svg"
-						alt="TredIt Logo"
+							alt="TredIt Logo"
 							width={56}
 							height={56}
 							className="mb-3"
@@ -221,56 +231,56 @@ export default function Register() {
 					{/* Form */}
 					<form className="space-y-5" onSubmit={handleSubmit(onSubmit)}>
 						{/* Name Input */}
-							<div>
-								<label
+						<div>
+							<label
 								htmlFor="name"
 								className="block text-sm font-medium text-gray-700 mb-1"
-								>
-									Full Name
-								</label>
-								<input
+							>
+								Full Name
+							</label>
+							<input
 								{...register("name")}
-									type="text"
+								type="text"
 								id="name"
 								className={`block w-full rounded-md border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 ${
 									errors.name
 										? "border-red-500 focus:border-red-500 focus:ring-red-500"
 										: "border-gray-300"
 								}`}
-									placeholder="Enter your full name"
-								/>
+								placeholder="Enter your full name"
+							/>
 							{errors.name && (
 								<p className="mt-1 text-xs text-red-600">
 									{errors.name.message}
 								</p>
 							)}
-							</div>
+						</div>
 
 						{/* Email Input */}
-							<div>
-								<label
-									htmlFor="email"
+						<div>
+							<label
+								htmlFor="email"
 								className="block text-sm font-medium text-gray-700 mb-1"
-								>
-									Email Address
-								</label>
-								<input
+							>
+								Email Address
+							</label>
+							<input
 								{...register("email")}
-									type="email"
-									id="email"
+								type="email"
+								id="email"
 								className={`block w-full rounded-md border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 ${
 									errors.email
 										? "border-red-500 focus:border-red-500 focus:ring-red-500"
 										: "border-gray-300"
 								}`}
-									placeholder="you@example.com"
-								/>
+								placeholder="you@example.com"
+							/>
 							{errors.email && (
 								<p className="mt-1 text-xs text-red-600">
 									{errors.email.message}
 								</p>
 							)}
-							</div>
+						</div>
 
 						{/* Password Inputs */}
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -321,10 +331,10 @@ export default function Register() {
 									Confirm Password
 								</label>
 								<div className="relative">
-								<input
+									<input
 										{...register("confirmPassword")}
 										type={showConfirmPassword ? "text" : "password"}
-									id="confirmPassword"
+										id="confirmPassword"
 										className={`block w-full rounded-md border shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm px-3 py-2 pr-10 ${
 											errors.confirmPassword
 												? "border-red-500 focus:border-red-500 focus:ring-red-500"
@@ -463,19 +473,19 @@ export default function Register() {
 								{isLoading ? "Creating Account..." : "Create Account"}
 							</button>
 						</div>
-						</form>
+					</form>
 
 					{/* Login Link */}
 					<p className="mt-6 text-center text-sm text-gray-500">
-							Already have an account?{" "}
-							<Link
-								href="/login"
+						Already have an account?{" "}
+						<Link
+							href="/login"
 							className="font-medium text-blue-500 hover:text-blue-600 hover:underline"
-							>
-								Sign in
-							</Link>
-						</p>
-					</div>
+						>
+							Sign in
+						</Link>
+					</p>
+				</div>
 			</div>
 
 			{/* Right Panel: Decorative */}

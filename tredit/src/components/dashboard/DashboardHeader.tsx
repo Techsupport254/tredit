@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { useAuth } from "@/lib/auth/AuthContext";
-import { Bars3Icon, BellIcon } from "@heroicons/react/24/outline";
+import {
+	Bars3Icon,
+	BellIcon,
+	ChevronDownIcon,
+} from "@heroicons/react/24/outline";
 import Link from "next/link";
 import Image from "next/image";
 
@@ -89,6 +93,12 @@ export default function DashboardHeader() {
 										<span className="hidden md:block text-sm font-medium text-gray-700">
 											{user?.name || "User"}
 										</span>
+										<ChevronDownIcon
+											className={`hidden md:block h-4 w-4 text-gray-400 transition-transform duration-200 ${
+												isProfileOpen ? "transform rotate-180" : ""
+											}`}
+											aria-hidden="true"
+										/>
 									</div>
 								</button>
 							</div>

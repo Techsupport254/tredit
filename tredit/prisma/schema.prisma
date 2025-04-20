@@ -1,17 +1,1208 @@
-// schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
 
 datasource db {
-  provider = "postgresql" // Or your chosen database provider (mysql, sqlite, etc.)
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider      = "prisma-client-js"
-  output        = "./generated/client"
-  engineType    = "binary"
+model User {
+  id                         String                    @id @default(uuid())
+  name                       String
+  email                      String                    @unique
+  password                   String
+  walletAddress              String                    @unique
+  acceptBlockchainStorage    Boolean                   @default(true)
+  status                     UserStatus                @default(ACTIVE)
+  role                       String                    @default("USER")
+  verificationStatus         VerificationStatus        @default(PENDING)
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  lastLogin                  DateTime                  @default(now())
+  blockchainTxHash           String?
+  ipfsUrl                    String?
+  ipfsMetadata               Json?
+  profileImage               String?
+  gender                     Gender?
+  dob                        DateTime?
+  phoneNumber                String?
+  bio                        String?
+  preferences                Json?                      @default("{\"notifications\":{\"channels\":[\"EMAIL\"],\"types\":[],\"emailNotifications\":true,\"pushNotifications\":true,\"inAppNotifications\":true,\"smsNotifications\":false,\"webhookNotifications\":false}}")
+  metadata                   Json?
+  lastNotificationAt         DateTime?
+  unreadCount                Int                       @default(0)
+  business                   Business?
+  teamMemberships            BusinessTeamMember[]
+  initiatedCalls             Call[]                    @relation("InitiatedCalls")
+  callParticipations         CallParticipant[]
+  cart                       Cart?
+  chatSessions               ChatSession[]
+  conversationParticipations ConversationParticipant[]
+  disputes                   Dispute[]
+  formSubmissions            FormSubmission[]
+  receivedMessages           Message[]                 @relation("ReceivedMessages")
+  sentMessages               Message[]                 @relation("SentMessages")
+  messageReactions           MessageReaction[]
+  messageReads               MessageRead[]
+  notifications              Notification[]            @relation("ReceivedNotifications")
+  sentNotifications          Notification[]            @relation("SentNotifications")
+  notificationPreferences    NotificationPreference[]
+  notificationSettings       NotificationSettings[]
+  orders                     Order[]
+  pollVotes                  PollVote[]
+  ratings                    Rating[]
+  clientAgreements           ServiceAgreement[]        @relation("ClientAgreements")
+  serviceProviders           ServiceProvider[]
+  notificationGroups         NotificationGroup[]       @relation("UserNotificationGroups")
 }
 
-// --- Enums ---
+model Business {
+  id                  String                 @id @default(uuid())
+  userId              String                 @unique
+  name                String
+  description         String?
+  bio                 String?
+  type                BusinessType
+  category            String
+  status              BusinessStatus         @default(ACTIVE)
+  verificationStatus  VerificationStatus     @default(PENDING)
+  email               String                 @unique
+  phone               String
+  address             String
+  logo                String?
+  coverImage          String?
+  images              String[]
+  currency            String                 @default("KES")
+  revenue             Decimal                @default(0) @db.Decimal(10, 2)
+  blockchainTxHash    String?
+  ipfsUrl             String?
+  ipfsMetadata        Json?
+  averageRating       Float                  @default(0)
+  reviewCount         Int                    @default(0)
+  documents           Json?
+  metadata            Json?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  acceptedCurrencies  Currency[]             @default([KES])
+  alternativePhone    String?
+  certifications      String[]
+  city                String
+  coordinates         Json?
+  country             String                 @default("Kenya")
+  employeeCount       Int                    @default(1)
+  insuranceInfo       Json?
+  languages           String[]               @default(["en"])
+  licenseNumber       String?
+  postalCode          String?
+  privacyPolicy       String?
+  registrationNumber  String?
+  returnPolicy        String?
+  serviceAreas        String[]
+  shippingPolicy      String?
+  sla                 Json?
+  subcategories       String[]
+  supportEmail        String?
+  supportPhone        String?
+  tags                String[]
+  taxId               String?
+  teamRoles           Json[]
+  termsOfService      String?
+  timezone            String                 @default("Africa/Nairobi")
+  businessModel       BusinessModel
+  operationMode       BusinessOperationMode
+  paymentMethods      PaymentMethod[]
+  user                User                   @relation(fields: [userId], references: [id])
+  businessHours       BusinessHours[]
+  subscriptions       BusinessSubscription[]
+  teamMembers         BusinessTeamMember[]
+  verifications       BusinessVerification[]
+  chatSessions        ChatSession[]
+  inventory           Inventory[]
+  notifications       Notification[]
+  orders              Order[]
+  products            Product[]
+  productCategories   ProductCategory[]
+  ratings             Rating[]
+  services            Service[]
+  serviceAgreements   ServiceAgreement[]
+  serviceCategories   ServiceCategory[]
+  serviceProviders    ServiceProvider[]
+  serviceSchedules    ServiceSchedule[]
+  socialMediaContent  SocialMediaContent[]
+  suppliers           Supplier[]
+  whatsAppIntegration WhatsApp?
+
+  @@index([type])
+  @@index([category])
+  @@index([city])
+  @@index([verificationStatus])
+}
+
+model Product {
+  id            String            @id @default(uuid())
+  businessId    String
+  name          String
+  description   String?
+  price         Decimal           @db.Decimal(10, 2)
+  stock         Int               @default(0)
+  status        ProductStatus     @default(ACTIVE)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  cartItems     CartItem[]
+  notifications Notification[]
+  orderItems    OrderItem[]
+  business      Business          @relation(fields: [businessId], references: [id])
+  analytics     ProductAnalytics?
+  seo           ProductSEO?
+  variants      ProductVariant[]
+}
+
+model Service {
+  id            String         @id @default(uuid())
+  businessId    String
+  name          String
+  description   String?
+  price         Decimal        @db.Decimal(10, 2)
+  duration      Int?
+  status        ServiceStatus  @default(ACTIVE)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  cartItems     CartItem[]
+  notifications Notification[]
+  orderItems    OrderItem[]
+  business      Business       @relation(fields: [businessId], references: [id])
+}
+
+model Order {
+  id            String         @id @default(uuid())
+  userId        String
+  businessId    String
+  status        OrderStatus    @default(PENDING)
+  totalAmount   Decimal        @db.Decimal(12, 2)
+  paymentStatus PaymentStatus  @default(PENDING)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  disputes      Dispute[]
+  notifications Notification[]
+  business      Business       @relation(fields: [businessId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+  items         OrderItem[]
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  orderId   String
+  productId String?
+  serviceId String?
+  quantity  Int
+  price     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id])
+  product   Product? @relation(fields: [productId], references: [id])
+  service   Service? @relation(fields: [serviceId], references: [id])
+}
+
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String     @unique
+  status    CartStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id])
+  items     CartItem[]
+}
+
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  productId String?
+  serviceId String?
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  cart      Cart     @relation(fields: [cartId], references: [id])
+  product   Product? @relation(fields: [productId], references: [id])
+  service   Service? @relation(fields: [serviceId], references: [id])
+
+  @@unique([cartId, productId])
+  @@unique([cartId, serviceId])
+}
+
+model Message {
+  id             String              @id @default(uuid())
+  senderId       String
+  receiverId     String
+  status         MessageStatus       @default(SENT)
+  createdAt      DateTime            @default(now())
+  chatSessionId  String?
+  conversationId String
+  deletedAt      DateTime?
+  direction      MessageDirection
+  editedAt       DateTime?
+  encryption     MessageEncryption   @default(NONE)
+  forwardedFrom  String?
+  metadata       Json?
+  replyTo        String?
+  type           MessageType         @default(TEXT)
+  updatedAt      DateTime            @updatedAt
+  contentBlocks  ContentBlock[]
+  lastMessageFor Conversation[]      @relation("LastMessage")
+  chatSession    ChatSession?        @relation(fields: [chatSessionId], references: [id])
+  conversation   Conversation        @relation(fields: [conversationId], references: [id])
+  receiver       User                @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  sender         User                @relation("SentMessages", fields: [senderId], references: [id])
+  attachments    MessageAttachment[]
+  messageQueue   MessageQueue?
+  reactions      MessageReaction[]
+  readReceipts   MessageRead[]
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model MessageAttachment {
+  id        String   @id @default(uuid())
+  messageId String
+  type      String
+  url       String
+  filename  String?
+  size      Int?
+  width     Int?
+  height    Int?
+  duration  Int?
+  thumbnail String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  message   Message  @relation(fields: [messageId], references: [id])
+
+  @@index([messageId])
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  message   Message  @relation(fields: [messageId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+}
+
+model MessageRead {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  readAt    DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  message   Message  @relation(fields: [messageId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+}
+
+model Conversation {
+  id            String                    @id @default(uuid())
+  type          String                    @default("DIRECT")
+  title         String?
+  description   String?
+  avatar        String?
+  isArchived    Boolean                   @default(false)
+  isMuted       Boolean                   @default(false)
+  lastMessageId String?
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  calls         Call[]
+  lastMessage   Message?                  @relation("LastMessage", fields: [lastMessageId], references: [id])
+  participants  ConversationParticipant[]
+  messages      Message[]
+  analytics     MessageAnalytics[]
+
+  @@index([type])
+  @@index([isArchived])
+  @@index([isMuted])
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid())
+  conversationId String
+  userId         String
+  role           String       @default("MEMBER")
+  joinedAt       DateTime     @default(now())
+  leftAt         DateTime?
+  isMuted        Boolean      @default(false)
+  lastReadAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([conversationId, userId])
+  @@index([conversationId])
+  @@index([userId])
+}
+
+model Call {
+  id             String            @id @default(uuid())
+  conversationId String
+  type           String
+  status         String
+  initiatorId    String
+  startTime      DateTime?
+  endTime        DateTime?
+  duration       Int?
+  recordingUrl   String?
+  metadata       Json?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  conversation   Conversation      @relation(fields: [conversationId], references: [id])
+  initiator      User              @relation("InitiatedCalls", fields: [initiatorId], references: [id])
+  participants   CallParticipant[]
+
+  @@index([conversationId])
+  @@index([initiatorId])
+  @@index([status])
+}
+
+model CallParticipant {
+  id        String    @id @default(uuid())
+  callId    String
+  userId    String
+  status    String
+  joinTime  DateTime?
+  leaveTime DateTime?
+  duration  Int?
+  metadata  Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  call      Call      @relation(fields: [callId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([callId])
+  @@index([userId])
+}
+
+model Dispute {
+  id            String         @id @default(uuid())
+  orderId       String
+  userId        String
+  status        DisputeStatus  @default(OPEN)
+  reason        String
+  resolution    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  order         Order          @relation(fields: [orderId], references: [id])
+  user          User           @relation(fields: [userId], references: [id])
+  notifications Notification[]
+
+  @@index([orderId])
+  @@index([userId])
+}
+
+model BusinessTeamMember {
+  id               String   @id @default(uuid())
+  businessId       String
+  userId           String
+  role             TeamRole
+  createdAt        DateTime @default(now())
+  responsibilities String[]
+  updatedAt        DateTime @updatedAt
+  permissions      Json
+  business         Business @relation(fields: [businessId], references: [id])
+  user             User     @relation(fields: [userId], references: [id])
+
+  @@unique([businessId, userId])
+  @@index([role])
+}
+
+model ProductVariant {
+  id        String   @id @default(uuid())
+  productId String
+  name      String
+  value     String
+  price     Decimal  @db.Decimal(10, 2)
+  stock     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([productId, name, value])
+}
+
+model ProductAnalytics {
+  id          String   @id @default(uuid())
+  productId   String   @unique
+  views       Int      @default(0)
+  purchases   Int      @default(0)
+  revenue     Decimal  @default(0.00) @db.Decimal(12, 2)
+  lastUpdated DateTime @updatedAt
+  product     Product  @relation(fields: [productId], references: [id])
+}
+
+model ProductSEO {
+  id          String   @id @default(uuid())
+  productId   String   @unique
+  title       String?
+  description String?
+  keywords    String[]
+  lastUpdated DateTime @updatedAt
+  product     Product  @relation(fields: [productId], references: [id])
+}
+
+model SocialMediaContent {
+  id          String        @id @default(uuid())
+  businessId  String
+  platform    String
+  content     String
+  status      ContentStatus @default(DRAFT)
+  scheduledAt DateTime?
+  postedAt    DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  business    Business      @relation(fields: [businessId], references: [id])
+
+  @@index([businessId])
+}
+
+model ChatSession {
+  id            String     @id @default(uuid())
+  userId        String
+  businessId    String
+  status        ChatStatus @default(OPEN)
+  createdAt     DateTime   @default(now())
+  lastMessageAt DateTime?
+  updatedAt     DateTime   @updatedAt
+  business      Business   @relation(fields: [businessId], references: [id])
+  user          User       @relation(fields: [userId], references: [id])
+  messages      Message[]
+
+  @@unique([userId, businessId])
+}
+
+model WhatsApp {
+  id          String            @id @default(uuid())
+  businessId  String            @unique
+  phoneNumber String            @unique
+  status      IntegrationStatus @default(PENDING_VERIFICATION)
+  apiKey      String?
+  lastSync    DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  business    Business          @relation(fields: [businessId], references: [id])
+}
+
+model Rating {
+  id         String   @id @default(uuid())
+  businessId String
+  userId     String
+  rating     Float
+  review     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id])
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([businessId])
+  @@index([userId])
+}
+
+model BusinessVerification {
+  id            String             @id @default(uuid())
+  businessId    String
+  type          VerificationType
+  status        VerificationStatus
+  documentUrl   String?
+  verifiedAt    DateTime?
+  expiresAt     DateTime?
+  verifierNotes String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  business      Business           @relation(fields: [businessId], references: [id])
+
+  @@unique([businessId, type])
+  @@index([type, status])
+}
+
+model BusinessSubscription {
+  id            String           @id @default(uuid())
+  businessId    String
+  tier          SubscriptionTier
+  status        String
+  startDate     DateTime
+  endDate       DateTime?
+  billingCycle  String
+  amount        Decimal          @db.Decimal(10, 2)
+  features      Json
+  paymentMethod PaymentMethod
+  autoRenew     Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  business      Business         @relation(fields: [businessId], references: [id])
+
+  @@index([businessId, status])
+  @@index([tier])
+}
+
+model BusinessHours {
+  id          String   @id @default(uuid())
+  businessId  String
+  dayOfWeek   Int
+  openTime    String?
+  closeTime   String?
+  breakStart  String?
+  breakEnd    String?
+  isClosed    Boolean  @default(false)
+  isHoliday   Boolean  @default(false)
+  holidayName String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  business    Business @relation(fields: [businessId], references: [id])
+
+  @@unique([businessId, dayOfWeek])
+  @@index([businessId, isClosed])
+}
+
+model ServiceCategory {
+  id                 String              @id @default(uuid())
+  businessId         String
+  name               String
+  description        String?
+  type               ServiceType
+  basePrice          Decimal             @db.Decimal(10, 2)
+  duration           Int
+  isAvailable        Boolean             @default(true)
+  requiresApproval   Boolean             @default(false)
+  prerequisites      Json?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  digitalServiceType DigitalServiceType?
+  isDigital          Boolean             @default(false)
+  requiresEscrow     Boolean             @default(true)
+  minPaymentPercent  Int?
+  paymentModels      PaymentModel[]
+  estimatedDuration  Int?
+  complexity         String?
+  deliverables       Json?
+  agreements         ServiceAgreement[]
+  business           Business            @relation(fields: [businessId], references: [id])
+  schedules          ServiceSchedule[]
+
+  @@index([businessId])
+  @@index([type])
+}
+
+model ProductCategory {
+  id               String      @id @default(uuid())
+  businessId       String
+  name             String
+  description      String?
+  type             ProductType
+  basePrice        Decimal     @db.Decimal(10, 2)
+  stockLevel       Int         @default(0)
+  reorderPoint     Int?
+  reorderQuantity  Int?
+  isAvailable      Boolean     @default(true)
+  requiresApproval Boolean     @default(false)
+  specifications   Json?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  inventory        Inventory[]
+  business         Business    @relation(fields: [businessId], references: [id])
+
+  @@index([businessId])
+  @@index([type])
+}
+
+model ServiceSchedule {
+  id                String          @id @default(uuid())
+  businessId        String
+  serviceCategoryId String
+  startTime         DateTime
+  endTime           DateTime
+  isAvailable       Boolean         @default(true)
+  maxBookings       Int             @default(1)
+  currentBookings   Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  business          Business        @relation(fields: [businessId], references: [id])
+  serviceCategory   ServiceCategory @relation(fields: [serviceCategoryId], references: [id])
+
+  @@index([businessId])
+  @@index([serviceCategoryId])
+  @@index([startTime])
+}
+
+model Inventory {
+  id                String          @id @default(uuid())
+  businessId        String
+  productCategoryId String
+  quantity          Int             @default(0)
+  location          String?
+  lastRestocked     DateTime?
+  nextRestock       DateTime?
+  minimumQuantity   Int             @default(0)
+  maximumQuantity   Int?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  business          Business        @relation(fields: [businessId], references: [id])
+  productCategory   ProductCategory @relation(fields: [productCategoryId], references: [id])
+
+  @@index([businessId])
+  @@index([productCategoryId])
+}
+
+model ServiceProvider {
+  id             String        @id @default(uuid())
+  businessId     String
+  userId         String
+  serviceTypes   ServiceType[]
+  isAvailable    Boolean       @default(true)
+  rating         Float         @default(0)
+  experience     Int?
+  certifications String[]
+  schedule       Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  business       Business      @relation(fields: [businessId], references: [id])
+  user           User          @relation(fields: [userId], references: [id])
+
+  @@unique([businessId, userId])
+  @@index([serviceTypes])
+}
+
+model Supplier {
+  id            String   @id @default(uuid())
+  businessId    String
+  name          String
+  contactPerson String?
+  email         String
+  phone         String
+  address       String?
+  products      String[]
+  leadTime      Int?
+  paymentTerms  String?
+  rating        Float    @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  business      Business @relation(fields: [businessId], references: [id])
+
+  @@index([businessId])
+  @@index([products])
+}
+
+model ServiceAgreement {
+  id                String            @id @default(uuid())
+  businessId        String
+  clientId          String
+  serviceCategoryId String
+  title             String
+  description       String?
+  startDate         DateTime
+  endDate           DateTime?
+  paymentModel      PaymentModel
+  paymentFrequency  PaymentFrequency?
+  totalAmount       Decimal           @db.Decimal(12, 2)
+  currency          Currency          @default(KES)
+  status            String            @default("ACTIVE")
+  terms             Json
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deliverables      Deliverable[]
+  escrow            Escrow[]
+  notifications     Notification[]
+  payments          Payment[]
+  business          Business          @relation(fields: [businessId], references: [id])
+  client            User              @relation("ClientAgreements", fields: [clientId], references: [id])
+  serviceCategory   ServiceCategory   @relation(fields: [serviceCategoryId], references: [id])
+  reviews           ServiceReview[]
+
+  @@index([businessId])
+  @@index([clientId])
+  @@index([status])
+}
+
+model Deliverable {
+  id             String            @id @default(uuid())
+  agreementId    String
+  title          String
+  description    String?
+  dueDate        DateTime
+  amount         Decimal           @db.Decimal(12, 2)
+  status         DeliverableStatus @default(PENDING)
+  completionDate DateTime?
+  approvalDate   DateTime?
+  feedback       String?
+  revisions      Int               @default(0)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  agreement      ServiceAgreement  @relation(fields: [agreementId], references: [id])
+  notifications  Notification[]
+
+  @@index([agreementId])
+  @@index([status])
+}
+
+model Escrow {
+  id                String           @id @default(uuid())
+  agreementId       String
+  amount            Decimal          @db.Decimal(12, 2)
+  currency          Currency         @default(KES)
+  status            EscrowStatus     @default(ACTIVE)
+  releaseConditions Json
+  releaseDate       DateTime?
+  disputeReason     String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  agreement         ServiceAgreement @relation(fields: [agreementId], references: [id])
+  notifications     Notification[]
+
+  @@index([agreementId])
+  @@index([status])
+}
+
+model Payment {
+  id              String            @id @default(uuid())
+  agreementId     String
+  amount          Decimal           @db.Decimal(12, 2)
+  currency        Currency          @default(KES)
+  paymentMethod   PaymentMethod
+  status          PaymentStatus     @default(PENDING)
+  transactionHash String?
+  paymentDate     DateTime?
+  dueDate         DateTime?
+  isRecurring     Boolean           @default(false)
+  frequency       PaymentFrequency?
+  nextPaymentDate DateTime?
+  metadata        Json?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  notifications   Notification[]
+  agreement       ServiceAgreement  @relation(fields: [agreementId], references: [id])
+
+  @@index([agreementId])
+  @@index([status])
+  @@index([transactionHash])
+}
+
+model ServiceReview {
+  id          String           @id @default(uuid())
+  agreementId String
+  rating      Int
+  comment     String?
+  isPublic    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  agreement   ServiceAgreement @relation(fields: [agreementId], references: [id])
+
+  @@index([agreementId])
+}
+
+model Notification {
+  id            String                  @id @default(uuid())
+  type          NotificationType
+  priority      NotificationPriority    @default(MEDIUM)
+  status        NotificationStatus      @default(PENDING)
+  title         String
+  data          Json?
+  channels      NotificationChannel[]
+  recipientId   String
+  senderId      String?
+  businessId    String?
+  agreementId   String?
+  deliverableId String?
+  paymentId     String?
+  escrowId      String?
+  disputeId     String?
+  orderId       String?
+  productId     String?
+  serviceId     String?
+  scheduledAt   DateTime?
+  sentAt        DateTime?
+  deliveredAt   DateTime?
+  readAt        DateTime?
+  expiresAt     DateTime?
+  retryCount    Int                     @default(0)
+  lastRetryAt   DateTime?
+  metadata      Json?
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+  groupId       String?
+  isInteractive Boolean                 @default(false)
+  isGrouped     Boolean                 @default(false)
+  isSilent      Boolean                 @default(false)
+  isPersistent  Boolean                 @default(false)
+  badgeCount    Int?
+  deepLink      String?
+  category      String?
+  tags          String[]
+  customData    Json?
+  archivedAt    DateTime?
+  deletedAt     DateTime?
+  contentBlocks ContentBlock[]
+  agreement     ServiceAgreement?       @relation(fields: [agreementId], references: [id])
+  business      Business?               @relation(fields: [businessId], references: [id])
+  deliverable   Deliverable?            @relation(fields: [deliverableId], references: [id])
+  dispute       Dispute?                @relation(fields: [disputeId], references: [id])
+  escrow        Escrow?                 @relation(fields: [escrowId], references: [id])
+  group         NotificationGroup?      @relation(fields: [groupId], references: [id])
+  order         Order?                  @relation(fields: [orderId], references: [id])
+  payment       Payment?                @relation(fields: [paymentId], references: [id])
+  product       Product?                @relation(fields: [productId], references: [id])
+  recipient     User                    @relation("ReceivedNotifications", fields: [recipientId], references: [id])
+  sender        User?                   @relation("SentNotifications", fields: [senderId], references: [id])
+  service       Service?                @relation(fields: [serviceId], references: [id])
+  actions       NotificationAction[]
+  analytics     NotificationAnalytics[]
+  logs          NotificationLog[]
+
+  @@index([recipientId])
+  @@index([type])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+model NotificationPreference {
+  id         String              @id @default(uuid())
+  userId     String
+  type       NotificationType
+  channel    NotificationChannel
+  isEnabled  Boolean             @default(true)
+  frequency  String?
+  quietHours Json?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  user       User                @relation(fields: [userId], references: [id])
+
+  @@unique([userId, type, channel])
+  @@index([userId])
+}
+
+model NotificationTemplate {
+  id               String                @id @default(uuid())
+  type             NotificationType      @unique
+  title            String
+  message          String
+  variables        Json?
+  defaultChannels  NotificationChannel[]
+  isActive         Boolean               @default(true)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  category         String
+  version          Int                   @default(1)
+  language         String                @default("en")
+  isDefault        Boolean               @default(false)
+  metadata         Json?
+  preview          String?
+  validationRules  Json?
+  fallbackTemplate String?
+
+  @@index([isActive])
+}
+
+model NotificationLog {
+  id             String              @id @default(uuid())
+  notificationId String
+  channel        NotificationChannel
+  status         NotificationStatus
+  error          String?
+  metadata       Json?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  notification   Notification        @relation(fields: [notificationId], references: [id])
+
+  @@index([notificationId])
+  @@index([status])
+}
+
+model NotificationAction {
+  id             String       @id @default(uuid())
+  notificationId String
+  label          String
+  action         String
+  type           String
+  data           Json?
+  isPrimary      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  notification   Notification @relation(fields: [notificationId], references: [id])
+
+  @@index([notificationId])
+}
+
+model NotificationGroup {
+  id            String           @id @default(uuid())
+  type          NotificationType
+  title         String
+  description   String?
+  isRead        Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  notifications Notification[]
+  users         User[]           @relation("UserNotificationGroups")
+
+  @@index([type])
+  @@index([isRead])
+}
+
+model NotificationSettings {
+  id         String              @id @default(uuid())
+  userId     String
+  category   String
+  type       NotificationType?
+  channel    NotificationChannel
+  isEnabled  Boolean             @default(true)
+  frequency  String?
+  quietHours Json?
+  filters    Json?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  user       User                @relation(fields: [userId], references: [id])
+
+  @@unique([userId, category, type, channel])
+  @@index([userId])
+}
+
+model NotificationAnalytics {
+  id              String              @id @default(uuid())
+  notificationId  String
+  channel         NotificationChannel
+  sentCount       Int                 @default(0)
+  deliveredCount  Int                 @default(0)
+  readCount       Int                 @default(0)
+  clickCount      Int                 @default(0)
+  actionCount     Int                 @default(0)
+  errorCount      Int                 @default(0)
+  avgDeliveryTime Int?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  notification    Notification        @relation(fields: [notificationId], references: [id])
+
+  @@index([notificationId])
+  @@index([channel])
+}
+
+model MessageTemplate {
+  id        String   @id @default(uuid())
+  type      String
+  title     String
+  content   String
+  variables String[]
+  isActive  Boolean  @default(true)
+  language  String   @default("en")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([type, language])
+  @@index([isActive])
+}
+
+model MessageQueue {
+  id            String    @id @default(uuid())
+  messageId     String    @unique
+  status        String
+  retryCount    Int       @default(0)
+  lastAttemptAt DateTime?
+  nextAttemptAt DateTime?
+  error         String?
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  message       Message   @relation(fields: [messageId], references: [id])
+
+  @@index([messageId])
+  @@index([status])
+  @@index([nextAttemptAt])
+}
+
+model MessageAnalytics {
+  id               String       @id @default(uuid())
+  conversationId   String
+  totalMessages    Int          @default(0)
+  totalAttachments Int          @default(0)
+  totalCalls       Int          @default(0)
+  avgResponseTime  Int?
+  peakActivityTime String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  conversation     Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+}
+
+model ContentBlock {
+  id             String         @id @default(uuid())
+  type           ContentType
+  content        String
+  metadata       Json?
+  order          Int
+  parentId       String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  messageId      String?
+  notificationId String?
+  message        Message?       @relation(fields: [messageId], references: [id])
+  notification   Notification?  @relation(fields: [notificationId], references: [id])
+  parent         ContentBlock?  @relation("NestedContent", fields: [parentId], references: [id])
+  nestedContent  ContentBlock[] @relation("NestedContent")
+  forms          Form[]
+  media          Media[]
+  polls          Poll[]
+
+  @@index([type])
+  @@index([parentId])
+  @@index([messageId])
+  @@index([notificationId])
+}
+
+model Media {
+  id             String        @id @default(uuid())
+  type           ContentType
+  url            String
+  filename       String?
+  size           Int?
+  width          Int?
+  height         Int?
+  duration       Int?
+  thumbnail      String?
+  metadata       Json?
+  contentBlockId String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  contentBlock   ContentBlock? @relation(fields: [contentBlockId], references: [id])
+
+  @@index([type])
+  @@index([contentBlockId])
+}
+
+model Poll {
+  id             String       @id @default(uuid())
+  question       String
+  isMultiChoice  Boolean      @default(false)
+  endDate        DateTime?
+  isClosed       Boolean      @default(false)
+  contentBlockId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  contentBlock   ContentBlock @relation(fields: [contentBlockId], references: [id])
+  options        PollOption[]
+  votes          PollVote[]
+
+  @@index([contentBlockId])
+}
+
+model PollOption {
+  id        String     @id @default(uuid())
+  pollId    String
+  text      String
+  votes     Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  poll      Poll       @relation(fields: [pollId], references: [id])
+  pollVotes PollVote[]
+
+  @@index([pollId])
+}
+
+model PollVote {
+  id        String     @id @default(uuid())
+  pollId    String
+  optionId  String
+  userId    String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  option    PollOption @relation(fields: [optionId], references: [id])
+  poll      Poll       @relation(fields: [pollId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
+
+  @@unique([pollId, userId])
+  @@index([pollId])
+  @@index([userId])
+}
+
+model Form {
+  id             String           @id @default(uuid())
+  title          String
+  description    String?
+  isActive       Boolean          @default(true)
+  contentBlockId String
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  contentBlock   ContentBlock     @relation(fields: [contentBlockId], references: [id])
+  fields         FormField[]
+  submissions    FormSubmission[]
+
+  @@index([contentBlockId])
+}
+
+model FormField {
+  id          String         @id @default(uuid())
+  formId      String
+  type        String
+  label       String
+  placeholder String?
+  required    Boolean        @default(false)
+  options     String[]
+  validation  Json?
+  order       Int
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  form        Form           @relation(fields: [formId], references: [id])
+  responses   FormResponse[]
+
+  @@index([formId])
+}
+
+model FormSubmission {
+  id          String         @id @default(uuid())
+  formId      String
+  userId      String
+  submittedAt DateTime       @default(now())
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  responses   FormResponse[]
+  form        Form           @relation(fields: [formId], references: [id])
+  user        User           @relation(fields: [userId], references: [id])
+
+  @@index([formId])
+  @@index([userId])
+}
+
+model FormResponse {
+  id           String         @id @default(uuid())
+  submissionId String
+  fieldId      String
+  value        String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  field        FormField      @relation(fields: [fieldId], references: [id])
+  submission   FormSubmission @relation(fields: [submissionId], references: [id])
+
+  @@index([submissionId])
+  @@index([fieldId])
+}
+
+model VerificationCode {
+  id        String   @id @default(cuid())
+  email     String
+  code      String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  used      Boolean  @default(false)
+
+  @@index([email])
+  @@index([code])
+}
 
 enum Gender {
   MALE
@@ -50,8 +1241,8 @@ enum OrderStatus {
   SHIPPED
   DELIVERED
   CANCELLED
-  DISPUTED // Added status for dispute link
-  COMPLETED // Added final positive status
+  DISPUTED
+  COMPLETED
 }
 
 enum PaymentStatus {
@@ -59,6 +1250,11 @@ enum PaymentStatus {
   PAID
   FAILED
   REFUNDED
+  HELD_IN_ESCROW
+  PARTIALLY_RELEASED
+  FULLY_RELEASED
+  DISPUTED
+  CANCELLED
 }
 
 enum CartStatus {
@@ -84,8 +1280,18 @@ enum DisputeStatus {
 enum TeamRole {
   OWNER
   ADMIN
-  MEMBER
-  VIEWER
+  STORE_MANAGER
+  FINANCE_MANAGER
+  CUSTOMER_SERVICE_LEAD
+  MARKETING_MANAGER
+  LOGISTICS_COORDINATOR
+  INVENTORY_MANAGER
+  CONTENT_CREATOR
+  SOCIAL_MEDIA_MANAGER
+  QUALITY_ASSURANCE
+  TECHNICAL_SUPPORT
+  SALES_REPRESENTATIVE
+  PROCUREMENT_OFFICER
 }
 
 enum ContentStatus {
@@ -114,343 +1320,384 @@ enum UserStatus {
   INACTIVE
 }
 
-
-// --- Models ---
-
-model User {
-  // Required fields for initial registration
-  id                 String   @id @default(uuid())
-  name               String   // Required: User's full name
-  email              String   @unique  // Required: Email for notifications and login
-  password           String   // Required: Hashed password
-  walletAddress      String   @unique  // Required: Blockchain wallet address
-  acceptBlockchainStorage Boolean @default(true) // Required: User consent
-  
-  // System-managed fields (automatically set)
-  status             UserStatus @default(ACTIVE)
-  role               String   @default("USER")
-  verificationStatus VerificationStatus @default(PENDING)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  lastLogin          DateTime @default(now())
-
-  // Optional fields (can be updated later)
-  blockchainTxHash   String?  // Set when user data is stored on blockchain
-  ipfsUrl            String?  // Set when user data is stored on IPFS
-  ipfsMetadata       Json?    // Additional IPFS metadata
-  profileImage       String?  // Profile picture URL
-  gender             Gender?  // User's gender
-  dob                DateTime? // Date of birth
-  phoneNumber        String?  // Contact number
-  bio                String?  @db.Text // User biography
-  preferences        Json?    // User preferences {theme: "light", notifications: {email: true, push: true}, language: "en"}
-  metadata           Json?    // Additional metadata {businesses: []}
-
-  // Relationships (established as needed)
-  business           Business?
-  orders             Order[]
-  cart               Cart?
-  sentMessages       Message[]             @relation("SenderMessages")
-  receivedMessages   Message[]             @relation("ReceiverMessages")
-  disputes           Dispute[]
-  teamMemberships    BusinessTeamMember[]
-  chatSessions       ChatSession[]
-  ratings            Rating[]
+enum BusinessOperationMode {
+  ONLINE
+  PHYSICAL
+  HYBRID
 }
 
-model Business {
-  id                 String   @id @default(uuid())
-  userId             String   @unique // Assuming one business per user
-  user               User     @relation(fields: [userId], references: [id])
-  name               String
-  description        String?  @db.Text
-  bio                String?  @db.Text  // Added bio field
-  type               BusinessType
-  category           String   // General category (e.g., "Electronics", "Consulting")
-  productCategories  String[] // Specific product tags/categories
-  serviceCategories  String[] // Specific service tags/categories
-  status             BusinessStatus @default(ACTIVE)
-  verificationStatus VerificationStatus @default(PENDING)
-  
-  // Contact Information
-  email              String   @unique
-  phone              String
-  address            String   // Physical address
-  
-  // Media
-  logo               String?
-  coverImage         String?
-  images             String[] // Array of image URLs
-  
-  // Business Configuration
-  businessModel      String   // e.g., "B2B", "B2C", "D2C"
-  operationMode      String   // e.g., "ONLINE", "PHYSICAL", "HYBRID"
-  paymentMethods     String[] // Accepted payment methods
-  currency           String   @default("KES") // Default to KES
-  revenue            Decimal  @default(0) @db.Decimal(10, 2)
-  businessHours      Json?    // Business operating hours
-  
-  // Blockchain and IPFS
-  blockchainTxHash   String?  // Transaction hash on the blockchain
-  ipfsUrl            String?  // IPFS URL for business data
-  ipfsMetadata       Json?    // Additional IPFS metadata
-  
-  // Ratings (calculated from Rating model)
-  averageRating      Float    @default(0)
-  reviewCount        Int      @default(0)
-  ratings            Rating[] // Relationship to ratings
-  
-  // Additional Data
-  documents          Json?    // Store document URLs and metadata
-  metadata           Json?    // Additional flexible metadata
-  socialMedia        Json?    // Social media links and integration status
-
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-
-  // Relationships
-  products             Product[]
-  services             Service[]
-  orders               Order[]
-  teamMembers          BusinessTeamMember[]
-  socialMediaContent   SocialMediaContent[]
-  chatSessions         ChatSession[]
-  whatsAppIntegration  WhatsApp?
+enum BusinessModel {
+  B2B
+  B2C
+  D2C
+  MARKETPLACE
 }
 
-model Product {
-  id            String   @id @default(uuid())
-  businessId    String
-  business      Business @relation(fields: [businessId], references: [id])
-  name          String
-  description   String?  @db.Text
-  price         Decimal  @db.Decimal(10, 2) // Example precision: 10 total digits, 2 decimal places
-  stock         Int      @default(0)
-  status        ProductStatus @default(ACTIVE)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relationships
-  orderItems     OrderItem[]
-  cartItems      CartItem[]
-  variants       ProductVariant[]
-  analytics      ProductAnalytics?
-  seo            ProductSEO?
+enum Currency {
+  KES
+  USD
+  EUR
+  GBP
 }
 
-model Service {
-  id            String   @id @default(uuid())
-  businessId    String
-  business      Business @relation(fields: [businessId], references: [id])
-  name          String
-  description   String?  @db.Text
-  price         Decimal  @db.Decimal(10, 2)
-  duration      Int?     // Duration in minutes, perhaps? Optional.
-  status        ServiceStatus @default(ACTIVE)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relationships
-  orderItems     OrderItem[]
-  cartItems      CartItem[]
+enum PaymentMethod {
+  MPESA
+  CARD
+  BANK_TRANSFER
+  CASH
+  CRYPTO
 }
 
-model Order {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  businessId    String
-  business      Business @relation(fields: [businessId], references: [id])
-  status        OrderStatus @default(PENDING)
-  totalAmount   Decimal  @db.Decimal(12, 2) // Higher precision for totals
-  paymentStatus PaymentStatus @default(PENDING)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  // Relationships
-  items          OrderItem[]
-  disputes       Dispute[]
+enum BusinessSize {
+  MICRO
+  SMALL
+  MEDIUM
+  LARGE
 }
 
-model OrderItem {
-  id         String   @id @default(uuid())
-  orderId    String
-  order      Order    @relation(fields: [orderId], references: [id])
-  productId  String?  // Can be null if it's a service
-  product    Product? @relation(fields: [productId], references: [id])
-  serviceId  String?  // Can be null if it's a product
-  service    Service? @relation(fields: [serviceId], references: [id])
-  quantity   Int
-  price      Decimal  @db.Decimal(10, 2) // Price per unit at the time of order
-  createdAt  DateTime @default(now())
-
-  // You might add a CHECK constraint in the DB manually
-  // to ensure either productId or serviceId is non-null, but not both.
-  // Prisma schema doesn't directly enforce this specific XOR constraint easily.
+enum BusinessStage {
+  STARTUP
+  GROWTH
+  ESTABLISHED
+  ENTERPRISE
 }
 
-model Cart {
-  id        String     @id @default(uuid())
-  userId    String     @unique // Each user has one cart
-  user      User       @relation(fields: [userId], references: [id])
-  status    CartStatus @default(ACTIVE)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-
-  // Relationships
-  items      CartItem[]
+enum TaxCategory {
+  VAT_REGISTERED
+  NON_VAT
+  TURNOVER_TAX
 }
 
-model CartItem {
-  id         String   @id @default(uuid())
-  cartId     String
-  cart       Cart     @relation(fields: [cartId], references: [id])
-  productId  String?
-  product    Product? @relation(fields: [productId], references: [id])
-  serviceId  String?
-  service    Service? @relation(fields: [serviceId], references: [id])
-  quantity   Int
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt // Track when item was last updated in cart
-
-  @@unique([cartId, productId]) // Prevent duplicate product in the same cart (adjust if variants change this)
-  @@unique([cartId, serviceId]) // Prevent duplicate service in the same cart
+enum ShippingMethod {
+  LOCAL_DELIVERY
+  NATIONWIDE
+  INTERNATIONAL
+  PICKUP_ONLY
 }
 
-model Message {
-  id            String   @id @default(uuid())
-  senderId      String
-  sender        User     @relation("SenderMessages", fields: [senderId], references: [id])
-  receiverId    String
-  receiver      User     @relation("ReceiverMessages", fields: [receiverId], references: [id])
-  content       String   @db.Text
-  status        MessageStatus @default(SENT)
-  createdAt     DateTime @default(now())
-  chatSessionId String?  // Link to a specific chat session
-  chatSession   ChatSession? @relation(fields: [chatSessionId], references: [id])
-
-   @@index([senderId])
-   @@index([receiverId])
-   @@index([chatSessionId])
+enum VerificationType {
+  BUSINESS_REGISTRATION
+  TAX_COMPLIANCE
+  IDENTITY_VERIFICATION
+  ADDRESS_VERIFICATION
+  BANK_ACCOUNT
+  MOBILE_MONEY
 }
 
-model Dispute {
-  id         String   @id @default(uuid())
-  orderId    String   // Link directly to the order being disputed
-  order      Order    @relation(fields: [orderId], references: [id])
-  userId     String   // User who initiated the dispute
-  user       User     @relation(fields: [userId], references: [id])
-  status     DisputeStatus @default(OPEN)
-  reason     String   @db.Text
-  resolution String?  @db.Text // Details of how it was resolved
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-   @@index([orderId])
-   @@index([userId])
+enum SubscriptionTier {
+  FREE
+  BASIC
+  PREMIUM
+  ENTERPRISE
 }
 
-model BusinessTeamMember {
-  id         String   @id @default(uuid())
-  businessId String
-  business   Business @relation(fields: [businessId], references: [id])
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  role       TeamRole
-  permissions String[] // List of specific permissions keys
-  createdAt  DateTime @default(now())
-
-  @@unique([businessId, userId]) // A user can only have one role per business
+enum ServiceType {
+  CONSULTATION
+  REPAIR
+  MAINTENANCE
+  INSTALLATION
+  TRAINING
+  SUPPORT
+  CUSTOM
 }
 
-model ProductVariant {
-  id            String   @id @default(uuid())
-  productId     String
-  product       Product  @relation(fields: [productId], references: [id])
-  name          String   // e.g., "Color", "Size"
-  value         String   // e.g., "Red", "Large" - Consider separate Option/Value models for more structure
-  price         Decimal  @db.Decimal(10, 2) // Price for this specific variant
-  stock         Int
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  @@unique([productId, name, value]) // Ensure unique variant combination per product
+enum ProductType {
+  PHYSICAL
+  DIGITAL
+  SUBSCRIPTION
+  RENTAL
 }
 
-model ProductAnalytics {
-  id         String   @id @default(uuid())
-  productId  String   @unique // One analytics entry per product
-  product    Product  @relation(fields: [productId], references: [id])
-  views      Int      @default(0)
-  purchases  Int      @default(0)
-  revenue    Decimal  @default(0.00) @db.Decimal(12, 2)
-  lastUpdated DateTime @updatedAt
+enum InventoryManagement {
+  NONE
+  BASIC
+  ADVANCED
+  DROPSHIPPING
 }
 
-model ProductSEO {
-  id          String   @id @default(uuid())
-  productId   String   @unique // One SEO entry per product
-  product     Product  @relation(fields: [productId], references: [id])
-  title       String?
-  description String?  @db.Text
-  keywords    String[]
-  lastUpdated DateTime @updatedAt
+enum ServiceDeliveryMode {
+  ONSITE
+  REMOTE
+  HYBRID
 }
 
-model SocialMediaContent {
-  id          String   @id @default(uuid())
-  businessId  String
-  business    Business @relation(fields: [businessId], references: [id])
-  platform    String   // e.g., "FACEBOOK", "TWITTER", "INSTAGRAM"
-  content     String   @db.Text
-  status      ContentStatus @default(DRAFT)
-  scheduledAt DateTime? // Time it's scheduled to be posted
-  postedAt    DateTime? // Time it was actually posted
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  @@index([businessId])
+enum ServiceDurationUnit {
+  MINUTES
+  HOURS
+  DAYS
+  WEEKS
+  MONTHS
 }
 
-model ChatSession {
-  id            String   @id @default(uuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  businessId    String
-  business      Business @relation(fields: [businessId], references: [id])
-  status        ChatStatus @default(OPEN)
-  createdAt     DateTime @default(now())
-  lastMessageAt DateTime? // Timestamp of the last message in the session
-  updatedAt     DateTime @updatedAt
-
-  messages      Message[] // Messages belonging to this session
-
-  @@unique([userId, businessId]) // Only one open session between a user and a business
+enum DigitalServiceType {
+  SOFTWARE_DEVELOPMENT
+  WEB_DEVELOPMENT
+  MOBILE_APP_DEVELOPMENT
+  UI_UX_DESIGN
+  GRAPHIC_DESIGN
+  CONTENT_CREATION
+  SOCIAL_MEDIA_MANAGEMENT
+  DIGITAL_MARKETING
+  SEO_SERVICES
+  VIDEO_PRODUCTION
+  DATA_ANALYTICS
+  CLOUD_SERVICES
+  IT_CONSULTING
+  CYBERSECURITY
+  CUSTOM
 }
 
-model WhatsApp {
-  id          String   @id @default(uuid())
-  businessId  String   @unique // One WhatsApp config per business
-  business    Business @relation(fields: [businessId], references: [id])
-  phoneNumber String   @unique // The WhatsApp Business API number
-  status      IntegrationStatus @default(PENDING_VERIFICATION)
-  apiKey      String?  // Potentially sensitive, manage access carefully
-  lastSync    DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+enum PaymentModel {
+  ONE_TIME
+  RECURRING
+  SUBSCRIPTION
+  PAY_PER_USE
+  MILESTONE_BASED
+  TIME_BASED
+  VALUE_BASED
 }
 
-model Rating {
-  id            String   @id @default(uuid())
-  businessId    String
-  business      Business @relation(fields: [businessId], references: [id])
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  rating        Float    // The actual rating value (e.g., 1-5)
-  review        String?  @db.Text
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+enum PaymentFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+  CUSTOM
+}
 
-  @@index([businessId])
-  @@index([userId])
-} 
+enum DeliverableStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  APPROVED
+  REJECTED
+  REVISED
+}
+
+enum EscrowStatus {
+  ACTIVE
+  RELEASED
+  REFUNDED
+  DISPUTED
+  EXPIRED
+}
+
+enum NotificationType {
+  USER_REGISTERED
+  USER_VERIFIED
+  USER_UPDATED
+  PASSWORD_CHANGED
+  EMAIL_CHANGED
+  PHONE_CHANGED
+  PROFILE_UPDATED
+  ACCOUNT_SUSPENDED
+  ACCOUNT_DELETED
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGIN_ATTEMPT
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  API_KEY_CREATED
+  API_KEY_REVOKED
+  BUSINESS_CREATED
+  BUSINESS_UPDATED
+  BUSINESS_VERIFIED
+  BUSINESS_SUSPENDED
+  BUSINESS_DELETED
+  BUSINESS_INVITATION
+  BUSINESS_ROLE_CHANGED
+  BUSINESS_PERMISSION_CHANGED
+  BUSINESS_SETTINGS_UPDATED
+  BUSINESS_ANALYTICS_READY
+  SERVICE_CREATED
+  SERVICE_UPDATED
+  SERVICE_DELETED
+  PRODUCT_CREATED
+  PRODUCT_UPDATED
+  PRODUCT_DELETED
+  PRODUCT_OUT_OF_STOCK
+  PRODUCT_BACK_IN_STOCK
+  INVENTORY_LOW
+  INVENTORY_CRITICAL
+  PRICE_CHANGED
+  DISCOUNT_ADDED
+  DISCOUNT_EXPIRED
+  ORDER_CREATED
+  ORDER_UPDATED
+  ORDER_COMPLETED
+  ORDER_CANCELLED
+  ORDER_DISPUTED
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  PAYMENT_REFUNDED
+  PAYMENT_DISPUTED
+  INVOICE_GENERATED
+  INVOICE_PAID
+  INVOICE_OVERDUE
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_UPDATED
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_RENEWED
+  SUBSCRIPTION_EXPIRED
+  AGREEMENT_CREATED
+  AGREEMENT_UPDATED
+  AGREEMENT_COMPLETED
+  AGREEMENT_CANCELLED
+  AGREEMENT_EXPIRED
+  DELIVERABLE_CREATED
+  DELIVERABLE_UPDATED
+  DELIVERABLE_COMPLETED
+  DELIVERABLE_APPROVED
+  DELIVERABLE_REJECTED
+  DELIVERABLE_REVISED
+  MILESTONE_REACHED
+  MILESTONE_APPROVED
+  MILESTONE_REJECTED
+  ESCROW_CREATED
+  ESCROW_RELEASED
+  ESCROW_REFUNDED
+  ESCROW_DISPUTED
+  DISPUTE_CREATED
+  DISPUTE_UPDATED
+  DISPUTE_RESOLVED
+  DISPUTE_ESCALATED
+  DISPUTE_MESSAGE_ADDED
+  DISPUTE_DOCUMENT_ADDED
+  MESSAGE_RECEIVED
+  MESSAGE_READ
+  MESSAGE_DELETED
+  CHAT_STARTED
+  CHAT_ENDED
+  CHAT_INVITATION
+  CHAT_LEFT
+  CHAT_MUTED
+  CHAT_UNMUTED
+  GROUP_CHAT_CREATED
+  GROUP_CHAT_UPDATED
+  GROUP_CHAT_DELETED
+  GROUP_MEMBER_ADDED
+  GROUP_MEMBER_REMOVED
+  GROUP_MEMBER_LEFT
+  VOICE_CALL_STARTED
+  VOICE_CALL_ENDED
+  VIDEO_CALL_STARTED
+  VIDEO_CALL_ENDED
+  CALL_MISSED
+  CALL_DECLINED
+  REVIEW_RECEIVED
+  REVIEW_UPDATED
+  REVIEW_DELETED
+  REVIEW_REPLIED
+  RATING_RECEIVED
+  RATING_UPDATED
+  FEEDBACK_RECEIVED
+  FEEDBACK_UPDATED
+  SYSTEM_UPDATE
+  SYSTEM_MAINTENANCE
+  SYSTEM_ERROR
+  SECURITY_ALERT
+  SUSPICIOUS_ACTIVITY
+  LOGIN_DEVICE_NEW
+  LOGIN_LOCATION_NEW
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  ACCOUNT_RECOVERY_STARTED
+  ACCOUNT_RECOVERY_COMPLETED
+  DATA_EXPORT_REQUESTED
+  DATA_EXPORT_COMPLETED
+  DATA_DELETION_REQUESTED
+  DATA_DELETION_COMPLETED
+  PROMOTION_CREATED
+  PROMOTION_UPDATED
+  PROMOTION_EXPIRED
+  COUPON_CREATED
+  COUPON_REDEEMED
+  COUPON_EXPIRED
+  LOYALTY_POINTS_EARNED
+  LOYALTY_POINTS_REDEEMED
+  LOYALTY_TIER_CHANGED
+  REFERRAL_SENT
+  REFERRAL_ACCEPTED
+  REFERRAL_REWARDED
+  REPORT_GENERATED
+  REPORT_READY
+  REPORT_FAILED
+  ANALYTICS_READY
+  INSIGHT_GENERATED
+  TREND_DETECTED
+  ABNORMAL_ACTIVITY
+  CUSTOM
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  ARCHIVED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+  IN_APP
+  WEBHOOK
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  LOCATION
+  CONTACT
+  SYSTEM
+  NOTIFICATION
+}
+
+enum MessageDirection {
+  INCOMING
+  OUTGOING
+}
+
+enum MessageEncryption {
+  NONE
+  END_TO_END
+  GROUP
+}
+
+enum ContentType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+  LOCATION
+  CONTACT
+  SYSTEM
+  NOTIFICATION
+  RICH_TEXT
+  EMBED
+  POLL
+  FORM
+  BUTTON
+  CAROUSEL
+  PRODUCT
+  SERVICE
+  ORDER
+  PAYMENT
+  ESCROW
+  DISPUTE
+}

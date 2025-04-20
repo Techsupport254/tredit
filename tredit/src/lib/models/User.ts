@@ -1,8 +1,6 @@
 import { PrismaClient, User as PrismaUser } from "@prisma/client";
 import { hash } from "bcrypt";
-import { prisma } from "@/lib/prisma";
-
-const prismaClient = new PrismaClient();
+import prisma from "@/lib/prisma";
 
 export class User {
 	static async create(data: {
@@ -11,61 +9,85 @@ export class User {
 		password: string;
 		walletAddress: string;
 	}): Promise<PrismaUser> {
-		const hashedPassword = await hash(data.password, 10);
+		try {
+			const hashedPassword = await hash(data.password, 10);
 
-		return prismaClient.user.create({
-			data: {
-				name: data.name,
-				email: data.email,
-				walletAddress: data.walletAddress,
-				password: hashedPassword,
-				status: "ACTIVE",
-				verificationStatus: "PENDING",
-				acceptBlockchainStorage: true,
-				role: "USER",
-			},
-		});
+			return await prisma.user.create({
+				data: {
+					name: data.name,
+					email: data.email,
+					walletAddress: data.walletAddress,
+					password: hashedPassword,
+					status: "ACTIVE",
+					verificationStatus: "PENDING",
+					acceptBlockchainStorage: true,
+					role: "USER",
+				},
+			});
+		} catch (error) {
+			console.error("Error creating user:", error);
+			throw error;
+		}
 	}
 
 	static async findByEmail(email: string): Promise<PrismaUser | null> {
-		return prisma.user.findUnique({
-			where: { email },
-		});
+		try {
+			if (!email) {
+				throw new Error("Email is required");
+			}
+			return await prisma.user.findUnique({
+				where: { email },
+			});
+		} catch (error) {
+			console.error("Error finding user by email:", error);
+			throw error;
+		}
 	}
 
 	static async findByWalletAddress(
 		walletAddress: string
 	): Promise<PrismaUser | null> {
-		return prisma.user.findUnique({
-			where: { walletAddress },
-		});
+		try {
+			if (!walletAddress) {
+				throw new Error("Wallet address is required");
+			}
+			return await prisma.user.findUnique({
+				where: { walletAddress },
+			});
+		} catch (error) {
+			console.error("Error finding user by wallet address:", error);
+			throw error;
+		}
 	}
 
 	static async updateProfile(
 		userId: string,
 		data: Partial<PrismaUser>
 	): Promise<PrismaUser> {
-		return prismaClient.user.update({
-			where: { id: userId },
-			data,
-		});
+		try {
+			if (!userId) {
+				throw new Error("User ID is required");
+			}
+			return await prisma.user.update({
+				where: { id: userId },
+				data,
+			});
+		} catch (error) {
+			console.error("Error updating user profile:", error);
+			throw error;
+		}
 	}
 }
 
-export async function findByEmail(email: string) {
-	return prisma.user.findUnique({
-		where: {
-			email,
-		},
-	});
+// Export these functions for backward compatibility
+export async function findByEmail(email: string): Promise<PrismaUser | null> {
+	return User.findByEmail(email);
 }
 
-export async function findByWalletAddress(walletAddress: string) {
-	return prisma.user.findUnique({
-		where: {
-			walletAddress,
-		},
-	});
+export async function findByWalletAddress(
+	walletAddress: string
+): Promise<PrismaUser | null> {
+	return User.findByWalletAddress(walletAddress);
 }
 
 export async function createUser(data: {
@@ -73,8 +95,6 @@ export async function createUser(data: {
 	password: string;
 	name: string;
 	walletAddress: string;
-}) {
-	return prisma.user.create({
-		data,
-	});
+}): Promise<PrismaUser> {
+	return User.create(data);
 }

@@ -1,4 +1,5 @@
-@import "tailwindcss/preflight";
+@tailwind base;
+@tailwind components;
 @tailwind utilities;
 
 /* Base styles using CSS variables for light/dark mode */
@@ -83,4 +84,66 @@ body {
 /* Enhance hover effects */
 .hover\:scale-105:hover {
   transform: scale(1.05);
+}
+
+/* Global Form Styles */
+.form-input,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+input[type="search"],
+input[type="date"],
+textarea,
+select {
+  @apply w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:ring-blue-500 sm:text-sm;
+  appearance: none;
+  min-height: 38px;
+}
+
+.form-label {
+  @apply block text-sm font-medium text-gray-700 mb-1;
+}
+
+.form-error {
+  @apply mt-1 text-sm text-red-600;
+}
+
+.form-button {
+  @apply inline-flex justify-center items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed;
+  min-height: 38px;
+}
+
+.form-button-secondary {
+  @apply inline-flex justify-center items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed;
+  min-height: 38px;
+}
+
+/* Form Group Spacing */
+.form-group {
+  @apply space-y-6;
+}
+
+.form-group>div {
+  @apply space-y-1;
+}
+
+/* Toggle Switch Styles */
+.toggle-checkbox:checked {
+  @apply right-0 border-blue-600;
+}
+
+.toggle-checkbox:checked+.toggle-label {
+  @apply bg-blue-600;
+}
+
+.toggle-checkbox {
+  @apply right-4 border-gray-300;
+  transition: all 0.3s ease-in-out;
+}
+
+.toggle-label {
+  transition: background-color 0.3s ease-in-out;
 }

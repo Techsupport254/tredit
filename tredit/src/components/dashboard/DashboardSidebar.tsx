@@ -2,88 +2,147 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/lib/auth/AuthContext";
 import {
 	HomeIcon,
 	ShoppingBagIcon,
 	UserIcon,
 	CreditCardIcon,
-	ChatBubbleLeftRightIcon,
 	Cog6ToothIcon,
-	ArrowRightOnRectangleIcon,
+	BuildingOfficeIcon,
+	ChatBubbleLeftRightIcon,
+	ExclamationTriangleIcon,
+	DocumentTextIcon,
+	ShieldCheckIcon,
+	BanknotesIcon,
+	ArrowLeftIcon,
 } from "@heroicons/react/24/outline";
+import { cn } from "@/lib/utils";
 
-const menuItems = [
-	{ name: "Dashboard", href: "/dashboard", icon: HomeIcon },
-	{ name: "Products", href: "/dashboard/products", icon: ShoppingBagIcon },
-	{ name: "Profile", href: "/dashboard/profile", icon: UserIcon },
-	{
-		name: "Transactions",
-		href: "/dashboard/transactions",
-		icon: CreditCardIcon,
-	},
-	{
-		name: "Messages",
-		href: "/dashboard/messages",
-		icon: ChatBubbleLeftRightIcon,
-	},
-	{ name: "Settings", href: "/dashboard/settings", icon: Cog6ToothIcon },
-];
+type NavigationItem = {
+	name: string;
+	href: any;
+	icon: React.ElementType;
+	badge?: string;
+};
 
 export default function DashboardSidebar() {
 	const pathname = usePathname();
-	const { logout } = useAuth();
 
-	const isActive = (path: string) => {
-		return pathname === path || pathname.startsWith(`${path}/`);
-	};
+	const navigation: NavigationItem[] = [
+		{ name: "Dashboard", href: "/dashboard", icon: HomeIcon },
+		{
+			name: "Businesses",
+			href: "/dashboard/businesses",
+			icon: BuildingOfficeIcon,
+		},
+		{
+			name: "Products",
+			href: "/dashboard/products",
+			icon: ShoppingBagIcon,
+		},
+		{
+			name: "Profile",
+			href: "/dashboard/profile",
+			icon: UserIcon,
+		},
+		{
+			name: "Transactions",
+			href: "/dashboard/transactions",
+			icon: CreditCardIcon,
+			badge: "3",
+		},
+		{
+			name: "Disputes",
+			href: "/dashboard/disputes",
+			icon: ExclamationTriangleIcon,
+		},
+		{
+			name: "Messages",
+			href: "/dashboard/messages",
+			icon: ChatBubbleLeftRightIcon,
+		},
+		{
+			name: "Documents",
+			href: "/dashboard/documents",
+			icon: DocumentTextIcon,
+		},
+		{
+			name: "Escrow",
+			href: "/dashboard/escrow",
+			icon: ShieldCheckIcon,
+		},
+		{
+			name: "Payments",
+			href: "/dashboard/payments",
+			icon: BanknotesIcon,
+		},
+		{
+			name: "Settings",
+			href: "/dashboard/settings",
+			icon: Cog6ToothIcon,
+		},
+	];
 
 	return (
-		<div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0">
-			<div className="flex-1 flex flex-col min-h-0 bg-white border-r border-gray-200">
-				<div className="flex items-center h-16 flex-shrink-0 px-4 border-b border-gray-200">
-					<Link href="/" className="flex items-center space-x-2">
-						<img className="h-8 w-auto" src="/favicon.svg" alt="Tredit Logo" />
-						<span className="text-lg font-semibold text-gray-900">Tredit</span>
-					</Link>
-				</div>
-				<div className="flex-1 flex flex-col overflow-y-auto pt-5 pb-4">
-					<nav className="mt-5 flex-1 px-4 space-y-1">
-						{menuItems.map((item) => (
-							<Link
-								key={item.name}
-								href={item.href}
-								className={`group flex items-center px-3 py-2 text-sm font-medium rounded-md ${
-									isActive(item.href)
-										? "bg-blue-50 text-blue-600"
-										: "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
-								}`}
-							>
-								<item.icon
-									className={`mr-3 flex-shrink-0 h-5 w-5 ${
-										isActive(item.href)
-											? "text-blue-500"
-											: "text-gray-400 group-hover:text-gray-500"
-									}`}
-									aria-hidden="true"
-								/>
-								{item.name}
-							</Link>
-						))}
-					</nav>
-				</div>
-				<div className="flex-shrink-0 flex border-t border-gray-200 p-4">
-					<button
-						onClick={logout}
-						className="flex-shrink-0 w-full group flex items-center px-3 py-2 text-sm font-medium rounded-md text-red-600 hover:bg-red-50"
-					>
-						<ArrowRightOnRectangleIcon
-							className="mr-3 flex-shrink-0 h-5 w-5 text-red-500"
-							aria-hidden="true"
-						/>
-						Logout
-					</button>
-				</div>
+		<div className="w-64 flex flex-col h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800">
+			{/* Logo Section */}
+			<div className="flex flex-col items-center justify-center p-6">
+				<Link href="/dashboard" className="flex flex-col items-center">
+					<img src="/logo.svg" alt="Tredit" className="h-12 w-auto" />
+					<span className="mt-2 text-gray-500 dark:text-gray-400 text-lg font-bold">
+						TredIT
+					</span>
+				</Link>
+			</div>
+
+			{/* Navigation */}
+			<nav className="flex-1 overflow-y-auto py-4">
+				<ul className="space-y-1 px-3">
+					{navigation.map((item) => {
+						const isActive = pathname === item.href;
+						return (
+							<li key={item.href}>
+								<Link
+									href={item.href}
+									className={cn(
+										"flex items-center gap-3 rounded-lg px-3 py-2 transition-colors",
+										isActive
+											? "bg-blue-50 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
+											: "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+									)}
+								>
+									<item.icon
+										className={cn(
+											"h-5 w-5",
+											isActive
+												? "text-blue-600 dark:text-blue-400"
+												: "text-gray-400 dark:text-gray-500"
+										)}
+									/>
+									<div className="flex items-center justify-between flex-1">
+										<span>{item.name}</span>
+										{item.badge && (
+											<span className="px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400 rounded-full">
+												{item.badge}
+											</span>
+										)}
+									</div>
+								</Link>
+							</li>
+						);
+					})}
+				</ul>
+			</nav>
+
+			{/* Back to Home Link */}
+			<div className="p-4 border-t border-gray-200 dark:border-gray-800">
+				<Link
+					href="/"
+					className="flex items-center gap-3 px-3 py-2 text-gray-700 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+				>
+					<ArrowLeftIcon className="h-5 w-5" />
+					<span>Back to Home</span>
+				</Link>
 			</div>
 		</div>
 	);
