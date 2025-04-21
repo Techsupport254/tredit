@@ -183,54 +183,44 @@ export default function BusinessDetailsPage({
 
 	useEffect(() => {
 		const fetchAllChannelData = async () => {
-			console.log("Fetching channel data for connections:", connections);
 			const data: Record<string, ChannelData | null> = {};
 			for (const connection of connections) {
-				console.log("Processing connection:", connection);
-				if (connection.connected && connection.accessToken) {
+				if (connection.connected && connection.channelId) {
 					try {
 						if (connection.platform === "YOUTUBE") {
-							console.log(
-								"Fetching YouTube data with token:",
-								connection.accessToken
-							);
-							const response = await axios.get(
-								"https://www.googleapis.com/youtube/v3/channels",
-								{
-									params: {
-										part: "snippet",
-										mine: true,
-									},
-									headers: {
-										Authorization: `Bearer ${connection.accessToken}`,
-									},
-								}
+							const response = await fetch(
+								`/api/youtube?businessId=${params.id}&action=channel`
 							);
 
-							console.log("YouTube API response:", response.data);
-							const channel = response.data.items[0];
+							if (!response.ok) {
+								console.error(
+									"Failed to fetch YouTube data:",
+									await response.text()
+								);
+								data[connection.platform] = null;
+								continue;
+							}
+
+							const channelData = await response.json();
 							data[connection.platform] = {
-								channelName: channel.snippet.title,
-								channelId: channel.id,
-								accountImage: channel.snippet.thumbnails.default.url,
+								channelName: channelData.title,
+								channelId: channelData.id,
+								accountImage: channelData.thumbnails.default.url,
 							};
-							console.log("Processed channel data:", data[connection.platform]);
 						}
-						// Add other platforms here
-					} catch (error) {
+					} catch (error: any) {
 						console.error(`Error fetching ${connection.platform} data:`, error);
 						data[connection.platform] = null;
 					}
 				}
 			}
-			console.log("Setting channel data:", data);
 			setChannelData(data);
 		};
 
 		if (connections.length > 0) {
 			fetchAllChannelData();
 		}
-	}, [connections]);
+	}, [connections, params.id]);
 
 	const fetchBusinessDetails = async () => {
 		try {
@@ -298,7 +288,6 @@ export default function BusinessDetailsPage({
 
 	const handleConnect = async (platform: string) => {
 		try {
-			// For YouTube, construct auth URL
 			if (platform.toLowerCase() === "youtube") {
 				const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 				const redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
@@ -313,10 +302,10 @@ export default function BusinessDetailsPage({
 					`client_id=${clientId}&` +
 					`redirect_uri=${encodeURIComponent(redirectUri)}&` +
 					`response_type=code&` +
-					`scope=https://www.googleapis.com/auth/youtube.readonly&` +
+					`scope=https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly&` +
 					`access_type=offline&` +
-					`state=${params.id}&` + // Pass business ID as state
-					`prompt=consent`; // Force consent to get refresh token
+					`state=${params.id}&` +
+					`prompt=consent`;
 
 				window.location.href = authUrl;
 			}
@@ -470,9 +459,10 @@ export default function BusinessDetailsPage({
 							Add {business.type === "PRODUCT" ? "Product" : "Service"}
 						</Button>
 					</div>
-					<Row gutter={[16, 16]}>
-						{business.type === "PRODUCT"
-							? products.map((product) => (
+					{business.type === "PRODUCT" ? (
+						products.length > 0 ? (
+							<Row gutter={[16, 16]}>
+								{products.map((product) => (
 									<Col xs={24} sm={12} md={8} key={product.id}>
 										<Card
 											hoverable
@@ -505,38 +495,65 @@ export default function BusinessDetailsPage({
 											/>
 										</Card>
 									</Col>
-							  ))
-							: services.map((service) => (
-									<Col xs={24} sm={12} md={8} key={service.id}>
-										<Card
-											hoverable
-											className="h-full border-0 shadow-sm hover:shadow-md transition-all"
-											cover={
-												<div className="h-48 bg-gray-100 flex items-center justify-center">
-													<AppstoreOutlined className="text-4xl text-gray-400" />
+								))}
+							</Row>
+						) : (
+							<Card>
+								<Empty
+									image={Empty.PRESENTED_IMAGE_SIMPLE}
+									description={
+										<Text type="secondary" className="text-sm">
+											No products yet
+										</Text>
+									}
+								/>
+							</Card>
+						)
+					) : services.length > 0 ? (
+						<Row gutter={[16, 16]}>
+							{services.map((service) => (
+								<Col xs={24} sm={12} md={8} key={service.id}>
+									<Card
+										hoverable
+										className="h-full border-0 shadow-sm hover:shadow-md transition-all"
+										cover={
+											<div className="h-48 bg-gray-100 flex items-center justify-center">
+												<AppstoreOutlined className="text-4xl text-gray-400" />
+											</div>
+										}
+									>
+										<Card.Meta
+											title={service.name}
+											description={
+												<div>
+													<div className="text-gray-500 mb-2">
+														{service.description}
+													</div>
+													<div className="flex justify-between items-center">
+														<Typography.Text strong>
+															${service.price}
+														</Typography.Text>
+														<Tag color="blue">{service.duration} min</Tag>
+													</div>
 												</div>
 											}
-										>
-											<Card.Meta
-												title={service.name}
-												description={
-													<div>
-														<div className="text-gray-500 mb-2">
-															{service.description}
-														</div>
-														<div className="flex justify-between items-center">
-															<Typography.Text strong>
-																${service.price}
-															</Typography.Text>
-															<Tag color="blue">{service.duration} min</Tag>
-														</div>
-													</div>
-												}
-											/>
-										</Card>
-									</Col>
-							  ))}
-					</Row>
+										/>
+									</Card>
+								</Col>
+							))}
+						</Row>
+					) : (
+						<Card>
+							<Empty
+								image={Empty.PRESENTED_IMAGE_SIMPLE}
+								description={
+									<Text type="secondary" className="text-sm">
+										No services yet
+									</Text>
+								}
+							/>
+						</Card>
+					)}
 				</div>
 			),
 		},

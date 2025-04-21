@@ -14,6 +14,7 @@ export async function GET(request: Request) {
 			scope: [
 				"https://www.googleapis.com/auth/youtube.readonly",
 				"https://www.googleapis.com/auth/youtube.force-ssl",
+				"https://www.googleapis.com/auth/youtube.upload",
 			],
 			include_granted_scopes: true,
 		});
