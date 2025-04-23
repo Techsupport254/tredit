@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { BlockchainService } from "@/lib/services/BlockchainService";
-import { IPFSService } from "@/lib/services/IPFSService";
+import { BlockchainService } from "@/lib/services/blockchain.service";
+import { IPFSService } from "@/lib/services/ipfs.service";
 import { hash } from "bcrypt";
 
-const blockchainService = new BlockchainService();
-const ipfsService = new IPFSService();
+const blockchainService = BlockchainService.getInstance();
+const ipfsService = IPFSService.getInstance();
 
 export async function POST(req: Request) {
 	try {

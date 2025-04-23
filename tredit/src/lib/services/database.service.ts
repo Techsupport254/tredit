@@ -15,6 +15,10 @@ export class DatabaseService {
 		return DatabaseService.instance;
 	}
 
+	public getPrisma(): PrismaClient {
+		return this.prisma;
+	}
+
 	async createUser(userData: {
 		name: string;
 		email: string;
@@ -22,6 +26,7 @@ export class DatabaseService {
 		ipfsHash: string;
 		blockchainTxHash: string;
 		phoneNumber?: string;
+		password: string;
 	}) {
 		try {
 			const user = await this.prisma.user.create({
@@ -35,6 +40,8 @@ export class DatabaseService {
 					status: "ACTIVE",
 					verificationStatus: "PENDING",
 					role: "USER",
+					password: userData.password,
+					acceptBlockchainStorage: true,
 				},
 			});
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { google } from "googleapis";
 import prisma from "@/lib/prisma";
-import { createYouTubeAPI } from "@/lib/youtube";
+import { YouTubeService } from "@/lib/services/youtube.service";
 
 async function updateTokenInDatabase(
 	connectionId: string,
@@ -44,46 +45,23 @@ export async function GET(request: Request) {
 			},
 		});
 
-		if (
-			!connection ||
-			!connection.accessToken ||
-			!connection.refreshToken ||
-			!connection.channelId
-		) {
+		if (!connection || !connection.refreshToken) {
 			return NextResponse.json(
 				{ error: "YouTube not connected" },
 				{ status: 404 }
 			);
 		}
 
-		console.log("Creating YouTube API with connection:", {
-			id: connection.id,
-			channelId: connection.channelId,
-			hasAccessToken: !!connection.accessToken,
-			hasRefreshToken: !!connection.refreshToken,
-		});
-
-		const youtube = createYouTubeAPI(
-			connection.accessToken,
-			connection.refreshToken,
-			connection.channelId,
-			async (newAccessToken, newExpiresAt) => {
-				await updateTokenInDatabase(
-					connection.id,
-					newAccessToken,
-					newExpiresAt
-				);
-			}
-		);
+		const youtubeService = new YouTubeService(connection.refreshToken);
 
 		switch (action) {
 			case "channel":
-				const channelData = await youtube.getChannelDetails();
+				const channelData = await youtubeService.getChannelDetails();
 				return NextResponse.json(channelData);
 
 			case "recent-videos":
 				const maxResults = Number(searchParams.get("maxResults")) || 5;
-				const videos = await youtube.getRecentVideos(maxResults);
+				const videos = await youtubeService.getRecentVideos(maxResults);
 				return NextResponse.json(videos);
 
 			default:
@@ -121,54 +99,41 @@ export async function POST(request: Request) {
 			},
 		});
 
-		if (
-			!connection ||
-			!connection.accessToken ||
-			!connection.refreshToken ||
-			!connection.channelId
-		) {
+		if (!connection || !connection.refreshToken) {
 			return NextResponse.json(
-				{ error: "YouTube not connected" },
+				{
+					error:
+						"YouTube not connected. Please connect your YouTube account first.",
+				},
 				{ status: 404 }
 			);
 		}
 
-		console.log("Creating YouTube API for video upload with connection:", {
-			id: connection.id,
-			channelId: connection.channelId,
-			hasAccessToken: !!connection.accessToken,
-			hasRefreshToken: !!connection.refreshToken,
-		});
-
-		const youtube = createYouTubeAPI(
-			connection.accessToken,
-			connection.refreshToken,
-			connection.channelId,
-			async (newAccessToken, newExpiresAt) => {
-				await updateTokenInDatabase(
-					connection.id,
-					newAccessToken,
-					newExpiresAt
-				);
-			}
-		);
+		const youtubeService = new YouTubeService(connection.refreshToken);
 
 		// Upload video
-		const videoId = await youtube.uploadVideo(videoFile, {
+		const result = await youtubeService.uploadVideo(videoFile, {
 			title: metadata.title,
 			description: metadata.description,
 			tags: metadata.tags,
 			categoryId: metadata.categoryId,
 			privacyStatus: metadata.privacyStatus,
-			publishAt: metadata.publishAt,
 		});
 
-		return NextResponse.json({ videoId });
+		console.log("Video uploaded successfully:", {
+			videoId: result.videoId,
+			title: metadata.title,
+			visibility: metadata.privacyStatus,
+		});
+
+		return NextResponse.json(result);
 	} catch (error: any) {
-		console.error("YouTube upload error:", error);
+		console.error("Error uploading video to YouTube:", error);
 		return NextResponse.json(
-			{ error: error.message || "Failed to upload video" },
-			{ status: 500 }
+			{
+				error: error.message || "Failed to upload video",
+			},
+			{ status: error.response?.status || 500 }
 		);
 	}
 }

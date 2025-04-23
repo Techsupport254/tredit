@@ -112,6 +112,7 @@ interface Product {
 	price: number;
 	stock: number;
 	status: string;
+	media?: { url: string }[];
 }
 
 interface Service {
@@ -203,9 +204,11 @@ export default function BusinessDetailsPage({
 
 							const channelData = await response.json();
 							data[connection.platform] = {
-								channelName: channelData.title,
+								channelName: channelData.snippet?.title || channelData.title,
 								channelId: channelData.id,
-								accountImage: channelData.thumbnails.default.url,
+								accountImage:
+									channelData.snippet?.thumbnails?.default?.url ||
+									channelData.thumbnails?.default?.url,
 							};
 						}
 					} catch (error: any) {
@@ -461,42 +464,99 @@ export default function BusinessDetailsPage({
 					</div>
 					{business.type === "PRODUCT" ? (
 						products.length > 0 ? (
-							<Row gutter={[16, 16]}>
-								{products.map((product) => (
-									<Col xs={24} sm={12} md={8} key={product.id}>
-										<Card
-											hoverable
-											className="h-full border-0 shadow-sm hover:shadow-md transition-all"
-											cover={
-												<div className="h-48 bg-gray-100 flex items-center justify-center">
-													<ShopOutlined className="text-4xl text-gray-400" />
+							<Table
+								dataSource={products}
+								rowKey="id"
+								columns={[
+									{
+										title: "#",
+										key: "index",
+										width: 60,
+										render: (_, __, index) => index + 1,
+									},
+									{
+										title: "Preview",
+										key: "preview",
+										width: 80,
+										render: (_, record) => {
+											const firstImage = record.media?.[0]?.url;
+											return (
+												<div className="w-12 h-12 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+													{firstImage ? (
+														<img
+															src={firstImage}
+															alt={record.name}
+															className="w-full h-full object-contain"
+															onError={(e) => {
+																const target = e.target as HTMLImageElement;
+																target.onerror = null;
+																target.style.display = "none";
+																target.parentElement!.innerHTML = `
+																	<div class="w-full h-full flex items-center justify-center">
+																		<ShopOutlined style={{ fontSize: '1.5rem', color: '#d9d9d9' }} />
+																	</div>
+																`;
+															}}
+														/>
+													) : (
+														<ShopOutlined className="text-xl text-gray-400" />
+													)}
 												</div>
-											}
-										>
-											<Card.Meta
-												title={product.name}
-												description={
-													<div>
-														<div className="text-gray-500 mb-2">
-															{product.description}
-														</div>
-														<div className="flex justify-between items-center">
-															<Typography.Text strong>
-																${product.price}
-															</Typography.Text>
-															<Tag color={product.stock > 0 ? "green" : "red"}>
-																{product.stock > 0
-																	? `${product.stock} in stock`
-																	: "Out of stock"}
-															</Tag>
-														</div>
-													</div>
-												}
-											/>
-										</Card>
-									</Col>
-								))}
-							</Row>
+											);
+										},
+									},
+									{
+										title: "Product",
+										key: "product",
+										render: (_, record) => (
+											<div>
+												<div className="font-medium">{record.name}</div>
+												<div className="text-gray-500">
+													KES {Number(record.price).toLocaleString()}
+												</div>
+											</div>
+										),
+									},
+									{
+										title: "Stock",
+										dataIndex: "stock",
+										key: "stock",
+										width: 120,
+										render: (stock) => (
+											<Tag color={stock > 0 ? "green" : "red"}>
+												{stock > 0 ? `${stock} in stock` : "Out of stock"}
+											</Tag>
+										),
+									},
+									{
+										title: "Status",
+										dataIndex: "status",
+										key: "status",
+										width: 100,
+										render: (status) => (
+											<Tag color={status === "active" ? "green" : "red"}>
+												{status}
+											</Tag>
+										),
+									},
+									{
+										title: "Actions",
+										key: "actions",
+										width: 120,
+										render: (_, record) => (
+											<Space>
+												<Button type="link" size="small">
+													Edit
+												</Button>
+												<Button type="link" size="small" danger>
+													Delete
+												</Button>
+											</Space>
+										),
+									},
+								]}
+								pagination={false}
+							/>
 						) : (
 							<Card>
 								<Empty
@@ -677,35 +737,8 @@ export default function BusinessDetailsPage({
 	}
 
 	return (
-		<div
-			style={{
-				minHeight: "100vh",
-				backgroundColor: token.colorBgContainer || "#f0f2f5",
-				padding: "24px",
-			}}
-		>
-			<div className="w-full px-6 py-4">
-				<div className="flex items-center justify-between mb-6">
-					<div className="flex items-center gap-2">
-						<Title level={3} className="!mb-0">
-							{business.name}
-						</Title>
-					</div>
-					<Button
-						type="primary"
-						style={{
-							backgroundColor: token.colorPrimary || "#1890ff",
-							marginBottom: "16px",
-						}}
-						onClick={() => router.push("/dashboard/businesses")}
-					>
-						<ArrowLeftOutlined /> View All Businesses
-					</Button>
-				</div>
-				<Text type="secondary" className="block mb-6">
-					Manage your business profile and settings
-				</Text>
-
+		<div>
+			<div className="w-full">
 				<Row gutter={[24, 24]} className="w-full">
 					<Col xs={24} lg={16}>
 						<div className="bg-white rounded-lg p-6 mb-6 shadow-sm">
@@ -714,7 +747,7 @@ export default function BusinessDetailsPage({
 									<ShopOutlined className="text-2xl text-blue-500" />
 								</div>
 								<div>
-									<div className="flex items-center gap-3">
+									<div className="flex items-center">
 										<Text className="text-lg font-medium">{business.name}</Text>
 										<Tag
 											color="blue"
@@ -767,7 +800,7 @@ export default function BusinessDetailsPage({
 					</Col>
 
 					<Col xs={24} lg={8}>
-						<div className="bg-white rounded-lg p-6 shadow-sm">
+						<div className="sticky top-24 bg-white rounded-lg p-6 shadow-sm">
 							<Title level={5} className="!mt-0 !mb-4">
 								Quick Actions
 							</Title>
@@ -777,7 +810,7 @@ export default function BusinessDetailsPage({
 									type="primary"
 									size="large"
 									icon={<ShopOutlined />}
-									className="h-11 bg-blue-500 hover:bg-blue-600 border-0"
+									className="h-11 bg-blue-500 hover:bg-blue-600 border-0 shadow-md hover:shadow-lg transition-all duration-200"
 								>
 									View Store
 								</Button>
@@ -786,7 +819,7 @@ export default function BusinessDetailsPage({
 									type="primary"
 									size="large"
 									icon={<BarChartOutlined />}
-									className="h-11 bg-blue-500 hover:bg-blue-600 border-0"
+									className="h-11 bg-blue-500 hover:bg-blue-600 border-0 shadow-md hover:shadow-lg transition-all duration-200"
 								>
 									View Analytics
 								</Button>
@@ -795,7 +828,7 @@ export default function BusinessDetailsPage({
 									type="primary"
 									size="large"
 									icon={<TeamOutlined />}
-									className="h-11 bg-blue-500 hover:bg-blue-600 border-0"
+									className="h-11 bg-blue-500 hover:bg-blue-600 border-0 shadow-md hover:shadow-lg transition-all duration-200"
 								>
 									Manage Team
 								</Button>
@@ -804,7 +837,7 @@ export default function BusinessDetailsPage({
 									type="primary"
 									size="large"
 									icon={<BankOutlined />}
-									className="h-11 bg-blue-500 hover:bg-blue-600 border-0"
+									className="h-11 bg-blue-500 hover:bg-blue-600 border-0 shadow-md hover:shadow-lg transition-all duration-200"
 								>
 									Payment Settings
 								</Button>

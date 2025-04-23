@@ -59,7 +59,7 @@ async function refreshAccessToken(
 	}
 }
 
-class YouTubeAPI {
+export class YouTubeAPI {
 	private accessToken: string;
 	private refreshToken: string;
 	private channelId: string;

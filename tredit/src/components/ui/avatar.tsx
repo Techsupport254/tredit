@@ -6,20 +6,20 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 import { UserIcon } from "@heroicons/react/24/outline";
 
-const Avatar = React.forwardRef<
+const AvatarRoot = React.forwardRef<
 	React.ElementRef<typeof AvatarPrimitive.Root>,
 	React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root>
 >(({ className, ...props }, ref) => (
 	<AvatarPrimitive.Root
 		ref={ref}
 		className={cn(
-			"relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full",
+			"relative flex shrink-0 overflow-hidden rounded-full",
 			className
 		)}
 		{...props}
 	/>
 ));
-Avatar.displayName = AvatarPrimitive.Root.displayName;
+AvatarRoot.displayName = AvatarPrimitive.Root.displayName;
 
 const AvatarImage = React.forwardRef<
 	React.ElementRef<typeof AvatarPrimitive.Image>,
@@ -53,6 +53,7 @@ interface AvatarProps {
 	alt?: string;
 	fallback?: string;
 	size?: "sm" | "md" | "lg";
+	className?: string;
 }
 
 const sizeClasses = {
@@ -61,28 +62,28 @@ const sizeClasses = {
 	lg: "w-12 h-12",
 };
 
-export function Avatar({
-	src,
-	alt = "Avatar",
-	fallback,
-	size = "md",
-}: AvatarProps) {
-	const sizeClass = sizeClasses[size];
-	const initial = fallback?.[0]?.toUpperCase() || "U";
+const Avatar = React.forwardRef<HTMLDivElement, AvatarProps>(
+	({ src, alt = "Avatar", fallback, size = "md", className }, ref) => {
+		return (
+			<AvatarRoot className={cn(sizeClasses[size], className)} ref={ref}>
+				{src ? (
+					<AvatarImage src={src} alt={alt} />
+				) : (
+					<AvatarFallback>
+						{fallback ? (
+							<span className="text-sm font-medium text-gray-600">
+								{fallback}
+							</span>
+						) : (
+							<UserIcon className="h-4 w-4 text-gray-500" />
+						)}
+					</AvatarFallback>
+				)}
+			</AvatarRoot>
+		);
+	}
+);
 
-	return (
-		<div
-			className={`${sizeClass} relative rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 ring-2 ring-gray-700 group-hover:ring-gray-600 transition-all`}
-		>
-			{src ? (
-				<Image src={src} alt={alt} fill className="object-cover" />
-			) : (
-				<div className="w-full h-full flex items-center justify-center text-white bg-gradient-to-br from-blue-500 to-blue-600">
-					{initial}
-				</div>
-			)}
-		</div>
-	);
-}
+Avatar.displayName = "Avatar";
 
 export { Avatar, AvatarImage, AvatarFallback };

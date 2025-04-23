@@ -17,6 +17,14 @@ export async function GET(
 			where: {
 				businessId: params.id,
 			},
+			include: {
+				media: {
+					orderBy: {
+						order: "asc",
+					},
+				},
+				variants: true,
+			},
 			orderBy: {
 				createdAt: "desc",
 			},

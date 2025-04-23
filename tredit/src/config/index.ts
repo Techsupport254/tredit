@@ -1,3 +1,5 @@
+import { Config } from "./types";
+
 interface Config {
 	server: {
 		port: number;
@@ -91,6 +93,12 @@ interface Config {
 		rateLimitWindow: number;
 		rateLimitMax: number;
 		requireAuth: boolean;
+	};
+	youtube: {
+		clientId: string;
+		clientSecret: string;
+		redirectUri: string;
+		refreshToken: string;
 	};
 }
 
@@ -192,6 +200,12 @@ const development: Config = {
 		rateLimitWindow: Number(process.env.RATE_LIMIT_WINDOW) || 15,
 		rateLimitMax: Number(process.env.RATE_LIMIT_MAX) || 100,
 		requireAuth: process.env.REQUIRE_AUTH === "true",
+	},
+	youtube: {
+		clientId: process.env.YOUTUBE_CLIENT_ID!,
+		clientSecret: process.env.YOUTUBE_CLIENT_SECRET!,
+		redirectUri: process.env.YOUTUBE_REDIRECT_URI!,
+		refreshToken: process.env.YOUTUBE_REFRESH_TOKEN!,
 	},
 };
 

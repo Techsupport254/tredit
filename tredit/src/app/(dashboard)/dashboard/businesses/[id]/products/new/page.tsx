@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
 	Form,
@@ -15,17 +15,16 @@ import {
 	Divider,
 	Switch,
 	message,
-	Steps,
 	Row,
 	Col,
-	Image,
-	Carousel,
 	Tag,
 	Radio,
 	DatePicker,
-	Progress,
+	Modal,
+	Carousel,
+	Tabs,
+	Avatar,
 	Spin,
-	Alert,
 } from "antd";
 import {
 	UploadOutlined,
@@ -38,42 +37,68 @@ import {
 	LockOutlined,
 	LinkOutlined,
 	GlobalOutlined,
+	MinusCircleOutlined,
 } from "@ant-design/icons";
 import type { UploadProps } from "antd";
 import type { RcFile, UploadFile } from "antd/es/upload/interface";
 import dayjs from "dayjs";
+import { IPFSService } from "@/lib/services/ipfs.service";
+import { ProductService } from "@/lib/services/product.service";
+import { DatabaseService } from "@/lib/services/database.service";
+import config from "@/config";
+import { ProductStatus } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 
 const { Title, Text } = Typography;
 const { TextArea } = Input;
+const prisma = DatabaseService.getInstance().getPrisma();
 
-// Video platform types
-const VideoPlatform = {
-	YOUTUBE: "YOUTUBE",
-	TIKTOK: "TIKTOK",
-	FACEBOOK: "FACEBOOK",
-	INSTAGRAM: "INSTAGRAM",
-} as const;
+// Flag to control YouTube uploads
+const SKIP_YOUTUBE_UPLOAD = false; // Set to false to enable YouTube uploads
 
-type VideoPlatformType = (typeof VideoPlatform)[keyof typeof VideoPlatform];
+enum VideoPlatform {
+	YOUTUBE = "YOUTUBE",
+	TIKTOK = "TIKTOK",
+	FACEBOOK = "FACEBOOK",
+	INSTAGRAM = "INSTAGRAM",
+}
+
+type VideoPlatformType = keyof typeof VideoPlatform;
 
 interface VideoFileState {
-	[key: string]: UploadFile[];
+	[VideoPlatform.YOUTUBE]: UploadFile[];
+	[VideoPlatform.TIKTOK]: UploadFile[];
+	[VideoPlatform.FACEBOOK]: UploadFile[];
+	[VideoPlatform.INSTAGRAM]: UploadFile[];
 }
 
-interface YouTubeVideoDetails {
-	title: string;
-	description: string;
-	tags: string[];
-	visibility: "public" | "private" | "unlisted";
-	category: string;
-	publishAt: string | null;
-}
-
-interface UploadedImage {
-	fileName: string;
-	ipfsUrl: string;
-	gatewayUrl: string;
-}
+// Remove Zod schema and replace with Ant Design validation rules
+const formRules = {
+	name: [{ required: true, message: "Name is required" }],
+	variants: [
+		{
+			validator: (_: any, value: any[]) => {
+				if (!value || value.length === 0) {
+					return Promise.reject("At least one variant is required");
+				}
+				return Promise.resolve();
+			},
+		},
+	],
+	description: [{ required: false }],
+	seo: {
+		title: [{ required: false }],
+		description: [{ required: false }],
+		keywords: [{ required: false }],
+	},
+	youtubeTitle: [{ required: false }],
+	youtubeDescription: [{ required: false }],
+	youtubeTags: [{ required: false }],
+	youtubePublishAt: [{ required: false }],
+	youtubeVideo: [{ required: false }],
+	youtubeCategory: [{ required: false }],
+	youtubeVisibility: [{ required: false }],
+};
 
 const PlatformIcon = ({ platform }: { platform: VideoPlatformType }) => {
 	switch (platform) {
@@ -90,17 +115,397 @@ const PlatformIcon = ({ platform }: { platform: VideoPlatformType }) => {
 	}
 };
 
-// Add ProductStatus type at the top of the file
-type ProductStatus = "ACTIVE" | "INACTIVE" | "DRAFT";
+const PreviewPane = ({
+	formData,
+	fileList,
+	videoFiles,
+	selectedPlatforms,
+	youtubeData,
+	seoData,
+}: {
+	formData: {
+		name: string;
+		description?: string;
+		variants: any[];
+		status: string;
+		stock: number;
+		price: number;
+	};
+	fileList: UploadFile[];
+	videoFiles: { [key: string]: UploadFile[] };
+	selectedPlatforms: VideoPlatformType[];
+	youtubeData?: {
+		title?: string;
+		description?: string;
+		tags?: string;
+		publishAt?: string;
+		category?: string;
+		visibility?: string;
+	};
+	seoData?: {
+		title?: string;
+		description?: string;
+		keywords?: string;
+	};
+}) => {
+	const getValidImageUrl = (file: UploadFile) => {
+		if (file.url) return file.url;
+		if (file.thumbUrl) return file.thumbUrl;
+		if (file.originFileObj) return URL.createObjectURL(file.originFileObj);
+		return "https://placehold.co/600x600/e2e8f0/1e293b?text=Product+Image";
+	};
+
+	const getTotalStock = () => {
+		if (!formData.variants || !Array.isArray(formData.variants)) {
+			return 0;
+		}
+		return formData.variants.reduce((total, variant) => {
+			if (!variant || typeof variant.stock !== "number") {
+				return total;
+			}
+			return total + variant.stock;
+		}, 0);
+	};
+
+	const getFirstVariantPrice = () => {
+		const firstVariant = formData.variants?.[0];
+		return firstVariant?.price || 0;
+	};
+
+	const getFirstVariantStock = () => {
+		const firstVariant = formData.variants?.[0];
+		return firstVariant?.stock || 0;
+	};
+
+	return (
+		<div className="sticky top-6 h-[calc(100vh-8rem)] overflow-y-auto">
+			<Card className="h-full overflow-auto">
+				<div className="space-y-6">
+					<div>
+						<Text strong className="text-lg">
+							Preview
+						</Text>
+						<Divider className="my-2" />
+					</div>
+
+					{/* Product Image Preview */}
+					<div className="w-full aspect-square relative rounded-lg overflow-hidden bg-gray-100">
+						<div className="absolute inset-0">
+							{fileList.length > 0 ? (
+								<Carousel
+									autoplay
+									dots={fileList.length > 1}
+									className="h-full"
+								>
+									{fileList.map((file, index) => (
+										<div key={file.uid} className="h-full">
+											<div className="h-full relative pb-[100%]">
+												<img
+													src={getValidImageUrl(file)}
+													alt={`Product preview ${index + 1}`}
+													className="absolute inset-0 w-full h-full object-cover"
+													onError={(e) => {
+														e.currentTarget.src =
+															"https://placehold.co/600x600/e2e8f0/1e293b?text=Image+Error";
+													}}
+												/>
+											</div>
+										</div>
+									))}
+								</Carousel>
+							) : (
+								<div className="h-full relative pb-[100%]">
+									<img
+										src="https://placehold.co/600x600/e2e8f0/1e293b?text=Product+Image"
+										alt="Product preview"
+										className="absolute inset-0 w-full h-full object-cover"
+									/>
+								</div>
+							)}
+						</div>
+					</div>
+
+					{/* Product Details Preview */}
+					<div className="space-y-4">
+						<div>
+							<Text strong className="text-xl">
+								{formData.name || "Product Name"}
+							</Text>
+							<Text className="block text-lg text-blue-600">
+								KES {getFirstVariantPrice().toLocaleString()}
+							</Text>
+						</div>
+
+						<div>
+							<Text strong>Description</Text>
+							<Text className="block text-gray-600">
+								{formData.description || "No description provided"}
+							</Text>
+						</div>
+
+						{/* YouTube Data Preview */}
+						{youtubeData && (
+							<div className="space-y-2">
+								<Text strong>YouTube Details</Text>
+
+								{/* Video Preview */}
+								{videoFiles[VideoPlatform.YOUTUBE]?.length > 0 && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm mb-2">
+											Video
+										</Text>
+										<div className="relative aspect-video rounded-lg overflow-hidden bg-gray-100">
+											{videoFiles[VideoPlatform.YOUTUBE].map((video, index) => (
+												<video
+													key={index}
+													src={
+														video.url ||
+														(video.originFileObj
+															? URL.createObjectURL(video.originFileObj)
+															: "")
+													}
+													className="object-cover w-full h-full"
+													controls
+													onError={(e) => {
+														e.currentTarget.src =
+															"https://placehold.co/600x400/e2e8f0/1e293b?text=Video+Error";
+													}}
+												/>
+											))}
+										</div>
+									</div>
+								)}
+
+								{youtubeData.title && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Title
+										</Text>
+										<Text className="text-sm text-gray-600">
+											{youtubeData.title}
+										</Text>
+									</div>
+								)}
+								{youtubeData.description && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Description
+										</Text>
+										<Text className="text-sm text-gray-600">
+											{youtubeData.description}
+										</Text>
+									</div>
+								)}
+								{youtubeData.tags && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Tags
+										</Text>
+										<div className="flex flex-wrap gap-1 mt-1">
+											{youtubeData.tags.split(",").map((tag, index) => (
+												<Tag key={index} className="mt-1">
+													{tag.trim()}
+												</Tag>
+											))}
+										</div>
+									</div>
+								)}
+								{youtubeData.visibility && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Visibility
+										</Text>
+										<Text className="text-sm text-gray-600">
+											{youtubeData.visibility.charAt(0).toUpperCase() +
+												youtubeData.visibility.slice(1)}
+										</Text>
+									</div>
+								)}
+								{youtubeData.category && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Category
+										</Text>
+										<Text className="text-sm text-gray-600">
+											{youtubeData.category.charAt(0).toUpperCase() +
+												youtubeData.category.slice(1)}
+										</Text>
+									</div>
+								)}
+								{youtubeData.publishAt && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Publish Date
+										</Text>
+										<Text className="text-sm text-gray-600">
+											{youtubeData.publishAt}
+										</Text>
+									</div>
+								)}
+							</div>
+						)}
+
+						{/* SEO Data Preview */}
+						{seoData && Object.values(seoData).some((value) => !!value) && (
+							<div className="space-y-2">
+								<Text strong>SEO Details</Text>
+								{seoData.title && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Title
+										</Text>
+										<Text className="text-sm text-gray-600">
+											{seoData.title}
+										</Text>
+									</div>
+								)}
+								{seoData.description && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Description
+										</Text>
+										<Text className="text-sm text-gray-600">
+											{seoData.description}
+										</Text>
+									</div>
+								)}
+								{seoData.keywords && (
+									<div className="p-2 bg-gray-50 rounded">
+										<Text strong className="block text-sm">
+											Keywords
+										</Text>
+										<div className="flex flex-wrap gap-1 mt-1">
+											{seoData.keywords.split(",").map((keyword, index) => (
+												<Tag key={index} className="mt-1">
+													{keyword.trim()}
+												</Tag>
+											))}
+										</div>
+									</div>
+								)}
+							</div>
+						)}
+
+						{/* Video Previews */}
+						{selectedPlatforms.length > 0 && (
+							<div className="space-y-4">
+								<Text strong>Videos</Text>
+								{selectedPlatforms.map((platform) => {
+									const platformVideos = videoFiles[platform] || [];
+									return (
+										<div key={platform} className="space-y-2">
+											<div className="flex items-center space-x-2">
+												<PlatformIcon platform={platform} />
+												<Text>{platform}</Text>
+											</div>
+											<div className="space-y-2">
+												{platformVideos.length > 0 ? (
+													platformVideos.map((video, index) => (
+														<div
+															key={video.uid}
+															className="relative aspect-video rounded-lg overflow-hidden bg-gray-100"
+														>
+															<video
+																src={
+																	video.url ||
+																	(video.originFileObj
+																		? URL.createObjectURL(video.originFileObj)
+																		: "")
+																}
+																className="object-cover w-full h-full"
+																controls
+																onError={(e) => {
+																	e.currentTarget.src =
+																		"https://placehold.co/600x400/e2e8f0/1e293b?text=Video+Error";
+																}}
+															/>
+														</div>
+													))
+												) : (
+													<div className="relative aspect-video rounded-lg overflow-hidden bg-gray-100">
+														<img
+															src="https://placehold.co/600x400/e2e8f0/1e293b?text=No+Video"
+															alt="No video available"
+															className="absolute inset-0 w-full h-full object-cover"
+														/>
+													</div>
+												)}
+											</div>
+										</div>
+									);
+								})}
+							</div>
+						)}
+
+						{/* Variants Preview */}
+						{formData.variants?.length > 0 && (
+							<div className="space-y-2">
+								<Text strong>Variants</Text>
+								<div className="space-y-2">
+									{formData.variants.map((variant, index) => (
+										<div key={index} className="p-2 bg-gray-50 rounded">
+											<Text className="block">
+												{variant?.name || "Unnamed"}:{" "}
+												{variant?.value || "No value"}
+											</Text>
+											<Text className="text-sm text-gray-600">
+												KES {variant?.price?.toLocaleString() || "0"} •{" "}
+												{variant?.stock || 0} in stock
+											</Text>
+										</div>
+									))}
+								</div>
+							</div>
+						)}
+
+						{/* Stock Preview */}
+						<div className="p-2 bg-gray-50 rounded">
+							<Text strong className="block">
+								Stock Status
+							</Text>
+							<Text className="text-sm text-gray-600">
+								{getTotalStock()} units available
+							</Text>
+						</div>
+
+						{/* Status Preview */}
+						<div className="p-2 bg-gray-50 rounded">
+							<Text strong className="block">
+								Status
+							</Text>
+							<Text className="text-sm text-gray-600">
+								{formData.status || "DRAFT"}
+							</Text>
+						</div>
+					</div>
+				</div>
+			</Card>
+		</div>
+	);
+};
+
+const customStyles = `
+	.custom-datepicker-popup .ant-picker-ok button {
+		background-color: #3b82f6 !important;
+		border-color: #3b82f6 !important;
+		color: white !important;
+	}
+	.custom-datepicker-popup .ant-picker-ok button:hover {
+		background-color: #2563eb !important;
+		border-color: #2563eb !important;
+	}
+`;
+
+const CustomStyles = () => (
+	<style jsx global>
+		{customStyles}
+	</style>
+);
 
 const NewProductPage = () => {
 	const router = useRouter();
 	const params = useParams();
 	const [form] = Form.useForm();
-	const [currentStep, setCurrentStep] = useState(0);
-	const [selectedPlatforms, setSelectedPlatforms] = useState<
-		VideoPlatformType[]
-	>([]);
 	const [fileList, setFileList] = useState<UploadFile[]>([]);
 	const [videoFiles, setVideoFiles] = useState<VideoFileState>({
 		[VideoPlatform.YOUTUBE]: [],
@@ -108,262 +513,87 @@ const NewProductPage = () => {
 		[VideoPlatform.FACEBOOK]: [],
 		[VideoPlatform.INSTAGRAM]: [],
 	});
-	const [videoPreview, setVideoPreview] = useState<string | null>(null);
-	const [youtubeVideo, setYoutubeVideo] = useState<
-		File | UploadFile<any> | null
-	>(null);
-	const [formData, setFormData] = useState<any>({});
-	const [uploadProgress, setUploadProgress] = useState({
-		images: 0,
-		currentImage: 0,
-		totalImages: 0,
-		youtube: 0,
-		ipfs: 0,
-		database: 0,
-	});
+	const [selectedPlatforms, setSelectedPlatforms] = useState<
+		VideoPlatformType[]
+	>([]);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [isTesting, setIsTesting] = useState(false);
+	const [isCancelling, setIsCancelling] = useState(false);
 	const [youtubeConnectionStatus, setYoutubeConnectionStatus] = useState<
 		"loading" | "connected" | "not_connected" | "error"
 	>("loading");
 	const [youtubeConnectionError, setYoutubeConnectionError] = useState<
 		string | null
 	>(null);
-	const [channelInfo, setChannelInfo] = useState<{
-		title: string;
+	const [youtubeThumbnail, setYoutubeThumbnail] = useState<{
 		thumbnailUrl: string;
+		channelName: string;
 	} | null>(null);
+	const [isSchedulingEnabled, setIsSchedulingEnabled] = useState(false);
+	const [skipYouTubeUpload, setSkipYouTubeUpload] = useState(false);
+	const [youtubeData, setYoutubeData] = useState<any>(null);
+	const [seoData, setSeoData] = useState<any>(null);
 
-	// Watch form values for preview
-	const allFormValues = Form.useWatch([], form);
-
-	// Update formData when values change
+	// Add useEffect to fetch YouTube channel data
 	useEffect(() => {
-		if (allFormValues) {
-			setFormData((prev: Record<string, any>) => ({
-				...prev,
-				...allFormValues,
-			}));
-		}
-	}, [allFormValues]);
-
-	// Initialize form with default values
-	useEffect(() => {
-		form.setFieldsValue({
-			name: "",
-			description: "",
-			price: 0,
-			stock: 0,
-			status: "DRAFT" as ProductStatus,
-			variants: [],
-			youtubeTitle: "",
-			youtubeDescription: "",
-			youtubeTags: [],
-			youtubeVisibility: "private",
-			youtubeCategory: "",
-			youtubePublishAt: null,
-		});
-	}, [form]);
-
-	// Handle next step with data preservation
-	const nextStep = async () => {
-		try {
-			const values = await form.validateFields();
-			// Update formData with current step's values
-			setFormData((prev: any) => ({ ...prev, ...values }));
-			setCurrentStep((prev: number) => prev + 1);
-		} catch (error) {
-			console.error("Validation failed:", error);
-		}
-	};
-
-	// Handle previous step with data preservation
-	const prevStep = () => {
-		const currentValues = form.getFieldsValue();
-		// Update formData with current step's values
-		setFormData((prev: any) => ({ ...prev, ...currentValues }));
-		setCurrentStep((prev: number) => prev - 1);
-	};
-
-	// Effect to restore form data when step changes
-	useEffect(() => {
-		// Set all form fields from formData when step changes
-		form.setFieldsValue(formData);
-	}, [currentStep, formData, form]);
-
-	// Fix the handleImageUpload function to preserve image data correctly
-	const handleImageUpload = async (file: RcFile) => {
-		console.log("Image upload triggered for file:", file.name, file.size);
-
-		const isImage = file.type.startsWith("image/");
-		if (!isImage) {
-			message.error("You can only upload image files!");
-			return false;
-		}
-
-		// Check for duplicate files by comparing name
-		const isDuplicate = fileList.some(
-			(existingFile) => existingFile.name === file.name
-		);
-
-		if (isDuplicate) {
-			console.log("Duplicate image detected:", file.name);
-			message.error("This image has already been uploaded!");
-			return false;
-		}
-
-		try {
-			// Create a proper URL for the image
-			const objectUrl = URL.createObjectURL(file);
-			console.log("Created object URL for preview:", objectUrl);
-
-			// Create a new file entry with the object URL
-			const newFile: UploadFile = {
-				uid: file.uid,
-				name: file.name,
-				status: "done",
-				url: objectUrl,
-				thumbUrl: objectUrl,
-				size: file.size,
-				type: file.type,
-				originFileObj: file,
-			};
-
-			// Add to file list
-			setFileList((prev) => {
-				const notDuplicate = !prev.some((f) => f.uid === newFile.uid);
-				console.log(
-					`Adding file ${file.name} to fileList:`,
-					notDuplicate ? "added" : "skipped duplicate"
+		const fetchYouTubeData = async () => {
+			try {
+				const response = await fetch(
+					`/api/youtube?businessId=${params.id}&action=channel`
 				);
-				return notDuplicate ? [...prev, newFile] : prev;
-			});
-
-			console.log("Image added successfully:", file.name);
-		} catch (error) {
-			console.error("Error processing image upload:", error);
-			message.error("Failed to process image");
-		}
-
-		return false;
-	};
-
-	// Fix the paste handler with proper file type handling
-	useEffect(() => {
-		const handlePaste = (e: ClipboardEvent) => {
-			const items = e.clipboardData?.items;
-			if (!items) return;
-
-			console.log("Paste event detected with items:", items.length);
-
-			for (let i = 0; i < items.length; i++) {
-				if (items[i].type.startsWith("image/")) {
-					const clipboardFile = items[i].getAsFile();
-					if (clipboardFile) {
-						console.log(
-							"Pasted image file:",
-							clipboardFile.name,
-							clipboardFile.type,
-							clipboardFile.size
-						);
-
-						try {
-							// Create a proper object URL
-							const objectUrl = URL.createObjectURL(clipboardFile);
-
-							// Generate a unique name for pasted image
-							const uniqueName = `pasted-image-${Date.now()}.${
-								clipboardFile.type.split("/")[1] || "png"
-							}`;
-
-							// Cast as RcFile with the required properties
-							const file = new File([clipboardFile], uniqueName, {
-								type: clipboardFile.type,
-								lastModified: Date.now(),
-							}) as RcFile;
-
-							// Manually add uid property required for RcFile
-							Object.defineProperty(file, "uid", {
-								value: `-${Date.now()}-${i}`,
-								writable: false,
-							});
-
-							// Create a proper file object
-							const pastedFile: UploadFile = {
-								uid: file.uid,
-								name: uniqueName,
-								status: "done",
-								url: objectUrl,
-								thumbUrl: objectUrl,
-								size: file.size,
-								type: file.type,
-								originFileObj: file,
-							};
-
-							console.log(
-								"Created pasted file object:",
-								pastedFile.name,
-								pastedFile.url
-							);
-
-							setFileList((prev) => [...prev, pastedFile]);
-						} catch (error) {
-							console.error("Error processing pasted image:", error);
-						}
-					}
+				if (!response.ok) {
+					throw new Error("Failed to fetch YouTube data");
 				}
+				const data = await response.json();
+
+				setYoutubeThumbnail({
+					thumbnailUrl: data.thumbnails?.default?.url || "",
+					channelName: data.title || "YouTube Channel",
+				});
+				setYoutubeConnectionStatus("connected");
+			} catch (error) {
+				console.error("Error fetching YouTube data:", error);
+				setYoutubeConnectionStatus("not_connected");
+				setYoutubeConnectionError(
+					error instanceof Error
+						? error.message
+						: "Failed to fetch YouTube data"
+				);
 			}
 		};
 
-		document.addEventListener("paste", handlePaste);
-		return () => {
-			document.removeEventListener("paste", handlePaste);
-		};
-	}, []);
+		fetchYouTubeData();
+	}, [params.id]);
 
-	// Handle video upload
-	const handleVideoUpload = (file: RcFile) => {
-		console.log("Video upload triggered", file);
+	// Add form watch for real-time updates including YouTube and SEO data
+	const formValues = Form.useWatch([], form);
 
-		// Create object URL for video preview
-		const objectUrl = URL.createObjectURL(file);
-		setVideoPreview(objectUrl);
-
-		// Create a new file object that includes originFileObj
-		const newFile = {
-			...file,
-			name: file.name,
-			uid: file.uid,
-			status: "done",
-			url: objectUrl,
-			thumbUrl: objectUrl,
-			size: file.size,
-			type: file.type,
-			originFileObj: file as RcFile,
-		} as UploadFile<any>;
-
-		console.log("Created file object with originFileObj:", newFile);
-		setYoutubeVideo(newFile);
-
-		// Update videoFiles state to include the YouTube video
-		setVideoFiles((prev) => ({
-			...prev,
-			[VideoPlatform.YOUTUBE]: [newFile],
-		}));
-
-		// Update form field
-		form.setFieldValue("youtubeVideo", [newFile]);
-
-		return false; // Prevent default upload behavior
+	// Update preview data whenever form values change
+	const previewData = {
+		name: formValues?.name || "",
+		description: formValues?.description || "",
+		variants: formValues?.variants || [],
+		status: formValues?.status || "DRAFT",
+		stock: formValues?.variants?.[0]?.stock || 0,
+		price: formValues?.variants?.[0]?.price || 0,
 	};
 
-	// Handle video removal
-	const handleVideoRemove = (platform: VideoPlatformType) => {
-		setVideoFiles((prev) => ({
-			...prev,
-			[platform]: [],
-		}));
-		form.setFieldValue(`videoFiles_${platform}`, []);
+	// Extract YouTube data for preview
+	const youtubeDataPreview = {
+		title: formValues?.youtubeTitle,
+		description: formValues?.youtubeDescription,
+		tags: formValues?.youtubeTags,
+		publishAt: formValues?.youtubePublishAt
+			? dayjs(formValues.youtubePublishAt).format("YYYY-MM-DD HH:mm")
+			: undefined,
+		category: formValues?.youtubeCategory,
+		visibility: formValues?.youtubeVisibility,
+	};
+
+	// Extract SEO data for preview
+	const seoDataPreview = formValues?.seo || {};
+
+	const handleImageUpload = async (file: RcFile) => {
+		return true;
 	};
 
 	const handlePlatformChange = (values: VideoPlatformType[]) => {
@@ -371,801 +601,340 @@ const NewProductPage = () => {
 		form.setFieldsValue({ videoPlatforms: values });
 	};
 
-	// YouTube categories
-	const youtubeCategories = [
-		{ value: "1", label: "Film & Animation" },
-		{ value: "2", label: "Autos & Vehicles" },
-		{ value: "10", label: "Music" },
-		{ value: "15", label: "Pets & Animals" },
-		{ value: "17", label: "Sports" },
-		{ value: "19", label: "Travel & Events" },
-		{ value: "20", label: "Gaming" },
-		{ value: "22", label: "People & Blogs" },
-		{ value: "23", label: "Comedy" },
-		{ value: "24", label: "Entertainment" },
-		{ value: "25", label: "News & Politics" },
-		{ value: "26", label: "Howto & Style" },
-		{ value: "27", label: "Education" },
-		{ value: "28", label: "Science & Technology" },
-		{ value: "29", label: "Nonprofits & Activism" },
-	];
-
-	// Handle tag input
 	const handleTagChange = (value: string) => {
-		const tags = value
-			.split(",")
-			.map((tag) => tag.trim())
-			.filter((tag) => tag)
-			.slice(0, 5);
-		form.setFieldValue("youtubeTags", tags);
+		// Process comma-separated input
+		if (typeof value === "string") {
+			const tags = value
+				.split(",")
+				.map((tag) => tag.trim())
+				.filter(Boolean)
+				.slice(0, 5);
+			form.setFieldsValue({ youtubeTags: tags.join(", ") });
+		}
 	};
 
-	const PreviewPane = () => {
-		const values = formData;
-		const tags = form.getFieldValue("youtubeTags") || [];
-
-		// Helper function to get valid image URL
-		const getValidImageUrl = (file: UploadFile) => {
-			if (file.url) return file.url;
-			if (file.thumbUrl) return file.thumbUrl;
-			if (file.originFileObj) return URL.createObjectURL(file.originFileObj);
-			return "https://placehold.co/600x600/e2e8f0/1e293b?text=Product+Image";
-		};
-
-		return (
-			<div className="sticky top-6 h-[calc(100vh-8rem)] overflow-y-auto">
-				<Card className="h-full overflow-auto">
-					<div className="space-y-6">
-						<div>
-							<Text strong className="text-lg">
-								Preview
-							</Text>
-							<Divider className="my-2" />
-						</div>
-
-						{/* Product Image Preview */}
-						<div className="w-full aspect-square relative rounded-lg overflow-hidden bg-gray-100">
-							<div className="absolute inset-0">
-								{fileList.length > 0 ? (
-									<Carousel
-										autoplay
-										dots={fileList.length > 1}
-										className="h-full"
-									>
-										{fileList.map((file, index) => (
-											<div key={file.uid} className="h-full">
-												<div className="h-full relative pb-[100%]">
-													<img
-														src={getValidImageUrl(file)}
-														alt={`Product preview ${index + 1}`}
-														className="absolute inset-0 w-full h-full object-cover"
-														onError={(e) => {
-															console.error(`Image failed to load:`, file);
-															e.currentTarget.src =
-																"https://placehold.co/600x600/e2e8f0/1e293b?text=Image+Error";
-														}}
-													/>
-												</div>
-											</div>
-										))}
-									</Carousel>
-								) : (
-									<div className="h-full relative pb-[100%]">
-										<img
-											src="https://placehold.co/600x600/e2e8f0/1e293b?text=Product+Image"
-											alt="Product preview"
-											className="absolute inset-0 w-full h-full object-cover"
-										/>
-									</div>
-								)}
-							</div>
-						</div>
-
-						{/* YouTube Video Preview */}
-						{videoFiles[VideoPlatform.YOUTUBE].length > 0 && (
-							<div className="space-y-4">
-								<Text strong>YouTube Video</Text>
-								<div className="aspect-video w-full bg-black rounded-lg overflow-hidden">
-									<video
-										src={videoFiles[VideoPlatform.YOUTUBE][0].url}
-										controls
-										className="w-full h-full object-contain"
-									/>
-								</div>
-								<div className="space-y-2">
-									<Text strong>{values.youtubeTitle || "Video Title"}</Text>
-									<div className="flex flex-wrap gap-2">
-										{tags.map((tag: string, index: number) => (
-											<Tag key={index} className="m-0">
-												{tag}
-											</Tag>
-										))}
-									</div>
-									<Text type="secondary" className="block text-sm">
-										{values.youtubeDescription || "No description provided"}
-									</Text>
-									<Space className="mt-2">
-										<Tag
-											color={
-												values.youtubeVisibility === "public"
-													? "green"
-													: "orange"
-											}
-										>
-											{values.youtubeVisibility || "draft"}
-										</Tag>
-										<Tag color="blue">
-											{youtubeCategories.find(
-												(c) => c.value === values.youtubeCategory
-											)?.label || "Uncategorized"}
-										</Tag>
-									</Space>
-									{values.youtubePublishAt && (
-										<Text type="secondary" className="block text-sm">
-											Scheduled:{" "}
-											{dayjs(values.youtubePublishAt).format(
-												"MMMM D, YYYY h:mm A"
-											)}
-										</Text>
-									)}
-								</div>
-							</div>
-						)}
-
-						{/* Product Details Preview */}
-						<div className="space-y-4">
-							<div>
-								<Text strong className="text-xl">
-									{formData.name || "Product Name"}
-								</Text>
-								<Text className="block text-lg text-blue-600">
-									KES {formData.price?.toLocaleString() || "0.00"}
-								</Text>
-							</div>
-
-							<div>
-								<Text strong>Description</Text>
-								<Text className="block text-gray-600">
-									{formData.description || "No description provided"}
-								</Text>
-							</div>
-
-							{/* Video Previews */}
-							{selectedPlatforms.length > 0 && (
-								<div className="space-y-4">
-									<Text strong>Videos</Text>
-									{selectedPlatforms.map((platform) => {
-										const platformVideos = videoFiles[platform];
-										return (
-											<div key={platform} className="space-y-2">
-												<div className="flex items-center space-x-2">
-													<PlatformIcon platform={platform} />
-													<Text>{platform}</Text>
-												</div>
-												<div className="space-y-2">
-													{platformVideos.map((video, index) => (
-														<div
-															key={video.uid}
-															className="relative aspect-video rounded-lg overflow-hidden bg-gray-100"
-														>
-															<video
-																src={video.url}
-																className="object-cover w-full h-full"
-																controls
-															/>
-														</div>
-													))}
-												</div>
-											</div>
-										);
-									})}
-								</div>
-							)}
-
-							{/* Variants Preview */}
-							{formData.variants?.length > 0 && (
-								<div className="space-y-2">
-									<Text strong>Variants</Text>
-									<div className="space-y-2">
-										{formData.variants.map((variant: any, index: number) => (
-											<div key={index} className="p-2 bg-gray-50 rounded">
-												<Text className="block">
-													{variant?.name || "Unnamed"}:{" "}
-													{variant?.value || "No value"}
-												</Text>
-												<Text className="text-sm text-gray-600">
-													KES {variant?.price?.toLocaleString() || "0"} •{" "}
-													{variant?.stock || 0} in stock
-												</Text>
-											</div>
-										))}
-									</div>
-								</div>
-							)}
-
-							{/* Stock Preview */}
-							<div className="p-2 bg-gray-50 rounded">
-								<Text strong className="block">
-									Stock Status
-								</Text>
-								<Text className="text-sm text-gray-600">
-									{formData.stock || 0} units available
-								</Text>
-							</div>
-
-							{/* Status Preview */}
-							<div className="p-2 bg-gray-50 rounded">
-								<Text strong className="block">
-									Status
-								</Text>
-								<Text className="text-sm text-gray-600">
-									{formData.status || "DRAFT"}
-								</Text>
-							</div>
-						</div>
-					</div>
-				</Card>
-			</div>
-		);
-	};
-
-	// Check YouTube connection on component mount
-	useEffect(() => {
-		checkYouTubeConnection();
-	}, []);
-
-	// Update the checkYouTubeConnection function
-	const checkYouTubeConnection = async () => {
-		try {
-			setYoutubeConnectionStatus("loading");
-			setYoutubeConnectionError(null);
-
-			const response = await fetch(
-				`/api/youtube?businessId=${params.id}&action=channel`,
-				{
-					method: "GET",
-					headers: {
-						Accept: "application/json",
-					},
-				}
-			);
-
-			if (!response.ok) {
-				if (response.status === 404) {
-					setYoutubeConnectionStatus("not_connected");
-					return;
-				}
-
-				const errorData = await response.json();
-				console.error("YouTube connection error:", errorData);
-				setYoutubeConnectionStatus("error");
-				setYoutubeConnectionError(
-					errorData.error || "Failed to check YouTube connection"
-				);
-				return;
-			}
-
-			// If we got here, we have a successful connection
-			const channelData = await response.json();
-			setYoutubeConnectionStatus("connected");
-			setChannelInfo({
-				title: channelData.title,
-				thumbnailUrl: channelData.thumbnails.default.url,
+	const handleKeywordsChange = (value: string) => {
+		// Process comma-separated input for SEO keywords
+		if (typeof value === "string") {
+			const keywords = value
+				.split(",")
+				.map((keyword) => keyword.trim())
+				.filter(Boolean);
+			form.setFieldsValue({
+				seo: { ...form.getFieldValue("seo"), keywords: keywords.join(", ") },
 			});
-		} catch (error) {
-			console.error("Error checking YouTube connection:", error);
-			setYoutubeConnectionStatus("error");
-			setYoutubeConnectionError("Network error checking YouTube connection");
 		}
 	};
 
-	// Update the connectYouTube function
-	const connectYouTube = async () => {
-		try {
-			// Handle YouTube connection
-			const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-			const redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
+	const handleCancel = () => {
+		setIsCancelling(true);
+		message.info("Cancelling upload...");
+	};
 
-			if (!clientId || !redirectUri) {
-				message.error("YouTube API configuration is missing");
-				return;
+	const handleCancelConfirm = () => {
+		setIsCancelling(false);
+		message.success("Upload cancelled");
+		router.replace(`/dashboard/businesses/${params.id}/products` as any);
+	};
+
+	const handleCancelCancel = () => {
+		setIsCancelling(false);
+	};
+
+	const handleVideoUpload = (info: any) => {
+		const file = info.fileList[0] || null;
+
+		// Update form state
+		form.setFieldsValue({ youtubeVideo: file });
+
+		// Update video files state
+		setVideoFiles((prev: VideoFileState) => ({
+			...prev,
+			[VideoPlatform.YOUTUBE]: file ? [file] : [],
+		}));
+
+		if (info.file.status === "done") {
+			message.success(`${info.file.name} video selected.`);
+		} else if (info.file.status === "error") {
+			message.error(`${info.file.name} selection failed.`);
+			form.setFieldsValue({ youtubeVideo: null });
+			setVideoFiles((prev: VideoFileState) => ({
+				...prev,
+				[VideoPlatform.YOUTUBE]: [],
+			}));
+		}
+	};
+
+	const validatePublishDate = (_: any, value: any) => {
+		if (!value) {
+			return Promise.resolve();
+		}
+
+		// Only validate if the value has changed (new selection)
+		if (value._isAMomentObject) {
+			const selectedDate = dayjs(value);
+			const now = dayjs();
+			const minDate = now.add(10, "minute");
+
+			if (selectedDate.isBefore(minDate)) {
+				return Promise.reject(
+					"Publish date must be at least 10 minutes in the future"
+				);
 			}
-
-			const authUrl =
-				`https://accounts.google.com/o/oauth2/v2/auth?` +
-				`client_id=${clientId}&` +
-				`redirect_uri=${encodeURIComponent(redirectUri)}&` +
-				`response_type=code&` +
-				`scope=https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly&` +
-				`access_type=offline&` +
-				`state=${params.id}&` +
-				`prompt=consent`;
-
-			window.location.href = authUrl;
-		} catch (error) {
-			console.error("Error connecting YouTube account:", error);
-			message.error("Failed to connect YouTube account");
 		}
+
+		return Promise.resolve();
 	};
 
-	// Update the handleSubmit function
-	const handleSubmit = async (values: any) => {
-		console.log("======== STARTING PRODUCT CREATION ========");
-		console.log("Form values:", values);
-		console.log("File list:", fileList);
-		console.log("YouTube video files:", videoFiles);
-
+	const onSubmit = async (values: any) => {
 		try {
 			setIsSubmitting(true);
-
-			// Step 1: Upload images to IPFS
-			console.log("Step 1: Uploading images to IPFS");
-			setUploadProgress((prev) => ({
-				...prev,
-				images: 10,
-				currentImage: 1,
-				totalImages: fileList.length,
-			}));
-
-			// Upload each image to IPFS
-			const uploadPromises = fileList.map(async (file, index) => {
-				if (!file.originFileObj) return null;
-
-				const formData = new FormData();
-				formData.append("file", file.originFileObj);
-
-				const response = await fetch("/api/ipfs/upload-file", {
-					method: "POST",
-					body: formData,
-				});
-
-				if (!response.ok) {
-					const errorData = await response.json();
-					throw new Error(errorData.error || "Failed to upload image");
-				}
-
-				// Update progress for this image
-				setUploadProgress((prev) => ({
-					...prev,
-					currentImage: index + 1,
-					images: Math.round(((index + 1) / fileList.length) * 100),
-				}));
-
-				const result = await response.json();
-				return {
-					fileName: file.name,
-					ipfsUrl: `ipfs://${result.hash}`,
-					gatewayUrl: `https://gateway.pinata.cloud/ipfs/${result.hash}`,
-				} as UploadedImage;
+			message.loading({
+				content: "Starting product creation...",
+				key: "productCreation",
 			});
 
-			const uploadedImages = await Promise.all(uploadPromises);
-			const validImages = uploadedImages.filter(
-				(img): img is UploadedImage => img !== null
-			);
-			console.log("Successfully uploaded images:", validImages);
-			setUploadProgress((prev) => ({ ...prev, images: 100 }));
+			// Step 1: Image Upload
+			if (fileList.length > 0) {
+				message.loading({ content: "Uploading images...", key: "imageUpload" });
+				console.log("Step 1: Starting image upload...");
 
-			// Step 2: Handle YouTube video upload
-			let youtubeVideoId = null;
-			if (videoFiles[VideoPlatform.YOUTUBE].length > 0) {
-				console.log("Step 2: Uploading YouTube video");
-				setUploadProgress((prev) => ({ ...prev, youtube: 10 }));
-
-				// Check YouTube connection status
-				if (youtubeConnectionStatus !== "connected") {
-					console.warn("YouTube account not connected. Skipping video upload.");
-					setUploadProgress((prev) => ({ ...prev, youtube: 100 }));
-				} else {
-					const youtubeVideo = videoFiles[VideoPlatform.YOUTUBE][0];
-					if (youtubeVideo?.originFileObj) {
-						try {
-							const youtubeFormData = new FormData();
-							youtubeFormData.append("businessId", params.id as string);
-							youtubeFormData.append("video", youtubeVideo.originFileObj);
-							youtubeFormData.append(
-								"metadata",
-								JSON.stringify({
-									title: values.youtubeTitle,
-									description: values.youtubeDescription,
-									tags: values.youtubeTags || [],
-									categoryId: values.youtubeCategory,
-									privacyStatus: values.youtubeVisibility,
-									publishAt: values.youtubePublishAt,
-								})
-							);
-
-							const youtubeResponse = await fetch("/api/youtube", {
-								method: "POST",
-								body: youtubeFormData,
-							});
-
-							if (!youtubeResponse.ok) {
-								const errorData = await youtubeResponse.json();
-								if (errorData.error?.includes("authentication credentials")) {
-									setYoutubeConnectionStatus("error");
-									setYoutubeConnectionError(
-										"YouTube authentication failed. Please reconnect your YouTube account."
-									);
-									console.warn(
-										"YouTube authentication failed. Skipping video upload."
-									);
-								} else if (errorData.error?.includes("exceeded")) {
-									console.warn(
-										"YouTube upload quota exceeded. Skipping video upload."
-									);
-								} else {
-									console.warn(
-										"YouTube upload failed:",
-										errorData.error || "Unknown error"
-									);
-								}
-							} else {
-								const youtubeResult = await youtubeResponse.json();
-								youtubeVideoId = youtubeResult.videoId;
-								console.log(
-									"YouTube video uploaded successfully:",
-									youtubeVideoId
-								);
-							}
-						} catch (error: any) {
-							console.warn("YouTube upload error:", error.message);
-							// Continue with product creation even if YouTube upload fails
+				try {
+					const uploadFormData = new FormData();
+					fileList.forEach((file) => {
+						if (file.originFileObj) {
+							uploadFormData.append("files", file.originFileObj);
 						}
+					});
+					uploadFormData.append("productName", values.name);
+
+					const uploadResponse = await fetch("/api/upload", {
+						method: "POST",
+						body: uploadFormData,
+					});
+
+					if (!uploadResponse.ok) {
+						throw new Error("Failed to upload images");
 					}
-					setUploadProgress((prev) => ({ ...prev, youtube: 100 }));
+
+					const uploadResult = await uploadResponse.json();
+					console.log("Image upload results:", uploadResult);
+					message.success({
+						content: "Images uploaded successfully",
+						key: "imageUpload",
+					});
+
+					// Add the uploaded image URLs to the form data
+					values.images = uploadResult.data;
+				} catch (error) {
+					console.error("Error uploading images:", error);
+					message.error({
+						content: "Failed to upload images",
+						key: "imageUpload",
+					});
+					return;
 				}
 			}
 
-			// Step 3: Prepare product data with IPFS hashes
-			console.log("Step 3: Preparing product data");
-			setUploadProgress((prev) => ({ ...prev, ipfs: 50 }));
+			// Step 2: Video Upload
+			let youtubeData = null;
+			if (videoFiles[VideoPlatform.YOUTUBE]?.length > 0) {
+				message.loading({ content: "Uploading video...", key: "videoUpload" });
+				console.log("Step 2: Starting video upload...");
 
-			const productData = {
-				name: typeof values.name === "string" ? values.name.trim() : "",
-				description:
-					typeof values.description === "string"
-						? values.description.trim()
-						: "",
-				price: Number(values.price) || 0,
-				stock: Number(values.stock) || 0,
-				status: typeof values.status === "string" ? values.status : "DRAFT",
-				variants: Array.isArray(values.variants)
-					? values.variants
-							.map((variant: any) => ({
-								name:
-									typeof variant?.name === "string" ? variant.name.trim() : "",
-								value:
-									typeof variant?.value === "string"
-										? variant.value.trim()
-										: "",
-								price: Number(variant?.price) || 0,
-								stock: Number(variant?.stock) || 0,
-							}))
-							.filter((variant: any) => variant.name && variant.value)
-					: [],
-				youtubeVideoId,
-				images: validImages.map((img) => ({
-					ipfsUrl: img.ipfsUrl,
-					gatewayUrl: img.gatewayUrl,
-				})),
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
+				try {
+					const videoFormData = new FormData();
+					const videoFile = videoFiles[VideoPlatform.YOUTUBE][0];
+
+					if (videoFile.originFileObj) {
+						// Prepare metadata for YouTube upload
+						const metadata = {
+							title: values.youtubeTitle || values.name,
+							description: values.youtubeDescription || values.description,
+							tags: values.youtubeTags
+								? values.youtubeTags.split(",").map((tag: string) => tag.trim())
+								: [],
+							categoryId: values.youtubeCategory || "24",
+							privacyStatus: values.youtubeVisibility || "private",
+							publishAt: values.youtubePublishAt
+								? dayjs(values.youtubePublishAt).toISOString()
+								: undefined,
+						};
+
+						videoFormData.append("video", videoFile.originFileObj);
+						videoFormData.append("businessId", String(params.id));
+						videoFormData.append("metadata", JSON.stringify(metadata));
+
+						const videoResponse = await fetch("/api/youtube", {
+							method: "POST",
+							body: videoFormData,
+						});
+
+						if (!videoResponse.ok) {
+							const error = await videoResponse.json();
+							throw new Error(error.message || "Failed to upload video");
+						}
+
+						const videoResult = await videoResponse.json();
+						console.log("Video upload results:", videoResult);
+
+						message.success({
+							content: "Video uploaded successfully",
+							key: "videoUpload",
+						});
+
+						// Store YouTube data
+						youtubeData = {
+							videoId: videoResult.videoId,
+							videoUrl: `https://www.youtube.com/watch?v=${videoResult.videoId}`,
+							title: metadata.title,
+							description: metadata.description,
+							tags: metadata.tags,
+							category: metadata.categoryId,
+							visibility: metadata.privacyStatus,
+							publishAt: metadata.publishAt,
+						};
+					}
+				} catch (error) {
+					console.error("Error uploading video:", error);
+					message.error({
+						content:
+							"Failed to upload video: " +
+							(error instanceof Error ? error.message : "Unknown error"),
+						key: "videoUpload",
+					});
+					return;
+				}
+			}
+
+			// Step 3: Prepare data for IPFS
+			message.loading({
+				content: "Preparing data for IPFS...",
+				key: "ipfsUpload",
+			});
+			console.log("Step 3: Preparing data for IPFS...");
+			const ipfsService = IPFSService.getInstance();
+			const completeData = {
+				...values,
+				youtubeData,
+				images: values.images || [],
+				seo: values.seo || {},
+				variants: values.variants || [],
+				status: values.status || "DRAFT",
+				businessId: params.id,
+				timestamp: new Date().toISOString(),
 			};
 
-			// Upload product metadata to IPFS
-			const metadataResponse = await fetch("/api/ipfs/upload", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(productData),
-			});
-
-			if (!metadataResponse.ok) {
-				const errorData = await metadataResponse.json();
-				throw new Error(
-					errorData.error || "Failed to upload product metadata to IPFS"
-				);
-			}
-
-			const { ipfsHash } = await metadataResponse.json();
-			console.log("Product metadata uploaded to IPFS successfully:", ipfsHash);
-			setUploadProgress((prev) => ({ ...prev, ipfs: 100 }));
-
-			// Step 4: Save to database
-			console.log("\n=== INITIATING DATABASE SAVE REQUEST ===");
-			console.log("Request URL:", "/api/products/create");
-			console.log("Request Method: POST");
-			console.log("FormData Contents:", {
-				businessId: params.id,
-				productData: JSON.stringify({
-					...productData,
-					ipfsHash,
-				}),
-				imageCount: fileList.length,
-				hasYoutubeVideo: !!youtubeVideo,
-			});
-
-			const formData = new FormData();
-			formData.append("businessId", params.id as string);
-			formData.append(
-				"productData",
-				JSON.stringify({
-					...productData,
-					ipfsHash,
-				})
-			);
-			fileList.forEach((file) => {
-				if ("originFileObj" in file && file.originFileObj) {
-					formData.append("images", file.originFileObj);
-				} else if (file instanceof File) {
-					formData.append("images", file);
-				}
-			});
-			if (youtubeVideo) {
-				if ("originFileObj" in youtubeVideo && youtubeVideo.originFileObj) {
-					formData.append("youtubeVideo", youtubeVideo.originFileObj);
-				} else if (youtubeVideo instanceof File) {
-					formData.append("youtubeVideo", youtubeVideo);
-				}
-			}
-
-			// Log FormData contents
-			console.log("\n=== FORM DATA BEING SENT TO DATABASE ===");
-			for (const [key, value] of formData.entries()) {
-				if (key === "productData") {
-					console.log(`${key}:`, JSON.parse(value as string));
-				} else if (value instanceof File) {
-					console.log(`${key}:`, {
-						name: value.name,
-						type: value.type,
-						size: value.size,
-					});
-				} else {
-					console.log(`${key}:`, value);
-				}
-			}
-			console.log("=== END FORM DATA ===\n");
-
-			const response = await fetch("/api/products/create", {
-				method: "POST",
-				body: formData,
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json().catch((e: Error) => {
-					console.error("Failed to parse error response:", e);
-					return { error: "Failed to parse error response" };
+			let ipfsHash = null;
+			try {
+				ipfsHash = await ipfsService.uploadToIPFS(completeData);
+				console.log("IPFS upload successful:", {
+					hash: ipfsHash,
+					gatewayUrl: `${config.ipfs.gatewayUrl}/ipfs/${ipfsHash}`,
+					data: completeData,
+				});
+				message.success({
+					content: "Data uploaded to IPFS successfully",
+					key: "ipfsUpload",
 				});
 
-				console.error("\n=== DATABASE SAVE ERROR ===");
-				console.error("Status:", response.status);
-				console.error("Error Data:", errorData);
-				console.error("Response Text:", await response.text());
+				// Step 4: Create product in database
+				message.loading({
+					content: "Creating product in database...",
+					key: "productCreation",
+				});
+				console.log("Step 4: Creating product in database...");
+				try {
+					const response = await fetch("/api/products", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							businessId: params.id,
+							name: values.name,
+							description: values.description,
+							variants: values.variants,
+							status: values.status,
+							ipfsHash: ipfsHash,
+							youtubeData: values.youtubeData,
+							seo: values.seo,
+							images: values.images,
+						}),
+					});
 
-				throw new Error(
-					errorData.error || "Failed to save product to database"
-				);
+					if (!response.ok) {
+						const error = await response.json();
+						throw new Error(error.message || "Failed to create product");
+					}
+
+					const result = await response.json();
+					console.log("Product created successfully:", result);
+
+					message.success({
+						content: (
+							<div>
+								<p>Product created successfully!</p>
+								<p className="text-sm text-gray-500 mt-2">
+									IPFS Hash: {ipfsHash}
+								</p>
+							</div>
+						),
+						key: "productCreation",
+						duration: 2,
+					});
+
+					// Redirect to products page immediately after success
+					router.push(`/dashboard/businesses/${params.id}/products`);
+				} catch (error) {
+					console.error("Error creating product:", error);
+					message.error({
+						content: "Failed to create product in database",
+						key: "productCreation",
+					});
+					return;
+				}
+			} catch (error) {
+				console.error("Error during IPFS upload:", error);
+				message.error({
+					content:
+						"Failed to upload to IPFS: " +
+						(error instanceof Error ? error.message : "Unknown error"),
+					key: "ipfsUpload",
+				});
+				return;
 			}
-
-			const result = await response.json().catch((e: Error) => {
-				console.error("Failed to parse success response:", e);
-				throw new Error("Failed to parse database response");
+		} catch (error) {
+			console.error("Error during product creation:", error);
+			message.error({
+				content:
+					"Failed to create product: " +
+					(error instanceof Error ? error.message : "Unknown error"),
+				key: "productCreation",
 			});
-
-			console.log("\n=== DATABASE SAVE SUCCESS ===");
-			console.log("Response Data:", result);
-			console.log("Product ID:", result.id);
-			console.log("Created At:", result.createdAt);
-			console.log("Status:", result.status);
-
-			setUploadProgress((prev) => ({ ...prev, database: 100 }));
-			message.success("Product created successfully!");
-			router.push(`/dashboard/businesses/${params.id}/products` as any);
-		} catch (error: any) {
-			console.error("Error creating product:", error);
-			message.error(error.message || "Failed to create product");
 		} finally {
 			setIsSubmitting(false);
 		}
 	};
 
-	// Add test function
-	const testDatabaseUpload = async () => {
-		try {
-			setIsTesting(true);
-			console.log("\n=== TESTING DATABASE UPLOAD ===");
-
-			// Minimal test data for database upload
-			const testData = {
-				name: "Test Product",
-				description: "This is a test product for database upload",
-				price: 100,
-				stock: 10,
-				status: "DRAFT" as ProductStatus,
-				variants: [],
-				images: [],
-				ipfsHash: "QmTestHash123",
-				createdAt: new Date().toISOString(),
-				updatedAt: new Date().toISOString(),
-			};
-
-			console.log("Test Data:", testData);
-
-			const formData = new FormData();
-			formData.append("businessId", params.id as string);
-			formData.append("productData", JSON.stringify(testData));
-
-			console.log("Sending test data to database...");
-			const response = await fetch("/api/products/create", {
-				method: "POST",
-				body: formData,
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json();
-				console.error("Database upload failed:", errorData);
-				message.error(
-					"Test upload failed: " + (errorData.error || "Unknown error")
-				);
-			} else {
-				const result = await response.json();
-				console.log("Test upload successful:", result);
-				message.success("Test upload completed successfully!");
-			}
-		} catch (error: any) {
-			console.error("Test upload error:", error);
-			message.error("Test upload failed: " + error.message);
-		} finally {
-			setIsTesting(false);
-		}
-	};
-
-	// Add specific test function for the exact product data
-	const testSpecificProductUpload = async () => {
-		try {
-			setUploadProgress({
-				stage: "database",
-				progress: 0,
-				message: "Preparing test data...",
-			});
-
-			const testData = {
-				name: "Oraimo FreePods 4 Wireless Earbuds",
-				description:
-					"Experience immersive sound with Oraimo FreePods 4, equipped with dual mic noise cancellation, intuitive touch controls, and sweat resistance. Whether you're working out or on a Zoom call, these earbuds give you clear, balanced audio all day long.",
-				price: 5999,
-				stock: 20,
-				status: "ACTIVE" as const,
-				ipfsHash: "QmayNehGZQDvPsxfSwxtafnv7wPLPVk7ubFs3JxmY2aFEM",
-				media: {
-					create: [
-						{
-							type: "IMAGE",
-							url: "https://gateway.pinata.cloud/ipfs/QmY3zsT9CQ4NZV3ikPzfonKr59HUs1zwGJdEhMviMsy3RV",
-							order: 0,
-						},
-						{
-							type: "IMAGE",
-							url: "https://gateway.pinata.cloud/ipfs/QmQeeNDCzG1DuSDTs5rNBSNxCdL7R3xEjxBLhYXWrPqpD3",
-							order: 1,
-						},
-						{
-							type: "IMAGE",
-							url: "https://gateway.pinata.cloud/ipfs/QmceZXFyyuG15MEPNdXwDSPwUzTFQwepfcH3bTypnhnQfG",
-							order: 2,
-						},
-						{
-							type: "IMAGE",
-							url: "https://gateway.pinata.cloud/ipfs/QmNbovXnDwZ6eaGQmBMjsEafspGEbQ3fJFBn7zPz8icbuD",
-							order: 3,
-						},
-						{
-							type: "IMAGE",
-							url: "https://gateway.pinata.cloud/ipfs/QmYrc4ESpSsRiRqZVCTVxS6sxfx4qWziUxJaBRVq4C4YsM",
-							order: 4,
-						},
-						{
-							type: "IMAGE",
-							url: "https://gateway.pinata.cloud/ipfs/QmbzWHUFaf3tUDNnhEM4Ed1kERNFieGJFrRSyBb4ENhiZN",
-							order: 5,
-						},
-					],
-				},
-				variants: {
-					create: [
-						{
-							name: "Color",
-							value: "Black",
-							price: 5999,
-							stock: 20,
-						},
-					],
-				},
-				seo: {
-					create: {
-						title: "Oraimo FreePods 4 Wireless Earbuds",
-						description:
-							"Experience immersive sound with Oraimo FreePods 4, equipped with dual mic noise cancellation, intuitive touch controls, and sweat resistance. Whether you're working out or on a Zoom call, these earbuds give you clear, balanced audio all day long.",
-						keywords: [],
-					},
-				},
-				analytics: {
-					create: {
-						views: 0,
-						purchases: 0,
-						revenue: 0,
-					},
-				},
-			};
-
-			const formData = new FormData();
-			formData.append("businessId", params.id);
-			formData.append("productData", JSON.stringify(testData));
-
-			console.log("Sending test data to database...");
-			console.log("Test Data:", JSON.stringify(testData, null, 2));
-
-			const response = await fetch("/api/products/create", {
-				method: "PUT",
-				body: formData,
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json();
-				console.error("Test upload error:", errorData);
-				throw new Error(errorData.error || "Failed to upload test product");
-			}
-
-			const result = await response.json();
-			console.log("Test upload successful:", result);
-			message.success("Test product uploaded successfully!");
-		} catch (error: any) {
-			console.error("Test upload failed:", error);
-			message.error(error.message || "Failed to upload test product");
-		} finally {
-			setUploadProgress(null);
-		}
-	};
-
 	return (
 		<div className="min-h-full bg-gray-50 dark:bg-gray-900">
+			<CustomStyles />
 			<div className="max-w-[2000px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
-				<div className="mb-6 flex items-center justify-between">
-					<div>
-						<Button
-							icon={<ArrowLeftOutlined />}
-							onClick={() => router.back()}
-							className="mb-4"
-						>
-							Back
-						</Button>
-						<Title level={2} className="!mb-1">
-							Add New Product
-						</Title>
-						<Text type="secondary">
-							Create a new product listing with media and video content
-						</Text>
-					</div>
-					<Space>
-						<Button
-							type="primary"
-							onClick={testSpecificProductUpload}
-							loading={isTesting}
-							className="bg-red-600 hover:bg-red-700"
-						>
-							Test Specific Product Upload
-						</Button>
-						<Button
-							type="primary"
-							onClick={testDatabaseUpload}
-							loading={isTesting}
-							className="bg-green-600 hover:bg-green-700"
-						>
-							Test Database Upload
-						</Button>
-					</Space>
+				<div className="mb-6">
+					<Button
+						icon={<ArrowLeftOutlined />}
+						onClick={() => router.back()}
+						className="mb-4"
+					>
+						Back
+					</Button>
+					<Title level={2} className="!mb-1">
+						Add New Product
+					</Title>
+					<Text type="secondary">
+						Create a new product listing with media and video content
+					</Text>
 				</div>
 
 				<Row gutter={24}>
@@ -1174,662 +943,552 @@ const NewProductPage = () => {
 							<Form
 								form={form}
 								layout="vertical"
-								onFinish={handleSubmit}
 								initialValues={{
-									status: "DRAFT" as ProductStatus,
+									status: "DRAFT",
 									variants: [],
 									youtubeVisibility: "private",
 								}}
 								preserve={true}
+								onFinish={onSubmit}
 							>
-								<div className="space-y-8">
-									{/* Basic Information Section */}
-									<div>
-										<Title level={4} className="!mb-4">
-											Basic Information
-										</Title>
-										<Row gutter={16}>
-											<Col span={24}>
-												<Form.Item
-													name="name"
-													label="Product Name"
-													rules={[
-														{
-															required: true,
-															message: "Please enter product name!",
-														},
-													]}
-												>
-													<Input placeholder="Enter product name" />
-												</Form.Item>
-											</Col>
-											<Col span={24}>
-												<Form.Item
-													name="description"
-													label="Description"
-													rules={[
-														{
-															required: true,
-															message: "Please enter product description!",
-														},
-													]}
-												>
-													<TextArea
-														rows={4}
-														placeholder="Enter product description"
-													/>
-												</Form.Item>
-											</Col>
-											<Col span={12}>
-												<Form.Item
-													name="price"
-													label="Price"
-													rules={[
-														{ required: true, message: "Please enter price!" },
-													]}
-												>
-													<InputNumber
-														style={{ width: "100%" }}
-														min={0}
-														step={0.01}
-														placeholder="Enter price"
-														prefix="KES"
-													/>
-												</Form.Item>
-											</Col>
-											<Col span={12}>
-												<Form.Item
-													name="stock"
-													label="Stock"
-													rules={[
-														{
-															required: true,
-															message: "Please enter stock quantity!",
-														},
-													]}
-												>
-													<InputNumber
-														style={{ width: "100%" }}
-														min={0}
-														placeholder="Enter stock quantity"
-													/>
-												</Form.Item>
-											</Col>
-											<Col span={12}>
-												<Form.Item
-													name="status"
-													label="Status"
-													rules={[
-														{
-															required: true,
-															message: "Please select a status",
-														},
-													]}
-												>
-													<Select>
-														<Select.Option value="DRAFT">Draft</Select.Option>
-														<Select.Option value="ACTIVE">Active</Select.Option>
-														<Select.Option value="INACTIVE">
-															Inactive
-														</Select.Option>
-													</Select>
-												</Form.Item>
-											</Col>
-										</Row>
-									</div>
+								{/* Basic Information Section */}
+								<div className="mb-8">
+									<Title level={4} className="mb-4">
+										Basic Information
+									</Title>
+									<Form.Item
+										name="name"
+										label="Product Name"
+										rules={formRules.name}
+									>
+										<Input placeholder="Enter product name" />
+									</Form.Item>
 
-									{/* Product Images Section */}
-									<div>
-										<div className="flex justify-between items-center mb-4">
-											<Title level={4} className="!mb-0">
-												Product Images
-											</Title>
-										</div>
-										<Form.Item
-											name="images"
-											valuePropName="fileList"
-											getValueFromEvent={(e) => {
-												if (Array.isArray(e)) {
-													return e;
-												}
-												return e?.fileList;
-											}}
-										>
-											<Upload
-												listType="picture-card"
-												fileList={fileList}
-												onChange={({ fileList: newFileList }) => {
-													console.log(
-														"Upload onChange triggered, new fileList length:",
-														newFileList.length
-													);
-													// Process files to ensure they have valid URLs
-													const processedFiles = newFileList.map((file) => {
-														// Ensure each file has a valid URL
-														if (!file.url && file.originFileObj) {
-															file.url = URL.createObjectURL(
-																file.originFileObj
-															);
-															file.thumbUrl = file.url;
-														}
-														return file;
-													});
+									<Form.Item
+										name="description"
+										label="Description"
+										rules={formRules.description}
+									>
+										<TextArea
+											placeholder="Enter product description"
+											rows={4}
+										/>
+									</Form.Item>
 
-													// Remove duplicates based on uid
-													const uniqueFiles = processedFiles.filter(
-														(file, index, self) =>
-															index ===
-															self.findIndex((f) => f.uid === file.uid)
-													);
-
-													console.log(
-														"After removing duplicates:",
-														uniqueFiles.length
-													);
-													setFileList(uniqueFiles);
-												}}
-												onPreview={(file) => {
-													// When clicking on an image, open it in a new tab
-													if (file.url) {
-														window.open(file.url, "_blank");
-													}
-												}}
-												beforeUpload={handleImageUpload}
-												onRemove={(file) => {
-													console.log("Removing file:", file.name);
-													// Revoke object URL when removing an image to prevent memory leaks
-													if (file.url && file.url.startsWith("blob:")) {
-														URL.revokeObjectURL(file.url);
-													}
-													setFileList((prev) =>
-														prev.filter((f) => f.uid !== file.uid)
-													);
-													return true;
-												}}
-												customRequest={({ onSuccess }) => onSuccess?.("ok")}
-												multiple={true}
-											>
-												<div>
-													<PlusOutlined />
-													<div style={{ marginTop: 8 }}>Upload</div>
-												</div>
-											</Upload>
-										</Form.Item>
-
-										<Text type="secondary" className="block mt-2">
-											You can also paste images directly (⌘+V or Ctrl+V)
-										</Text>
-									</div>
-
-									{/* YouTube Video Section */}
-									<div>
-										<Title level={4} className="!mb-4">
-											YouTube Video
-										</Title>
-
-										{youtubeConnectionStatus === "loading" && (
-											<div className="mb-4">
-												<div className="flex items-center space-x-2">
-													<Spin size="small" />
-													<Text>Checking YouTube connection...</Text>
-												</div>
-											</div>
-										)}
-
-										{youtubeConnectionStatus === "not_connected" && (
-											<div className="mb-4">
-												<Alert
-													type="warning"
-													message="YouTube account not connected"
-													description={
-														<div className="mt-2">
-															<Text>
-																You need to connect your YouTube account to
-																upload videos.
-															</Text>
-															<Button
-																type="primary"
-																onClick={connectYouTube}
-																className="mt-2 bg-red-600 hover:bg-red-700 border-red-600"
-																icon={<YoutubeOutlined />}
-															>
-																Connect YouTube Account
-															</Button>
-															{process.env.NODE_ENV === "development" && (
-																<Text className="block mt-2 text-xs text-gray-500">
-																	Note: In development mode, you can simulate
-																	YouTube connection
-																</Text>
-															)}
-														</div>
-													}
-												/>
-											</div>
-										)}
-
-										{youtubeConnectionStatus === "error" && (
-											<div className="mb-4">
-												<Alert
-													type="error"
-													message="YouTube connection error"
-													description={
-														<div>
-															<p>
-																{youtubeConnectionError ||
-																	"An error occurred checking your YouTube connection"}
-															</p>
-															{process.env.NODE_ENV === "development" && (
-																<div className="mt-2">
-																	<Button
-																		onClick={() =>
-																			setYoutubeConnectionStatus("connected")
-																		}
-																		size="small"
-																	>
-																		Simulate Connected (Development Only)
-																	</Button>
-																</div>
-															)}
-														</div>
-													}
-												/>
-											</div>
-										)}
-
-										{youtubeConnectionStatus === "connected" && (
-											<div className="mb-4">
-												<Alert
-													type="success"
-													message="YouTube account connected"
-													description={
-														<div className="mt-2">
-															{channelInfo ? (
-																<div className="flex items-center space-x-3 mt-2 mb-3">
-																	<img
-																		src={channelInfo.thumbnailUrl}
-																		alt={channelInfo.title}
-																		className="w-10 h-10 rounded-full"
-																	/>
-																	<span className="font-medium">
-																		{channelInfo.title}
-																	</span>
-																</div>
-															) : null}
-															<p>
-																Your YouTube account is connected and ready to
-																upload videos.
-															</p>
-															{process.env.NODE_ENV === "development" && (
-																<p className="text-xs text-gray-500 mt-1">
-																	Note: Using simulated connection in
-																	development mode
-																</p>
-															)}
-														</div>
-													}
-												/>
-											</div>
-										)}
-
-										<Row gutter={16}>
-											<Col span={24}>
-												<Form.Item
-													name="youtubeVideo"
-													label="Video File"
-													rules={[
-														{
-															required: true,
-															message: "Please upload a video!",
-														},
-													]}
-												>
-													<Upload
-														maxCount={1}
-														fileList={videoFiles[VideoPlatform.YOUTUBE]}
-														onChange={({ fileList }) => {
-															if (fileList.length === 0) {
-																handleVideoRemove(VideoPlatform.YOUTUBE);
-															}
-														}}
-														beforeUpload={handleVideoUpload}
-														onRemove={() =>
-															handleVideoRemove(VideoPlatform.YOUTUBE)
-														}
-														disabled={youtubeConnectionStatus !== "connected"}
+									<Form.List name="variants" rules={formRules.variants}>
+										{(fields, { add, remove }) => (
+											<>
+												{fields.map(({ key, name, ...restField }) => (
+													<Space
+														key={key}
+														style={{ display: "flex", marginBottom: 8 }}
+														align="baseline"
 													>
-														<Button
-															icon={<UploadOutlined />}
-															disabled={youtubeConnectionStatus !== "connected"}
+														<Form.Item
+															{...restField}
+															name={[name, "name"]}
+															rules={[
+																{
+																	required: true,
+																	message: "Variant name is required",
+																},
+															]}
 														>
-															Upload Video
-														</Button>
-													</Upload>
-												</Form.Item>
-												{youtubeConnectionStatus === "connected" && (
-													<Text type="secondary" className="block mt-1">
-														Supported formats: MP4, MOV, AVI, WebM (max 2GB)
-													</Text>
-												)}
-											</Col>
-											<Col span={24}>
-												<Form.Item
-													name="youtubeTitle"
-													label="Video Title"
-													rules={[
-														{
-															required: true,
-															message: "Please enter a title!",
-														},
-													]}
-												>
-													<Input
-														placeholder="Enter video title"
-														maxLength={100}
-													/>
-												</Form.Item>
-											</Col>
-											<Col span={24}>
-												<Form.Item
-													name="youtubeDescription"
-													label="Description"
-												>
-													<TextArea
-														rows={4}
-														placeholder="Enter video description"
-														maxLength={5000}
-													/>
-												</Form.Item>
-											</Col>
-											<Col span={24}>
-												<Form.Item
-													name="youtubeTags"
-													label="Tags"
-													help="Enter tags separated by commas (max 5 tags)"
-												>
-													<>
-														<Input.TextArea
-															placeholder="e.g. tech, review, tutorial"
-															onChange={(e) => handleTagChange(e.target.value)}
-															style={{ marginBottom: 8 }}
-														/>
-														<div className="flex flex-wrap gap-2">
-															{form
-																.getFieldValue("youtubeTags")
-																?.map((tag: string, index: number) => (
-																	<Tag key={index} className="m-0">
-																		{tag}
-																	</Tag>
-																))}
-														</div>
-													</>
-												</Form.Item>
-											</Col>
-											<Col span={12}>
-												<Form.Item name="youtubeVisibility" label="Visibility">
-													<Radio.Group>
-														<Space direction="vertical">
-															<Radio value="private">
-																<Space>
-																	<LockOutlined />
-																	Private
-																	<Text type="secondary">
-																		(Only you can view)
-																	</Text>
-																</Space>
-															</Radio>
-															<Radio value="unlisted">
-																<Space>
-																	<LinkOutlined />
-																	Unlisted
-																	<Text type="secondary">
-																		(Anyone with the link can view)
-																	</Text>
-																</Space>
-															</Radio>
-															<Radio value="public">
-																<Space>
-																	<GlobalOutlined />
-																	Public
-																	<Text type="secondary">
-																		(Everyone can view)
-																	</Text>
-																</Space>
-															</Radio>
-														</Space>
-													</Radio.Group>
-												</Form.Item>
-											</Col>
-											<Col span={12}>
-												<Form.Item
-													name="youtubeCategory"
-													label="Category"
-													rules={[
-														{
-															required: true,
-															message: "Please select a category!",
-														},
-													]}
-												>
-													<Select
-														placeholder="Select a category"
-														options={youtubeCategories}
-													/>
-												</Form.Item>
-											</Col>
-											<Col span={24}>
-												<Form.Item
-													name="youtubeSchedule"
-													label="Schedule"
-													className="mb-0"
-												>
-													<Switch
-														checkedChildren="Scheduled"
-														unCheckedChildren="Publish now"
-														onChange={(checked) => {
-															if (!checked) {
-																form.setFieldValue("youtubePublishAt", null);
-															}
-														}}
-													/>
-												</Form.Item>
-												<Form.Item
-													name="youtubePublishAt"
-													dependencies={["youtubeSchedule"]}
-													className="mb-0 mt-2"
-													noStyle
-												>
-													<DatePicker
-														showTime
-														className="w-full"
-														placeholder="Select publish date and time"
-														disabled={!form.getFieldValue("youtubeSchedule")}
-														disabledDate={(current) => {
-															return (
-																current && current < dayjs().startOf("day")
-															);
-														}}
-													/>
-												</Form.Item>
-											</Col>
-										</Row>
-									</div>
-
-									{/* Product Variants Section */}
-									<div>
-										<Title level={4} className="!mb-4">
-											Product Variants
-										</Title>
-										<Form.Item name="variants" label="Variants">
-											<Form.List name="variants">
-												{(fields, { add, remove }) => (
-													<>
-														{fields.map(({ key, name, ...restField }) => (
-															<Space
-																key={key}
-																style={{ display: "flex", marginBottom: 8 }}
-																align="baseline"
-															>
-																<Form.Item
-																	{...restField}
-																	name={[name, "name"]}
-																	rules={[
-																		{
-																			required: true,
-																			message: "Missing variant name",
-																		},
-																	]}
-																>
-																	<Input placeholder="Variant name" />
-																</Form.Item>
-																<Form.Item
-																	{...restField}
-																	name={[name, "value"]}
-																	rules={[
-																		{
-																			required: true,
-																			message: "Missing variant value",
-																		},
-																	]}
-																>
-																	<Input placeholder="Variant value" />
-																</Form.Item>
-																<Form.Item
-																	{...restField}
-																	name={[name, "price"]}
-																	rules={[
-																		{
-																			required: true,
-																			message: "Missing variant price",
-																		},
-																	]}
-																>
-																	<InputNumber
-																		min={0}
-																		step={0.01}
-																		placeholder="Price"
-																	/>
-																</Form.Item>
-																<Form.Item
-																	{...restField}
-																	name={[name, "stock"]}
-																	rules={[
-																		{
-																			required: true,
-																			message: "Missing variant stock",
-																		},
-																	]}
-																>
-																	<InputNumber min={0} placeholder="Stock" />
-																</Form.Item>
-																<Button
-																	type="link"
-																	onClick={() => remove(name)}
-																>
-																	Remove
-																</Button>
-															</Space>
-														))}
-														<Form.Item>
-															<Button
-																type="dashed"
-																onClick={() => add()}
-																block
-																icon={<PlusOutlined />}
-															>
-																Add Variant
-															</Button>
+															<Input placeholder="Variant name" />
 														</Form.Item>
-													</>
-												)}
-											</Form.List>
-										</Form.Item>
-									</div>
+														<Form.Item
+															{...restField}
+															name={[name, "value"]}
+															rules={[
+																{
+																	required: true,
+																	message: "Variant value is required",
+																},
+															]}
+														>
+															<Input placeholder="Variant value" />
+														</Form.Item>
+														<Form.Item
+															{...restField}
+															name={[name, "price"]}
+															rules={[
+																{
+																	required: true,
+																	message: "Price is required",
+																},
+																{
+																	validator: (_, value) => {
+																		if (
+																			!value ||
+																			isNaN(parseFloat(value)) ||
+																			parseFloat(value) <= 0
+																		) {
+																			return Promise.reject(
+																				"Price must be a positive number"
+																			);
+																		}
+																		return Promise.resolve();
+																	},
+																},
+															]}
+														>
+															<InputNumber
+																placeholder="Price"
+																min={0}
+																step={0.01}
+															/>
+														</Form.Item>
+														<Form.Item
+															{...restField}
+															name={[name, "stock"]}
+															rules={[
+																{
+																	required: true,
+																	message: "Stock is required",
+																},
+																{
+																	validator: (_, value) => {
+																		if (
+																			!value ||
+																			isNaN(parseInt(value)) ||
+																			parseInt(value) < 0
+																		) {
+																			return Promise.reject(
+																				"Stock must be a non-negative number"
+																			);
+																		}
+																		return Promise.resolve();
+																	},
+																},
+															]}
+														>
+															<InputNumber
+																placeholder="Stock"
+																min={0}
+																step={1}
+															/>
+														</Form.Item>
+														<MinusCircleOutlined onClick={() => remove(name)} />
+													</Space>
+												))}
+												<Form.Item>
+													<Button
+														type="dashed"
+														onClick={() => add()}
+														block
+														icon={<PlusOutlined />}
+													>
+														Add Variant
+													</Button>
+												</Form.Item>
+											</>
+										)}
+									</Form.List>
+
+									<Form.Item name="status" label="Status">
+										<Select>
+											<Select.Option value="DRAFT">Draft</Select.Option>
+											<Select.Option value="PUBLISHED">Published</Select.Option>
+										</Select>
+									</Form.Item>
 								</div>
 
 								<Divider />
 
-								<div className="flex justify-end">
-									<Button
-										type="primary"
-										htmlType="submit"
-										className="bg-blue-600 hover:bg-blue-700"
-										loading={isSubmitting}
-										disabled={isSubmitting}
+								{/* Media Section */}
+								<div className="mb-8">
+									<Title level={4} className="mb-4">
+										<Space>
+											<UploadOutlined />
+											Media
+										</Space>
+									</Title>
+									<Form.Item
+										name="images"
+										label="Product Images"
+										valuePropName="fileList"
+										getValueFromEvent={(e) => {
+											if (Array.isArray(e)) {
+												return e;
+											}
+											return e?.fileList;
+										}}
 									>
-										{isSubmitting ? "Creating Product..." : "Create Product"}
-									</Button>
+										<Upload
+											listType="picture-card"
+											multiple
+											beforeUpload={() => false}
+											onChange={({ fileList }) => setFileList(fileList)}
+											fileList={fileList}
+										>
+											{fileList.length >= 8 ? null : (
+												<div>
+													<PlusOutlined />
+													<div style={{ marginTop: 8 }}>Upload</div>
+												</div>
+											)}
+										</Upload>
+									</Form.Item>
 								</div>
 
-								{isSubmitting && (
-									<div className="mt-4 space-y-4">
-										<div>
-											<Text>
-												Uploading Images ({uploadProgress.currentImage}/
-												{uploadProgress.totalImages})
-											</Text>
-											<Progress
-												percent={uploadProgress.images}
-												status={
-													uploadProgress.images === 100 ? "success" : "active"
-												}
-												strokeColor={{
-													from: "#108ee9",
-													to: "#87d068",
-												}}
-											/>
-										</div>
-										{videoFiles[VideoPlatform.YOUTUBE].length > 0 && (
-											<div>
-												<Text>Uploading Video to YouTube</Text>
-												<Progress
-													percent={uploadProgress.youtube}
-													status={
-														uploadProgress.youtube === 100
-															? "success"
-															: "active"
-													}
-													strokeColor={{
-														from: "#ff4d4f",
-														to: "#ff7a45",
+								<Divider />
+
+								{/* YouTube Section */}
+								<div className="mb-8">
+									<Title level={4} className="mb-4">
+										<Space>
+											<YoutubeOutlined />
+											YouTube
+										</Space>
+									</Title>
+
+									{/* Add YouTube Profile Section */}
+									<div className="mb-6">
+										{youtubeConnectionStatus === "connected" ? (
+											<div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg mb-4">
+												{youtubeThumbnail ? (
+													<div className="relative">
+														<Avatar
+															size={48}
+															src={youtubeThumbnail.thumbnailUrl}
+															alt="Channel thumbnail"
+														/>
+														<div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
+													</div>
+												) : (
+													<div className="text-2xl flex items-center justify-center w-12 h-12 rounded-full bg-gray-200">
+														<YoutubeOutlined />
+													</div>
+												)}
+												<div>
+													<Text strong className="block text-lg">
+														Connected Account
+													</Text>
+													<Text className="text-sm text-gray-500">
+														{youtubeThumbnail?.channelName || "Loading..."}
+													</Text>
+												</div>
+											</div>
+										) : youtubeConnectionStatus === "loading" ? (
+											<div className="flex items-center justify-center p-4 bg-gray-50 rounded-lg mb-4">
+												<Spin size="small" className="mr-2" />
+												<Text>Loading YouTube connection...</Text>
+											</div>
+										) : youtubeConnectionStatus === "error" ? (
+											<div className="flex items-center justify-between p-4 bg-red-50 rounded-lg mb-4">
+												<div>
+													<Text strong className="block text-red-600">
+														Connection Error
+													</Text>
+													<Text className="text-sm text-red-500">
+														{youtubeConnectionError ||
+															"Failed to connect to YouTube"}
+													</Text>
+												</div>
+												<Button
+													type="primary"
+													danger
+													onClick={() => {
+														// Add reconnect logic here
+														window.location.href = `/api/youtube/connect?businessId=${params.id}`;
 													}}
-												/>
+												>
+													Reconnect
+												</Button>
+											</div>
+										) : (
+											<div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg mb-4">
+												<Text className="text-gray-500">
+													Connect your YouTube account to upload videos
+												</Text>
+												<Button
+													type="primary"
+													onClick={() => {
+														window.location.href = `/api/youtube/connect?businessId=${params.id}`;
+													}}
+													style={{ backgroundColor: "#FF0000" }}
+												>
+													Connect YouTube
+												</Button>
 											</div>
 										)}
-										<div>
-											<Text>Uploading to IPFS</Text>
-											<Progress
-												percent={uploadProgress.ipfs}
-												status={
-													uploadProgress.ipfs === 100 ? "success" : "active"
-												}
-												strokeColor={{
-													from: "#722ed1",
-													to: "#2f54eb",
-												}}
-											/>
-										</div>
-										<div>
-											<Text>Saving Product</Text>
-											<Progress
-												percent={uploadProgress.database}
-												status={
-													uploadProgress.database === 100 ? "success" : "active"
-												}
-												strokeColor={{
-													from: "#13c2c2",
-													to: "#52c41a",
-												}}
-											/>
-										</div>
 									</div>
-								)}
+
+									<Form.Item
+										name="youtubeVideo"
+										label="Video File"
+										rules={formRules.youtubeVideo}
+									>
+										<Upload
+											accept="video/*"
+											maxCount={1}
+											beforeUpload={() => false}
+											onChange={handleVideoUpload}
+											fileList={videoFiles[VideoPlatform.YOUTUBE]}
+										>
+											<Button icon={<UploadOutlined />}>Select Video</Button>
+										</Upload>
+									</Form.Item>
+
+									<Form.Item
+										name="youtubeTitle"
+										label="Video Title"
+										rules={formRules.youtubeTitle}
+									>
+										<Input placeholder="Enter video title" />
+									</Form.Item>
+
+									<Form.Item
+										name="youtubeDescription"
+										label="Video Description"
+										rules={formRules.youtubeDescription}
+									>
+										<TextArea placeholder="Enter video description" rows={4} />
+									</Form.Item>
+
+									<Form.Item
+										name="youtubeTags"
+										label="Video Tags"
+										rules={formRules.youtubeTags}
+									>
+										<Input
+											placeholder="Enter tags separated by commas (max 5)"
+											onChange={(e) => handleTagChange(e.target.value)}
+										/>
+									</Form.Item>
+
+									<Form.Item
+										name="enableScheduling"
+										label="Enable Scheduling"
+										valuePropName="checked"
+										className="mb-4"
+									>
+										<Row gutter={16} align="middle">
+											<Col span={12}>
+												<div className="flex items-center justify-between">
+													<Text className="text-gray-700">Schedule Video</Text>
+													<Switch
+														checked={isSchedulingEnabled}
+														onChange={(checked) => {
+															setIsSchedulingEnabled(checked);
+															if (!checked) {
+																form.setFieldsValue({ youtubePublishAt: null });
+															}
+														}}
+														className="bg-gray-200"
+														checkedChildren="ON"
+														unCheckedChildren="OFF"
+														style={{
+															backgroundColor: isSchedulingEnabled
+																? "#3b82f6"
+																: "#d1d5db",
+															minWidth: "44px",
+															height: "24px",
+														}}
+													/>
+												</div>
+											</Col>
+											<Col span={12}>
+												{isSchedulingEnabled && (
+													<Form.Item
+														name="youtubePublishAt"
+														noStyle
+														rules={[
+															{
+																required: true,
+																message:
+																	"Publish date is required when scheduling is enabled",
+															},
+															{
+																validator: validatePublishDate,
+															},
+														]}
+													>
+														<DatePicker
+															showTime
+															format="YYYY-MM-DD HH:mm:ss"
+															placeholder="Select publish date"
+															disabledDate={(current) => {
+																return (
+																	current && current < dayjs().startOf("day")
+																);
+															}}
+															disabledTime={(date) => {
+																if (date) {
+																	const now = dayjs();
+																	const selectedDate = dayjs(date);
+																	const isToday = selectedDate.isSame(
+																		now,
+																		"day"
+																	);
+
+																	if (isToday) {
+																		const currentHour = now.hour();
+																		const currentMinute = now.minute();
+																		const minMinute = currentMinute + 10;
+
+																		return {
+																			disabledHours: () =>
+																				Array.from(
+																					{ length: currentHour },
+																					(_, i) => i
+																				),
+																			disabledMinutes: (hour) => {
+																				if (hour === currentHour) {
+																					return Array.from(
+																						{ length: minMinute },
+																						(_, i) => i
+																					);
+																				}
+																				return [];
+																			},
+																		};
+																	}
+																}
+																return {};
+															}}
+															style={{ width: "100%" }}
+															popupClassName="custom-datepicker-popup"
+															onChange={(date) => {
+																if (date) {
+																	form.validateFields(["youtubePublishAt"]);
+																}
+															}}
+														/>
+													</Form.Item>
+												)}
+											</Col>
+										</Row>
+									</Form.Item>
+
+									<Form.Item
+										name="youtubeCategory"
+										label="Video Category"
+										rules={formRules.youtubeCategory}
+									>
+										<Select placeholder="Select category">
+											<Select.Option value="1">Film & Animation</Select.Option>
+											<Select.Option value="2">Autos & Vehicles</Select.Option>
+											<Select.Option value="10">Music</Select.Option>
+											<Select.Option value="15">Pets & Animals</Select.Option>
+											<Select.Option value="17">Sports</Select.Option>
+											<Select.Option value="19">Travel & Events</Select.Option>
+											<Select.Option value="20">Gaming</Select.Option>
+											<Select.Option value="22">People & Blogs</Select.Option>
+											<Select.Option value="23">Comedy</Select.Option>
+											<Select.Option value="24">Entertainment</Select.Option>
+											<Select.Option value="25">News & Politics</Select.Option>
+											<Select.Option value="26">Howto & Style</Select.Option>
+											<Select.Option value="27">Education</Select.Option>
+											<Select.Option value="28">
+												Science & Technology
+											</Select.Option>
+											<Select.Option value="29">
+												Nonprofits & Activism
+											</Select.Option>
+										</Select>
+									</Form.Item>
+
+									<Form.Item
+										name="youtubeVisibility"
+										label="Visibility"
+										rules={formRules.youtubeVisibility}
+									>
+										<Radio.Group>
+											<Radio value="private">Private</Radio>
+											<Radio value="unlisted">Unlisted</Radio>
+											<Radio value="public">Public</Radio>
+										</Radio.Group>
+									</Form.Item>
+								</div>
+
+								<Divider />
+
+								{/* SEO Section */}
+								<div className="mb-8">
+									<Title level={4} className="mb-4">
+										<Space>
+											<GlobalOutlined />
+											SEO
+										</Space>
+									</Title>
+									<Form.Item
+										name={["seo", "title"]}
+										label="SEO Title"
+										rules={formRules.seo.title}
+									>
+										<Input placeholder="Enter SEO title" />
+									</Form.Item>
+
+									<Form.Item
+										name={["seo", "description"]}
+										label="SEO Description"
+										rules={formRules.seo.description}
+									>
+										<TextArea placeholder="Enter SEO description" rows={4} />
+									</Form.Item>
+
+									<Form.Item
+										name={["seo", "keywords"]}
+										label="SEO Keywords"
+										rules={formRules.seo.keywords}
+									>
+										<Input
+											placeholder="Enter keywords separated by commas"
+											onChange={(e) => handleKeywordsChange(e.target.value)}
+										/>
+									</Form.Item>
+								</div>
+
+								<Divider />
+
+								<Form.Item>
+									<div className="flex justify-end">
+										<Button
+											type="primary"
+											htmlType="submit"
+											loading={isSubmitting}
+											className="bg-blue-600 hover:bg-blue-700"
+											size="large"
+										>
+											Create Product
+										</Button>
+									</div>
+								</Form.Item>
 							</Form>
 						</Card>
 					</Col>
 					<Col span={8}>
-						<PreviewPane />
+						<PreviewPane
+							formData={previewData}
+							fileList={fileList}
+							videoFiles={{
+								[VideoPlatform.YOUTUBE]: formValues?.youtubeVideo
+									? [formValues.youtubeVideo as UploadFile]
+									: [],
+							}}
+							selectedPlatforms={selectedPlatforms}
+							youtubeData={youtubeDataPreview}
+							seoData={seoDataPreview}
+						/>
 					</Col>
 				</Row>
+
+				<Modal
+					title="Cancel Upload"
+					open={isCancelling}
+					onOk={handleCancelConfirm}
+					onCancel={handleCancelCancel}
+					okText="Yes, Cancel"
+					cancelText="No, Continue"
+					okButtonProps={{ danger: true }}
+				>
+					<p>Are you sure you want to cancel the upload?</p>
+					<p className="text-gray-500 text-sm">
+						This will stop the current upload process. Any completed steps will
+						be preserved.
+					</p>
+				</Modal>
 			</div>
 		</div>
 	);

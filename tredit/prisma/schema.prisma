@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -59,81 +59,81 @@ model User {
 }
 
 model Business {
-  id                  String                 @id @default(uuid())
-  userId              String
-  name                String
-  description         String?
-  bio                 String?
-  type                BusinessType
-  category            String
-  status              BusinessStatus         @default(ACTIVE)
-  verificationStatus  VerificationStatus     @default(PENDING)
-  email               String
-  phone               String
-  address             String
-  logo                String?
-  coverImage          String?
-  images              String[]
-  currency            String                 @default("KES")
-  revenue             Decimal                @default(0) @db.Decimal(10, 2)
-  blockchainTxHash    String?
-  ipfsUrl             String?
-  ipfsMetadata        Json?
-  averageRating       Float                  @default(0)
-  reviewCount         Int                    @default(0)
-  documents           Json?
-  metadata            Json?
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
-  acceptedCurrencies  Currency[]             @default([KES])
-  alternativePhone    String?
-  certifications      String[]
-  city                String
-  coordinates         Json?
-  country             String                 @default("Kenya")
-  employeeCount       Int                    @default(1)
-  insuranceInfo       Json?
-  languages           String[]               @default(["en"])
-  licenseNumber       String?
-  postalCode          String?
-  privacyPolicy       String?
-  registrationNumber  String?
-  returnPolicy        String?
-  serviceAreas        String[]
-  shippingPolicy      String?
-  sla                 Json?
-  subcategories       String[]
-  supportEmail        String?
-  supportPhone        String?
-  tags                String[]
-  taxId               String?
-  teamRoles           Json[]
-  termsOfService      String?
-  timezone            String                 @default("Africa/Nairobi")
-  businessModel       BusinessModel
-  operationMode       BusinessOperationMode
-  paymentMethods      PaymentMethod[]
-  user                User                   @relation(fields: [userId], references: [id])
-  businessHours       BusinessHours[]
-  subscriptions       BusinessSubscription[]
-  teamMembers         BusinessTeamMember[]
-  verifications       BusinessVerification[]
-  chatSessions        ChatSession[]
-  inventory           Inventory[]
-  notifications       Notification[]
-  orders              Order[]
-  products            Product[]
-  productCategories   ProductCategory[]
-  ratings             Rating[]
-  services            Service[]
-  serviceAgreements   ServiceAgreement[]
-  serviceCategories   ServiceCategory[]
-  serviceProviders    ServiceProvider[]
-  serviceSchedules    ServiceSchedule[]
-  socialMediaContent  SocialMediaContent[]
-  suppliers           Supplier[]
-  whatsAppIntegration WhatsApp?
+  id                     String                  @id @default(uuid())
+  userId                 String
+  name                   String
+  description            String?
+  bio                    String?
+  type                   BusinessType
+  category               String
+  status                 BusinessStatus          @default(ACTIVE)
+  verificationStatus     VerificationStatus      @default(PENDING)
+  email                  String
+  phone                  String
+  address                String
+  logo                   String?
+  coverImage             String?
+  images                 String[]
+  currency               String                  @default("KES")
+  revenue                Decimal                 @default(0) @db.Decimal(10, 2)
+  blockchainTxHash       String?
+  ipfsUrl                String?
+  ipfsMetadata           Json?
+  averageRating          Float                   @default(0)
+  reviewCount            Int                     @default(0)
+  documents              Json?
+  metadata               Json?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  acceptedCurrencies     Currency[]              @default([KES])
+  alternativePhone       String?
+  certifications         String[]
+  city                   String
+  coordinates            Json?
+  country                String                  @default("Kenya")
+  employeeCount          Int                     @default(1)
+  insuranceInfo          Json?
+  languages              String[]                @default(["en"])
+  licenseNumber          String?
+  postalCode             String?
+  privacyPolicy          String?
+  registrationNumber     String?
+  returnPolicy           String?
+  serviceAreas           String[]
+  shippingPolicy         String?
+  sla                    Json?
+  subcategories          String[]
+  supportEmail           String?
+  supportPhone           String?
+  tags                   String[]
+  taxId                  String?
+  teamRoles              Json[]
+  termsOfService         String?
+  timezone               String                  @default("Africa/Nairobi")
+  businessModel          BusinessModel
+  operationMode          BusinessOperationMode
+  paymentMethods         PaymentMethod[]
+  user                   User                    @relation(fields: [userId], references: [id])
+  businessHours          BusinessHours[]
+  subscriptions          BusinessSubscription[]
+  teamMembers            BusinessTeamMember[]
+  verifications          BusinessVerification[]
+  chatSessions           ChatSession[]
+  inventory              Inventory[]
+  notifications          Notification[]
+  orders                 Order[]
+  products               Product[]
+  productCategories      ProductCategory[]
+  ratings                Rating[]
+  services               Service[]
+  serviceAgreements      ServiceAgreement[]
+  serviceCategories      ServiceCategory[]
+  serviceProviders       ServiceProvider[]
+  serviceSchedules       ServiceSchedule[]
   socialMediaConnections SocialMediaConnection[]
+  socialMediaContent     SocialMediaContent[]
+  suppliers              Supplier[]
+  whatsAppIntegration    WhatsApp?
 
   @@index([type])
   @@index([category])
@@ -154,21 +154,20 @@ model Product {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   ipfsHash      String?
-  youtubeVideoId String?
   cartItems     CartItem[]
   notifications Notification[]
   orderItems    OrderItem[]
   business      Business          @relation(fields: [businessId], references: [id])
   analytics     ProductAnalytics?
+  media         ProductMedia[]
   seo           ProductSEO?
   variants      ProductVariant[]
-  media         ProductMedia[]
 }
 
 model ProductMedia {
   id        String   @id @default(uuid())
   productId String
-  type      String   // "IMAGE" or "VIDEO"
+  type      String
   url       String
   order     Int
   createdAt DateTime @default(now())
@@ -1225,17 +1224,17 @@ model VerificationCode {
 }
 
 model SocialMediaConnection {
-  id            String    @id @default(cuid())
-  platform      String
-  accessToken   String?
-  refreshToken  String?
-  expiresAt     DateTime?
-  channelId     String?
-  connected     Boolean   @default(false)
-  businessId    String
-  business      Business  @relation(fields: [businessId], references: [id])
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  businessId   String
+  platform     String
+  connected    Boolean   @default(false)
+  accessToken  String?
+  refreshToken String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  channelId    String?
+  expiresAt    DateTime?
+  business     Business  @relation(fields: [businessId], references: [id])
 
   @@unique([businessId, platform])
   @@index([businessId])

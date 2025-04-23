@@ -56,6 +56,10 @@ export async function GET(request: Request) {
 			}
 		);
 
+		if (!channelResponse.data.items?.[0]) {
+			throw new Error("No YouTube channel found");
+		}
+
 		const channel = channelResponse.data.items[0];
 
 		// Use upsert to either create a new connection or update an existing one
@@ -70,7 +74,7 @@ export async function GET(request: Request) {
 				accessToken: access_token,
 				refreshToken: refresh_token,
 				expiresAt: new Date(Date.now() + expires_in * 1000),
-				channelId: channel?.id,
+				channelId: channel.id,
 				connected: true,
 			},
 			create: {
@@ -79,7 +83,7 @@ export async function GET(request: Request) {
 				accessToken: access_token,
 				refreshToken: refresh_token,
 				expiresAt: new Date(Date.now() + expires_in * 1000),
-				channelId: channel?.id,
+				channelId: channel.id,
 				connected: true,
 			},
 		});
@@ -88,11 +92,17 @@ export async function GET(request: Request) {
 		return NextResponse.redirect(
 			`${baseUrl}/dashboard/businesses/${state}?connected=youtube`
 		);
-	} catch (error) {
+	} catch (error: any) {
 		console.error("YouTube OAuth error:", error.response?.data || error);
+		const errorMessage =
+			error.response?.data?.error?.message ||
+			error.message ||
+			"Failed to connect YouTube account";
 		// Redirect back to the specific business page with error
 		return NextResponse.redirect(
-			`${baseUrl}/dashboard/businesses/${state}?error=youtube_connection_failed`
+			`${baseUrl}/dashboard/businesses/${state}?error=${encodeURIComponent(
+				errorMessage
+			)}`
 		);
 	}
 }
