@@ -13,6 +13,7 @@ export const authOptions: NextAuthOptions = {
 	],
 	session: {
 		strategy: "jwt",
+		maxAge: 30 * 24 * 60 * 60, // 30 days
 	},
 	callbacks: {
 		async session({ session, token }) {
@@ -30,5 +31,18 @@ export const authOptions: NextAuthOptions = {
 	},
 	pages: {
 		signIn: "/login",
+		error: "/auth/error",
+	},
+	debug: process.env.NODE_ENV === "development",
+	events: {
+		async signIn({ user }) {
+			console.log("User signed in:", user.email);
+		},
+		async signOut({ user }) {
+			console.log("User signed out:", user?.email);
+		},
+		async error({ error }) {
+			console.error("Auth error:", error);
+		},
 	},
 };

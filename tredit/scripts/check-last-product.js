@@ -19,11 +19,18 @@ async function main() {
 
 	if (product) {
 		console.log("Most recently created product details:");
-		console.dir(product, { depth: null });
+		console.log(`ID: ${product.id}`);
+		console.log(`Name: ${product.name}`);
+		console.log(`Description: ${product.description || "No description"}`);
+		console.log(`Status: ${product.status}`);
+		console.log(`IPFS Hash: ${product.ipfsHash || "No IPFS hash"}`);
+		console.log(
+			`YouTube Video ID: ${product.youtubeVideoId || "No YouTube ID found"}`
+		);
 
 		if (product.variants.length > 0) {
 			const firstVariant = product.variants[0];
-			console.log("\nVerification:");
+			console.log("\nVariant Verification:");
 			console.log(
 				`  - Product Price: ${product.price} (Should match first variant price)`
 			);
@@ -39,10 +46,48 @@ async function main() {
 		// Check for media
 		if (product.media && product.media.length > 0) {
 			console.log("\nProduct Media:");
+			let youtubeVideo = null;
+
 			product.media.forEach((item, index) => {
 				console.log(
 					`  - Media ${index + 1}: Type=${item.type}, URL=${item.url}`
 				);
+
+				// Check if this is a YouTube video
+				if (item.type === "VIDEO" && item.url.includes("youtube.com")) {
+					youtubeVideo = item;
+				}
+			});
+
+			// If we found a YouTube video, show more details
+			if (youtubeVideo) {
+				console.log("\nYouTube Video Details:");
+				console.log(`  - URL: ${youtubeVideo.url}`);
+
+				// Extract video ID from URL if possible
+				const videoIdMatch = youtubeVideo.url.match(/[?&]v=([^&]+)/);
+				if (videoIdMatch && videoIdMatch[1]) {
+					console.log(`  - Extracted Video ID: ${videoIdMatch[1]}`);
+					console.log(
+						`  - Does it match product.youtubeVideoId? ${
+							videoIdMatch[1] === product.youtubeVideoId ? "Yes" : "No"
+						}`
+					);
+				}
+			} else {
+				console.log("\nNo YouTube video found in media.");
+			}
+
+			// Count by media type
+			const mediaTypes = product.media.reduce((acc, media) => {
+				acc[media.type] = (acc[media.type] || 0) + 1;
+				return acc;
+			}, {});
+
+			console.log("\nMedia Summary:");
+			console.log(`  - Total Media Items: ${product.media.length}`);
+			Object.entries(mediaTypes).forEach(([type, count]) => {
+				console.log(`  - ${type}: ${count}`);
 			});
 		} else {
 			console.log("\nProduct has no associated media.");

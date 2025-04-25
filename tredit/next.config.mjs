@@ -4,7 +4,7 @@ const nextConfig = {
 	poweredByHeader: false,
 	reactStrictMode: true,
 	images: {
-		domains: ["localhost"],
+		domains: ["lh3.googleusercontent.com", "avatars.githubusercontent.com"],
 		dangerouslyAllowSVG: true,
 		contentDispositionType: "attachment",
 		contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
@@ -23,20 +23,20 @@ const nextConfig = {
 					: ["localhost:3000"],
 		},
 		typedRoutes: true,
+		serverComponentsExternalPackages: ["socket.io", "socket.io-client"],
 	},
 	webpack: (config, { isServer }) => {
 		if (!isServer) {
 			// Ensure Node.js modules aren't included in client-side bundles
 			config.resolve.fallback = {
-				fs: false,
+				...config.resolve.fallback,
 				net: false,
 				tls: false,
-				crypto: false,
-				os: false,
-				path: false,
-				stream: false,
-				http: false,
-				https: false,
+				fs: false,
+				child_process: false,
+				// Allow these modules for Socket.IO
+				http: "stream-http",
+				https: "https-browserify",
 				zlib: false,
 			};
 
@@ -55,6 +55,27 @@ const nextConfig = {
 	},
 	eslint: {
 		ignoreDuringBuilds: false,
+	},
+	// Add WebSocket support
+	async headers() {
+		return [
+			{
+				source: "/api/:path*",
+				headers: [
+					{ key: "Access-Control-Allow-Credentials", value: "true" },
+					{ key: "Access-Control-Allow-Origin", value: "*" },
+					{
+						key: "Access-Control-Allow-Methods",
+						value: "GET,DELETE,PATCH,POST,PUT,OPTIONS",
+					},
+					{
+						key: "Access-Control-Allow-Headers",
+						value:
+							"X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
+					},
+				],
+			},
+		];
 	},
 };
 

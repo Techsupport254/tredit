@@ -85,6 +85,13 @@ async function getBusinessFromSlug(slug: string) {
 			coverImage: true,
 			type: true,
 			status: true,
+			email: true,
+			phone: true,
+			address: true,
+			city: true,
+			country: true,
+			supportEmail: true,
+			supportPhone: true,
 			products: {
 				select: {
 					id: true,
@@ -103,6 +110,18 @@ async function getBusinessFromSlug(slug: string) {
 						},
 						take: 1,
 					},
+					variants: {
+						select: {
+							id: true,
+							name: true,
+							value: true,
+							price: true,
+							stock: true,
+						},
+					},
+				},
+				orderBy: {
+					createdAt: "desc",
 				},
 			},
 		},
@@ -132,5 +151,24 @@ export default async function StorePage({ params }: Props) {
 		notFound();
 	}
 
-	return <StorePageClient business={business} />;
+	// Serialize the business data to handle Decimal objects
+	// This converts it to a plain object with string prices
+	const serializedBusiness = JSON.parse(
+		JSON.stringify(business, (key, value) => {
+			// Handle BigInt, Decimal, or any non-serializable values
+			if (
+				typeof value === "object" &&
+				value !== null &&
+				typeof value.toString === "function"
+			) {
+				// For Decimal objects from Prisma, convert to string or number
+				if (value.constructor?.name === "Decimal") {
+					return value.toString();
+				}
+			}
+			return value;
+		})
+	);
+
+	return <StorePageClient business={serializedBusiness} />;
 }

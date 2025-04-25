@@ -33,6 +33,7 @@ model User {
   metadata                   Json?
   lastNotificationAt         DateTime?
   unreadCount                Int                       @default(0)
+  shippingAddress            String?
   businesses                 Business[]
   teamMemberships            BusinessTeamMember[]
   initiatedCalls             Call[]                    @relation("InitiatedCalls")
@@ -154,6 +155,7 @@ model Product {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
   ipfsHash      String?
+  youtubeVideoId String?
   cartItems     CartItem[]
   notifications Notification[]
   orderItems    OrderItem[]
@@ -187,7 +189,7 @@ model Service {
   status        ServiceStatus  @default(ACTIVE)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
-  cartItems     CartItem[]
+  cartItems     CartItem[]     @relation("ServiceCartItems")
   notifications Notification[]
   orderItems    OrderItem[]
   business      Business       @relation(fields: [businessId], references: [id])
@@ -223,29 +225,34 @@ model OrderItem {
 }
 
 model Cart {
-  id        String     @id @default(uuid())
-  userId    String     @unique
-  status    CartStatus @default(ACTIVE)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  user      User       @relation(fields: [userId], references: [id])
-  items     CartItem[]
+  id              String     @id @default(uuid())
+  userId          String     @unique
+  status          CartStatus @default(ACTIVE)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  shippingAddress String?
+  user            User       @relation(fields: [userId], references: [id])
+  items           CartItem[]
 }
 
 model CartItem {
-  id        String   @id @default(uuid())
+  id        String          @id @default(cuid())
   cartId    String
   productId String?
   serviceId String?
   quantity  Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  cart      Cart     @relation(fields: [cartId], references: [id])
-  product   Product? @relation(fields: [productId], references: [id])
-  service   Service? @relation(fields: [serviceId], references: [id])
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  variantId String?
+  cart      Cart            @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product?        @relation(fields: [productId], references: [id])
+  service   Service?        @relation("ServiceCartItems", fields: [serviceId], references: [id])
+  variant   ProductVariant? @relation("VariantCartItems", fields: [variantId], references: [id])
 
-  @@unique([cartId, productId])
-  @@unique([cartId, serviceId])
+  @@index([cartId])
+  @@index([productId])
+  @@index([variantId])
+  @@index([serviceId])
 }
 
 model Message {
@@ -445,15 +452,16 @@ model BusinessTeamMember {
 }
 
 model ProductVariant {
-  id        String   @id @default(uuid())
+  id        String     @id @default(uuid())
   productId String
   name      String
   value     String
-  price     Decimal  @db.Decimal(10, 2)
+  price     Decimal    @db.Decimal(10, 2)
   stock     Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  product   Product  @relation(fields: [productId], references: [id])
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  cartItems CartItem[] @relation("VariantCartItems")
+  product   Product    @relation(fields: [productId], references: [id])
 
   @@unique([productId, name, value])
 }
@@ -501,11 +509,17 @@ model ChatSession {
   createdAt     DateTime   @default(now())
   lastMessageAt DateTime?
   updatedAt     DateTime   @updatedAt
+  cartId        String?
+  orderId       String?
   business      Business   @relation(fields: [businessId], references: [id])
   user          User       @relation(fields: [userId], references: [id])
   messages      Message[]
+  cart          Cart?      @relation(fields: [cartId], references: [id])
+  order         Order?     @relation(fields: [orderId], references: [id])
 
   @@unique([userId, businessId])
+  @@index([cartId])
+  @@index([orderId])
 }
 
 model WhatsApp {

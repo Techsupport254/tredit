@@ -141,6 +141,13 @@ const PreviewPane = ({
 		publishAt?: string;
 		category?: string;
 		visibility?: string;
+		id?: string;
+		customUrl?: string;
+		statistics?: {
+			subscriberCount: string;
+			videoCount: string;
+			viewCount: string;
+		};
 	};
 	seoData?: {
 		title?: string;
@@ -545,9 +552,26 @@ const NewProductPage = () => {
 				}
 				const data = await response.json();
 
+				// Log complete YouTube account data for debugging
+				console.log("YouTube Account Data:", JSON.stringify(data, null, 2));
+
+				// Make sure to extract the correct thumbnail URL and channel name
+				const thumbnailUrl =
+					data.thumbnails?.default?.url ||
+					data.snippet?.thumbnails?.default?.url ||
+					"";
+				const channelName =
+					data.title || data.snippet?.title || "YouTube Channel";
+
 				setYoutubeThumbnail({
-					thumbnailUrl: data.thumbnails?.default?.url || "",
-					channelName: data.title || "YouTube Channel",
+					thumbnailUrl,
+					channelName,
+				});
+
+				// Store complete YouTube data with the proper ID
+				setYoutubeData({
+					...data,
+					id: data.id || data.snippet?.resourceId?.channelId,
 				});
 				setYoutubeConnectionStatus("connected");
 			} catch (error) {
@@ -772,38 +796,64 @@ const NewProductPage = () => {
 
 						if (!videoResponse.ok) {
 							const error = await videoResponse.json();
-							throw new Error(error.message || "Failed to upload video");
+							// Check for quota exceeded error
+							if (
+								error.message?.includes("quota") ||
+								error.message?.includes("quotaExceeded")
+							) {
+								message.warning({
+									content:
+										"YouTube API quota exceeded. Product will be created without video.",
+									key: "videoUpload",
+									duration: 5,
+								});
+								youtubeData = null;
+							} else {
+								throw new Error(error.message || "Failed to upload video");
+							}
+						} else {
+							const videoResult = await videoResponse.json();
+							console.log("Video upload results:", videoResult);
+
+							message.success({
+								content: "Video uploaded successfully",
+								key: "videoUpload",
+							});
+
+							// Store YouTube data
+							youtubeData = {
+								videoId: videoResult.videoId,
+								videoUrl: `https://www.youtube.com/watch?v=${videoResult.videoId}`,
+								title: metadata.title,
+								description: metadata.description,
+								tags: metadata.tags,
+								category: metadata.categoryId,
+								visibility: metadata.privacyStatus,
+								publishAt: metadata.publishAt,
+							};
 						}
-
-						const videoResult = await videoResponse.json();
-						console.log("Video upload results:", videoResult);
-
-						message.success({
-							content: "Video uploaded successfully",
-							key: "videoUpload",
-						});
-
-						// Store YouTube data
-						youtubeData = {
-							videoId: videoResult.videoId,
-							videoUrl: `https://www.youtube.com/watch?v=${videoResult.videoId}`,
-							title: metadata.title,
-							description: metadata.description,
-							tags: metadata.tags,
-							category: metadata.categoryId,
-							visibility: metadata.privacyStatus,
-							publishAt: metadata.publishAt,
-						};
 					}
 				} catch (error) {
 					console.error("Error uploading video:", error);
-					message.error({
-						content:
-							"Failed to upload video: " +
-							(error instanceof Error ? error.message : "Unknown error"),
-						key: "videoUpload",
-					});
-					return;
+					// Check if it's a quota error
+					if (error instanceof Error && error.message?.includes("quota")) {
+						message.warning({
+							content:
+								"YouTube API quota exceeded. Product will be created without video.",
+							key: "videoUpload",
+							duration: 5,
+						});
+					} else {
+						message.error({
+							content:
+								"Failed to upload video: " +
+								(error instanceof Error ? error.message : "Unknown error"),
+							key: "videoUpload",
+							duration: 5,
+						});
+					}
+					// Don't return here, continue with product creation without video
+					youtubeData = null;
 				}
 			}
 
@@ -820,7 +870,10 @@ const NewProductPage = () => {
 				images: values.images || [],
 				seo: values.seo || {},
 				variants: values.variants || [],
-				status: values.status || "DRAFT",
+				status:
+					values.status === "DRAFT"
+						? ProductStatus.DRAFT
+						: ProductStatus.ACTIVE,
 				businessId: params.id,
 				timestamp: new Date().toISOString(),
 			};
@@ -845,22 +898,64 @@ const NewProductPage = () => {
 				});
 				console.log("Step 4: Creating product in database...");
 				try {
+					// Prepare the data to send to API
+					const productData = {
+						businessId: params.id,
+						name: values.name,
+						description: values.description,
+						variants: values.variants,
+						status:
+							values.status === "DRAFT"
+								? ProductStatus.DRAFT
+								: ProductStatus.ACTIVE,
+						ipfsHash: ipfsHash,
+						seo: values.seo,
+						price: values.variants[0]?.price || 0,
+						stock: values.variants.reduce((total: number, variant: any) => {
+							return total + (variant.stock || 0);
+						}, 0),
+						images: values.images,
+						media: [
+							// Add image media entries
+							...(values.images || []).map((image: string, index: number) => ({
+								type: "image",
+								url: image,
+								order: index + 1,
+							})),
+							// Add YouTube video media entry if available
+							...(youtubeData
+								? [
+										{
+											type: "VIDEO",
+											url: youtubeData.videoUrl,
+											order: (values.images || []).length + 1,
+											metadata: {
+												videoId: youtubeData.videoId,
+												title: youtubeData.title,
+												description: youtubeData.description,
+												tags: youtubeData.tags,
+												category: youtubeData.category,
+												visibility: youtubeData.visibility,
+												publishAt: youtubeData.publishAt,
+											},
+										},
+								  ]
+								: []),
+						],
+					};
+
+					// Log the data we're sending to the API
+					console.log(
+						"Sending product data to API:",
+						JSON.stringify(productData, null, 2)
+					);
+
 					const response = await fetch("/api/products", {
 						method: "POST",
 						headers: {
 							"Content-Type": "application/json",
 						},
-						body: JSON.stringify({
-							businessId: params.id,
-							name: values.name,
-							description: values.description,
-							variants: values.variants,
-							status: values.status,
-							ipfsHash: ipfsHash,
-							youtubeData: values.youtubeData,
-							seo: values.seo,
-							images: values.images,
-						}),
+						body: JSON.stringify(productData),
 					});
 
 					if (!response.ok) {
@@ -871,26 +966,54 @@ const NewProductPage = () => {
 					const result = await response.json();
 					console.log("Product created successfully:", result);
 
+					// Log the media info specifically to verify YouTube video was saved
+					if (result.data?.media?.length > 0) {
+						console.log(
+							"Product media details:",
+							JSON.stringify(result.data.media, null, 2)
+						);
+					}
+
 					message.success({
 						content: (
 							<div>
 								<p>Product created successfully!</p>
 								<p className="text-sm text-gray-500 mt-2">
 									IPFS Hash: {ipfsHash}
+									{youtubeData?.videoId && (
+										<>
+											<br />
+											YouTube Video: {youtubeData.videoId}
+										</>
+									)}
+									{result.data?.media?.length > 0 && (
+										<>
+											<br />
+											Media Count: {result.data.media.length}
+											(Types:{" "}
+											{result.data.media
+												.map((m: { type: string }) => m.type)
+												.join(", ")}
+											)
+										</>
+									)}
 								</p>
 							</div>
 						),
 						key: "productCreation",
-						duration: 2,
+						duration: 3,
 					});
 
-					// Redirect to products page immediately after success
+					// Redirect to products page after success
 					router.push(`/dashboard/businesses/${params.id}/products`);
 				} catch (error) {
 					console.error("Error creating product:", error);
 					message.error({
-						content: "Failed to create product in database",
+						content:
+							"Failed to create product: " +
+							(error instanceof Error ? error.message : "Unknown error"),
 						key: "productCreation",
+						duration: 5,
 					});
 					return;
 				}
@@ -901,6 +1024,7 @@ const NewProductPage = () => {
 						"Failed to upload to IPFS: " +
 						(error instanceof Error ? error.message : "Unknown error"),
 					key: "ipfsUpload",
+					duration: 5,
 				});
 				return;
 			}
@@ -911,6 +1035,7 @@ const NewProductPage = () => {
 					"Failed to create product: " +
 					(error instanceof Error ? error.message : "Unknown error"),
 				key: "productCreation",
+				duration: 5,
 			});
 		} finally {
 			setIsSubmitting(false);
@@ -1145,9 +1270,9 @@ const NewProductPage = () => {
 									{/* Add YouTube Profile Section */}
 									<div className="mb-6">
 										{youtubeConnectionStatus === "connected" ? (
-											<div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg mb-4">
-												{youtubeThumbnail ? (
-													<div className="relative">
+											<div className="flex items-center p-4 bg-gray-50 rounded-lg mb-4">
+												{youtubeThumbnail?.thumbnailUrl ? (
+													<div className="relative mr-4">
 														<Avatar
 															size={48}
 															src={youtubeThumbnail.thumbnailUrl}
@@ -1156,17 +1281,24 @@ const NewProductPage = () => {
 														<div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
 													</div>
 												) : (
-													<div className="text-2xl flex items-center justify-center w-12 h-12 rounded-full bg-gray-200">
+													<div className="text-2xl flex items-center justify-center w-12 h-12 rounded-full bg-gray-200 mr-4">
 														<YoutubeOutlined />
 													</div>
 												)}
-												<div>
-													<Text strong className="block text-lg">
+												<div className="flex flex-col">
+													<Text strong className="text-lg">
 														Connected Account
 													</Text>
 													<Text className="text-sm text-gray-500">
-														{youtubeThumbnail?.channelName || "Loading..."}
+														{youtubeThumbnail?.channelName || "YouTube Channel"}
 													</Text>
+													{youtubeData && youtubeData.id && (
+														<div className="mt-1">
+															<Text className="text-xs text-gray-500">
+																ID: {youtubeData.id}
+															</Text>
+														</div>
+													)}
 												</div>
 											</div>
 										) : youtubeConnectionStatus === "loading" ? (

@@ -230,19 +230,9 @@ export default function BusinessDetailsPage({
 			const response = await axios.get(`/api/business/${params.id}`);
 			if (response.data) {
 				setBusiness(response.data);
-				// Set the owner as the first team member
-				if (response.data.user) {
-					setTeamMembers([
-						{
-							id: response.data.user.id,
-							name: response.data.user.name,
-							email: response.data.user.email,
-							role: "OWNER",
-							image: response.data.user.image,
-							status: "active",
-						},
-					]);
-				}
+				// Fetch team members
+				const teamResponse = await axios.get(`/api/business/${params.id}/team`);
+				setTeamMembers(teamResponse.data);
 				// Fetch social media connections
 				const connectionsResponse = await axios.get(
 					`/api/business/${params.id}/social-media`

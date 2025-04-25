@@ -12,6 +12,7 @@ import {
 	ArrowRightOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 import Link from "next/link";
+import Container from "@/components/ui/Container";
 
 export default function AdminHeader() {
 	const { user, logout } = useAuth();
@@ -56,7 +57,7 @@ export default function AdminHeader() {
 
 	return (
 		<header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-			<div className="px-4 sm:px-6 lg:px-8">
+			<Container>
 				<div className="flex items-center justify-between h-16">
 					{/* Left side */}
 					<div className="flex items-center flex-1">
@@ -202,7 +203,7 @@ export default function AdminHeader() {
 						</div>
 					</div>
 				</div>
-			</div>
+			</Container>
 		</header>
 	);
 }

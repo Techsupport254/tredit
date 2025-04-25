@@ -2,6 +2,7 @@
 
 import { ReactNode } from "react";
 import Breadcrumb from "@/components/ui/Breadcrumb";
+import Container from "@/components/ui/Container";
 
 interface DashboardContentProps {
 	children: ReactNode;
@@ -42,9 +43,9 @@ export function DashboardContent({
 
 			{/* Main Content */}
 			<main className="flex-1 overflow-auto bg-white">
-				<div className="w-full max-w-[2000px] mx-auto px-4 py-6">
+				<Container maxWidth="2xl" className="py-6">
 					{children}
-				</div>
+				</Container>
 			</main>
 		</div>
 	);

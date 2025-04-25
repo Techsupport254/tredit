@@ -187,6 +187,23 @@ export async function POST(req: Request) {
 					acceptedCurrencies: data.acceptedCurrencies || ["KES"],
 					languages: data.languages || ["en"],
 					timezone: data.timezone || "Africa/Nairobi",
+					teamMembers: {
+						create: {
+							userId: user.id,
+							role: "OWNER",
+							responsibilities: ["Full business management"],
+							permissions: {
+								canManageTeam: true,
+								canManageProducts: true,
+								canManageServices: true,
+								canManageOrders: true,
+								canManagePayments: true,
+								canManageSettings: true,
+								canManageContent: true,
+								canManageAnalytics: true,
+							},
+						},
+					},
 				},
 			});
 		} catch (error) {

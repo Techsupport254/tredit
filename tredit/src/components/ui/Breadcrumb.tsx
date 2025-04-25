@@ -14,12 +14,15 @@ import {
 	Cog6ToothIcon,
 	ArrowRightOnRectangleIcon,
 	ChevronDownIcon,
+	EllipsisHorizontalIcon,
 } from "@heroicons/react/24/outline";
+import { Container } from "./Container";
 
 type Route = {
 	label: string;
 	path: string;
 	icon?: React.ElementType;
+	isId?: boolean;
 };
 
 // Helper function to format enum values
@@ -78,15 +81,49 @@ export default function Breadcrumb({ isLoading }: BreadcrumbProps) {
 			},
 		];
 
-		paths.forEach((path) => {
+		paths.forEach((path, index) => {
 			currentPath += `/${path}`;
+
+			// Identify if this segment is likely an ID (UUIDs, etc)
+			const isId =
+				/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+					path
+				) || path.length > 20;
+
+			const pathLabel = isId
+				? getFriendlyNameForId(path, index, paths)
+				: formatPathLabel(path);
+
 			items.push({
-				label: formatPathLabel(path),
+				label: pathLabel,
 				path: currentPath,
+				isId,
 			});
 		});
 
 		return items;
+	};
+
+	// Get a friendly name for ID segments
+	const getFriendlyNameForId = (
+		id: string,
+		index: number,
+		paths: string[]
+	): string => {
+		// If previous path is businesses, this is a business
+		if (index > 0 && paths[index - 1] === "businesses") {
+			return "Business";
+		}
+		// If previous path is products, this is a product
+		else if (index > 0 && paths[index - 1] === "products") {
+			return "Product";
+		}
+		// If previous path is users, this is a user
+		else if (index > 0 && paths[index - 1] === "users") {
+			return "User";
+		}
+		// Default case
+		return "Details";
 	};
 
 	// Format path label (e.g., "user-profile" -> "User Profile")
@@ -99,32 +136,57 @@ export default function Breadcrumb({ isLoading }: BreadcrumbProps) {
 
 	const breadcrumbs = generateBreadcrumbs();
 
+	// Prepare breadcrumbs for display (max 3 items)
+	const displayBreadcrumbs = () => {
+		if (breadcrumbs.length <= 3) {
+			return breadcrumbs;
+		}
+
+		// Show first, ellipsis, and last two
+		return [
+			breadcrumbs[0],
+			{ label: "...", path: "", icon: EllipsisHorizontalIcon },
+			...breadcrumbs.slice(-2),
+		];
+	};
+
+	const visibleBreadcrumbs = displayBreadcrumbs();
+
 	return (
 		<div className="w-full bg-white border-b border-gray-200">
-			<div className="max-w-[2000px] mx-auto px-4 py-2">
-				<div className="flex justify-between items-center">
+			<Container maxWidth="full">
+				<div className="flex justify-between items-center h-16">
 					{/* Breadcrumb Navigation */}
 					<nav className="flex items-center space-x-1 text-base">
-						{breadcrumbs.map((item, index) => (
-							<div key={item.path} className="flex items-center">
+						{visibleBreadcrumbs.map((item, index) => (
+							<div
+								key={item.path || `ellipsis-${index}`}
+								className="flex items-center"
+							>
 								{index > 0 && (
 									<ChevronRightIcon className="h-5 w-5 mx-2 text-gray-400 flex-shrink-0" />
 								)}
-								<Link
-									href={{
-										pathname: item.path,
-									}}
-									className={`flex items-center hover:text-gray-900 transition-colors ${
-										index === breadcrumbs.length - 1
-											? "text-blue-600 font-medium"
-											: "text-gray-500"
-									}`}
-								>
-									{item.icon && (
-										<item.icon className="h-5 w-5 mr-1.5 flex-shrink-0" />
-									)}
-									<span>{item.label}</span>
-								</Link>
+								{item.path ? (
+									<Link
+										href={{
+											pathname: item.path,
+										}}
+										className={`flex items-center hover:text-gray-900 transition-colors ${
+											index === visibleBreadcrumbs.length - 1
+												? "text-blue-600 font-medium"
+												: "text-gray-500"
+										}`}
+									>
+										{item.icon && (
+											<item.icon className="h-5 w-5 mr-1.5 flex-shrink-0" />
+										)}
+										<span>{item.label}</span>
+									</Link>
+								) : (
+									<span className="text-gray-400 flex items-center">
+										<EllipsisHorizontalIcon className="h-5 w-5 mr-1.5 flex-shrink-0" />
+									</span>
+								)}
 							</div>
 						))}
 					</nav>
@@ -133,14 +195,14 @@ export default function Breadcrumb({ isLoading }: BreadcrumbProps) {
 					<div className="flex items-center space-x-6">
 						{/* Notifications */}
 						<button className="relative p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors">
-							<BellIcon className="h-5 w-5" />
-							<span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
+							<BellIcon className="h-5 w-5" aria-hidden="true" />
+							<span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white animate-pulse" />
 						</button>
 
 						{/* Messages */}
 						<button className="relative p-1.5 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 transition-colors">
-							<ChatBubbleLeftIcon className="h-5 w-5" />
-							<span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-blue-500" />
+							<ChatBubbleLeftIcon className="h-5 w-5" aria-hidden="true" />
+							<span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-white" />
 						</button>
 
 						{/* User Profile */}
@@ -230,7 +292,7 @@ export default function Breadcrumb({ isLoading }: BreadcrumbProps) {
 						) : null}
 					</div>
 				</div>
-			</div>
+			</Container>
 		</div>
 	);
 }

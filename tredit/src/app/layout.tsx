@@ -4,6 +4,7 @@ import { Inter } from "next/font/google";
 import { AuthProvider } from "@/lib/auth/AuthContext";
 import { Toaster } from "react-hot-toast";
 import { Providers } from "./providers";
+import { CartProvider } from "@/lib/context/CartContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -63,12 +64,14 @@ export default function RootLayout({
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<body className={inter.className} suppressHydrationWarning>
-				<Providers>
-					<AuthProvider>
-						<Toaster position="top-center" />
-						{children}
-					</AuthProvider>
-				</Providers>
+				<CartProvider>
+					<Providers>
+						<AuthProvider>
+							<Toaster position="top-center" />
+							{children}
+						</AuthProvider>
+					</Providers>
+				</CartProvider>
 			</body>
 		</html>
 	);
