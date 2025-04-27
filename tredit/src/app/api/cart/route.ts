@@ -125,6 +125,7 @@ export async function GET() {
 			cartId: cart.id,
 			cart: validItems,
 			total,
+			shippingFee: cart.shippingFee,
 			deletedItems: deletedItems.length > 0 ? deletedItems.length : 0,
 		});
 	} catch (error) {

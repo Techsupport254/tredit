@@ -31,6 +31,10 @@ interface Config {
 		userProfileAbi: any[];
 		businessContract: string;
 		businessAbi: any[];
+		paymentContract: string;
+		paymentAbi: any[];
+		escrowContract: string;
+		escrowAbi: any[];
 		biconomyForwarder: string;
 		rpcUrl: string;
 		chainId: number;
@@ -100,6 +104,10 @@ interface Config {
 		redirectUri: string;
 		refreshToken: string;
 	};
+	paystack: {
+		secretKey: string;
+	};
+	appUrl: string;
 }
 
 const development: Config = {
@@ -134,6 +142,10 @@ const development: Config = {
 		userProfileAbi: JSON.parse(process.env.USER_PROFILE_ABI || "[]"),
 		businessContract: process.env.BUSINESS_CONTRACT_ADDRESS || "",
 		businessAbi: JSON.parse(process.env.BUSINESS_ABI || "[]"),
+		paymentContract: process.env.PAYMENT_CONTRACT_ADDRESS || "",
+		paymentAbi: JSON.parse(process.env.PAYMENT_ABI || "[]"),
+		escrowContract: process.env.ESCROW_CONTRACT_ADDRESS || "",
+		escrowAbi: JSON.parse(process.env.ESCROW_ABI || "[]"),
 		biconomyForwarder: process.env.BICONOMY_FORWARDER || "",
 		rpcUrl: process.env.RPC_URL || "",
 		chainId: Number(process.env.CHAIN_ID) || 80002,
@@ -207,6 +219,13 @@ const development: Config = {
 		redirectUri: process.env.YOUTUBE_REDIRECT_URI!,
 		refreshToken: process.env.YOUTUBE_REFRESH_TOKEN!,
 	},
+	paystack: {
+		secretKey:
+			process.env.PAYSTACK_SECRET_KEY ||
+			process.env.PAYSTACK_TEST_SECRET_KEY ||
+			"",
+	},
+	appUrl: process.env.APP_URL || "http://localhost:3000",
 };
 
 const production: Config = {
@@ -231,6 +250,13 @@ const production: Config = {
 		rateLimitMax: Number(process.env.RATE_LIMIT_MAX) || 50, // Stricter in production
 		requireAuth: true,
 	},
+	paystack: {
+		secretKey:
+			process.env.PAYSTACK_SECRET_KEY ||
+			process.env.PAYSTACK_LIVE_SECRET_KEY ||
+			"",
+	},
+	appUrl: process.env.APP_URL || "https://tredit.com",
 };
 
 const config: Config =

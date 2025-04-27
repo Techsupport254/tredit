@@ -17,6 +17,8 @@ import {
 	ArrowLeftIcon,
 } from "@heroicons/react/24/outline";
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
 type NavigationItem = {
 	name: string;
@@ -27,9 +29,28 @@ type NavigationItem = {
 
 export default function DashboardSidebar() {
 	const pathname = usePathname();
+	const { data: session } = useSession();
+	const [pendingCount, setPendingCount] = useState<number | null>(null);
+
+	useEffect(() => {
+		async function fetchPendingOrders() {
+			if (!session?.user) return;
+			try {
+				const res = await fetch("/api/dashboard/orders/pending-count");
+				if (res.ok) {
+					const data = await res.json();
+					setPendingCount(data.count);
+				}
+			} catch (e) {
+				setPendingCount(null);
+			}
+		}
+		fetchPendingOrders();
+	}, [session?.user]);
 
 	const navigation: NavigationItem[] = [
 		{ name: "Dashboard", href: "/dashboard", icon: HomeIcon },
+
 		{
 			name: "Businesses",
 			href: "/dashboard/businesses",
@@ -39,6 +60,15 @@ export default function DashboardSidebar() {
 			name: "Products",
 			href: "/dashboard/products",
 			icon: ShoppingBagIcon,
+		},
+		{
+			name: "Orders",
+			href: "/dashboard/orders",
+			icon: ShoppingBagIcon,
+			badge:
+				pendingCount !== null && pendingCount > 0
+					? String(pendingCount)
+					: undefined,
 		},
 		{
 			name: "Profile",

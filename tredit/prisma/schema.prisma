@@ -1467,6 +1467,7 @@ enum ShippingMethod {
   NATIONWIDE
   INTERNATIONAL
   PICKUP_ONLY
+  DISCUSSED
 }
 
 enum VerificationType {

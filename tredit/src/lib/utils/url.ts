@@ -16,10 +16,12 @@ export function generateShareableLink(
 	businessType: string
 ): string {
 	const slug = generateSlug(businessName);
-	const baseUrl =
-		process.env.NEXT_PUBLIC_APP_URL ||
-		(typeof window !== "undefined" ? window.location.origin : "");
-	// Create a shorter URL with just the first part of the ID
+	const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+	if (!baseUrl || !/^https?:\/\//.test(baseUrl)) {
+		throw new Error(
+			"NEXT_PUBLIC_APP_URL is not set or is not a valid absolute URL. Please set it in your .env file."
+		);
+	}
 	const shortId = businessId.split("-")[0];
 	return `${baseUrl}/${slug}-${shortId}`;
 }

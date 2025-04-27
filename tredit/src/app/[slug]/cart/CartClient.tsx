@@ -13,6 +13,7 @@ import {
 	Space,
 	Badge,
 	Spin,
+	Card,
 } from "antd";
 import {
 	DeleteOutlined,
@@ -80,6 +81,8 @@ export default function CartClient({ business }: CartClientProps) {
 		isLoading,
 		shippingAddress,
 		updateShippingAddress,
+		shippingFee,
+		updateShippingFee,
 	} = useCart();
 
 	// Add debugging logs
@@ -95,6 +98,27 @@ export default function CartClient({ business }: CartClientProps) {
 		});
 	}, [items]);
 
+	// Fetch shipping fee when component mounts
+	useEffect(() => {
+		const fetchShippingFee = async () => {
+			if (cartId) {
+				try {
+					const response = await fetch(`/api/carts/${cartId}`);
+					if (response.ok) {
+						const data = await response.json();
+						if (data.shippingFee !== undefined) {
+							updateShippingFee(data.shippingFee);
+						}
+					}
+				} catch (error) {
+					console.error("Error fetching shipping fee:", error);
+				}
+			}
+		};
+
+		fetchShippingFee();
+	}, [cartId, updateShippingFee]);
+
 	const router = useRouter();
 	const params = useParams();
 	const slug = params.slug as string;
@@ -102,8 +126,7 @@ export default function CartClient({ business }: CartClientProps) {
 
 	// Calculate cart summary
 	const cartSubtotal = getCartTotal();
-	const shipping = 0; // Will be determined after chat
-	const cartTotal = cartSubtotal + shipping;
+	const cartTotal = cartSubtotal + (shippingFee || 0);
 
 	// Generate business URL
 	const businessUrl = generateShareableLink(
@@ -248,62 +271,55 @@ export default function CartClient({ business }: CartClientProps) {
 		message.success("Item removed from cart");
 	};
 
-	const logoUrl = getIpfsUrl(business.logo);
-
-	const [localShippingAddress, setLocalShippingAddress] =
-		useState<ShippingAddress>({
-			address: shippingAddress || "",
-		});
-
 	const handleAddressChange = (value: string) => {
-		setLocalShippingAddress({ address: value });
+		updateShippingAddress(value);
 	};
 
 	const handleSaveAddress = async () => {
 		try {
 			setIsSavingAddress(true);
-			await updateShippingAddress(localShippingAddress.address);
+			const response = await fetch("/api/user/shipping-address", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ shippingAddress }),
+			});
+
+			if (!response.ok) {
+				throw new Error("Failed to save shipping address");
+			}
+
 			message.success("Shipping address saved successfully");
 		} catch (error) {
+			console.error("Error saving shipping address:", error);
 			message.error("Failed to save shipping address");
 		} finally {
 			setIsSavingAddress(false);
 		}
 	};
 
-	// Render content based on loading state and cart items
 	const renderCartContent = () => {
 		if (isLoading) {
 			return (
-				<div className="flex items-center justify-center py-12">
+				<div className="flex items-center justify-center h-64">
 					<Spin size="large" />
-					<span className="ml-3 text-gray-600">Loading your cart...</span>
 				</div>
 			);
 		}
 
 		if (items.length === 0) {
 			return (
-				<div className="text-center py-16">
-					<div className="mb-8">
-						<ShoppingCartOutlined className="text-6xl text-gray-300" />
-					</div>
-					<h2 className="text-2xl font-bold text-gray-900 mb-4">
-						Your cart is empty
-					</h2>
-					<p className="text-gray-600 mb-8">
-						Looks like you haven't added any items to your cart yet.
-					</p>
-					<Link href={businessUrl as any}>
-						<Button
-							type="primary"
-							size="large"
-							className="bg-blue-600 hover:bg-blue-700 border-0 h-12 px-8 text-base font-semibold"
-						>
-							Start Shopping
+				<Empty
+					image={Empty.PRESENTED_IMAGE_SIMPLE}
+					description="Your cart is empty"
+				>
+					<Link href={businessPagePath}>
+						<Button type="primary" icon={<ShoppingOutlined />}>
+							Continue Shopping
 						</Button>
 					</Link>
-				</div>
+				</Empty>
 			);
 		}
 
@@ -311,134 +327,79 @@ export default function CartClient({ business }: CartClientProps) {
 			<div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 				{/* Cart Items Table */}
 				<div className="lg:col-span-2">
-					<div className="bg-gray-50 rounded-lg p-4 mb-4">
-						<div className="flex items-center gap-2 text-gray-600">
-							<ShoppingCartOutlined className="text-xl" />
-							<span className="font-medium">
-								{items.length} items in your cart
-							</span>
-						</div>
-					</div>
 					<Table
 						dataSource={items}
 						columns={columns}
-						rowKey={(record: CartItem) =>
-							record.id ?? `${record.product.id}-${record.variantId}`
-						}
+						rowKey="id"
 						pagination={false}
 						className="cart-table"
 					/>
 				</div>
 
-				{/* Cart Summary */}
-				<div className="lg:col-span-1">
-					<div className="bg-gray-50 rounded-lg p-6 sticky top-4">
-						<h3 className="text-xl font-bold text-gray-900 mb-6">
-							Order Summary
-						</h3>
-
-						{/* Add Shipping Address Form */}
-						<div className="mb-6">
-							<h4 className="text-lg font-semibold text-gray-900 mb-4">
-								Shipping Address
-							</h4>
-							<div className="space-y-4">
-								<Input.TextArea
-									placeholder="Enter your full shipping address"
-									size="large"
-									autoSize={{ minRows: 3 }}
-									value={localShippingAddress.address}
-									onChange={(e) => handleAddressChange(e.target.value)}
-								/>
-								<Button
-									type="primary"
-									size="large"
-									block
-									loading={isSavingAddress}
-									onClick={handleSaveAddress}
-									className="mt-4 h-12 bg-blue-600 hover:bg-blue-700 border-0 text-base font-semibold"
-								>
-									Save Shipping Address
-								</Button>
-							</div>
+				<div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+					<h3 className="text-lg font-semibold text-gray-900 mb-4">
+						Order Summary
+					</h3>
+					<div className="space-y-3">
+						<div className="flex justify-between">
+							<span className="text-gray-600">Subtotal</span>
+							<span className="font-medium text-gray-900">
+								{formatCurrency(cartSubtotal)}
+							</span>
 						</div>
-
-						<Divider className="my-6" />
-
-						<div className="space-y-4">
-							<div className="flex justify-between items-center">
-								<span className="text-gray-600">Subtotal</span>
-								<span className="font-semibold text-gray-900">
-									{formatCurrency(cartSubtotal)}
-								</span>
-							</div>
-							<div className="flex justify-between items-center">
-								<span className="text-gray-600">Shipping</span>
-								<span className="font-semibold text-gray-900">
-									To be determined
-								</span>
-							</div>
-							{shippingAddress && (
-								<div className="flex justify-between items-start pt-4 border-t border-gray-200 mt-4">
-									<span className="text-gray-600">Shipping Address</span>
-									<span className="font-semibold text-gray-900 text-right whitespace-pre-wrap">
-										{shippingAddress}
-									</span>
-								</div>
-							)}
-							<Divider className="my-4" />
-							<div className="flex justify-between items-center">
-								<span className="text-lg font-bold text-gray-900">Total</span>
-								<span className="text-2xl font-bold text-blue-600">
-									{formatCurrency(cartTotal)}
-								</span>
-							</div>
+						<div className="flex justify-between">
+							<span className="text-gray-600">Shipping</span>
+							<span className="font-medium text-gray-900">
+								{shippingFee !== null
+									? formatCurrency(shippingFee)
+									: "To be determined"}
+							</span>
 						</div>
+						<Divider className="my-4" />
+						<div className="flex justify-between">
+							<span className="text-lg font-semibold text-gray-900">Total</span>
+							<span className="text-xl font-bold text-blue-600">
+								{formatCurrency(cartTotal)}
+							</span>
+						</div>
+					</div>
 
-						<div className="mt-8 space-y-4">
+					<div className="mt-6 space-y-3">
+						<Link href={businessPagePath} className="block w-full">
+							<Button
+								icon={<ArrowLeftOutlined />}
+								className="w-full h-12 bg-gray-100 hover:bg-gray-200 text-gray-700 border-0"
+							>
+								Continue Shopping
+							</Button>
+						</Link>
+						<Link
+							href={`${businessPagePath}/chat?cartId=${cartId}`}
+							className="block w-full"
+						>
 							<Button
 								type="primary"
-								size="large"
-								block
-								className="h-12 bg-blue-600 hover:bg-blue-700 border-0 text-base font-semibold"
-								onClick={() => router.push(`/${business.id}/checkout`)}
-								disabled={!shippingAddress || shipping === 0}
-								title={
-									!shippingAddress
-										? "Please save your shipping address"
-										: "Please discuss shipping with the seller"
-								}
+								icon={<MessageOutlined />}
+								className="w-full h-12 bg-blue-600 hover:bg-blue-700 border-0 text-base font-semibold"
 							>
-								Proceed to Checkout
+								Proceed to Chat
 							</Button>
-							<Link href={{ pathname: businessPagePath }}>
-								<Button
-									type="default"
-									size="large"
-									block
-									className="h-12 text-base font-semibold"
-								>
-									Continue Shopping
-								</Button>
-							</Link>
-							<Link
-								href={{
-									pathname: `/${slug}/chat`,
-									query: cartId ? { cartId } : undefined,
-								}}
+						</Link>
+						<Link
+							href={`${businessPagePath}/checkout`}
+							className="block w-full"
+						>
+							<Button
+								type="primary"
+								icon={<ShoppingOutlined />}
+								className="w-full h-12 bg-green-600 hover:bg-green-700 border-0 text-base font-semibold"
+								disabled={shippingFee === null}
 							>
-								<Button
-									type="dashed"
-									size="large"
-									block
-									icon={<MessageOutlined />}
-									className="h-12 text-base font-semibold"
-									disabled={!cartId}
-								>
-									Chat with {business.name}
-								</Button>
-							</Link>
-						</div>
+								{shippingFee === null
+									? "Waiting for Shipping Fee"
+									: "Proceed to Checkout"}
+							</Button>
+						</Link>
 					</div>
 				</div>
 			</div>
@@ -446,13 +407,13 @@ export default function CartClient({ business }: CartClientProps) {
 	};
 
 	return (
-		<div className="min-h-screen flex flex-col">
-			<div className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-12">
-				<div className="mb-8">
-					<h1 className="text-3xl font-bold text-gray-900">Shopping Cart</h1>
-					<p className="text-lg text-gray-600 mt-2">
-						Review and manage your selected items
-					</p>
+		<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+			<div className="bg-white rounded-lg shadow-sm p-6">
+				<div className="flex items-center justify-between mb-6">
+					<h1 className="text-2xl font-bold text-gray-900">Shopping Cart</h1>
+					<Badge count={items.length} showZero>
+						<ShoppingCartOutlined className="text-2xl text-gray-400" />
+					</Badge>
 				</div>
 
 				{renderCartContent()}

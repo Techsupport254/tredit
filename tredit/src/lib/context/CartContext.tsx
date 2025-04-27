@@ -31,6 +31,7 @@ interface CartContextType {
 	cartId: string | null;
 	items: CartItem[];
 	shippingAddress: string | null;
+	shippingFee: number | null;
 	addToCart: (
 		product: Product,
 		variantId?: string,
@@ -39,6 +40,7 @@ interface CartContextType {
 	removeFromCart: (cartItemId: string) => void;
 	updateQuantity: (cartItemId: string, quantity: number) => void;
 	updateShippingAddress: (address: string) => void;
+	updateShippingFee: (fee: number) => void;
 	clearCart: () => void;
 	getCartTotal: () => number;
 	isLoading: boolean;
@@ -53,7 +55,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 	const [cartId, setCartId] = useState<string | null>(null);
 	const [items, setItems] = useState<CartItem[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
-	const [shippingAddress, setShippingAddress] = useState<string | null>(null);
+	const [shippingAddress, setShippingAddress] = useState<string | null>("");
+	const [shippingFee, setShippingFee] = useState<number | null>(null);
 	const [total, setTotal] = useState<number>(0);
 
 	// Fetch cart and shipping address on initial load
@@ -67,17 +70,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 			const response = await fetch("/api/user/shipping-address");
 			if (response.ok) {
 				const data = await response.json();
-				setShippingAddress(data.shippingAddress);
+				setShippingAddress(data.shippingAddress || "");
 			} else {
 				console.error(
 					"Failed to fetch shipping address, status:",
 					response.status
 				);
-				setShippingAddress(null); // Ensure state is null on failure
+				setShippingAddress(""); // Set empty string instead of null
 			}
 		} catch (error) {
 			console.error("Error fetching shipping address:", error);
-			setShippingAddress(null); // Ensure state is null on error
+			setShippingAddress(""); // Set empty string instead of null
 		}
 	}, []);
 
@@ -90,19 +93,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 			const response = await fetch("/api/cart");
 			if (response.ok) {
 				const data = await response.json();
-				// if (data.cart) {
-				// 	data.cart.forEach((item: any) => {
-				// 		console.log("Cart item:", {
-				// 			id: item.id,
-				// 			product: item.product,
-				// 			variant: item.variant,
-				// 			quantity: item.quantity,
-				// 		});
-				// 	});
-				// }
 				setItems(data.cart || []);
 				setCartId(data.cartId || null);
 				setTotal(data.total || 0);
+				setShippingFee(data.shippingFee || null);
 
 				// Show message if there were deleted items
 				if (data.deletedItems > 0) {
@@ -115,12 +109,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 				setItems([]);
 				setCartId(null);
 				setTotal(0);
+				setShippingFee(null);
 			}
 		} catch (error) {
 			console.error("Error fetching cart:", error);
 			setItems([]);
 			setCartId(null);
 			setTotal(0);
+			setShippingFee(null);
 		} finally {
 			setIsLoading(false);
 		}
@@ -167,21 +163,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 		[fetchCart, session, router]
 	);
 
-	// Update removeFromCart signature and logic
 	const removeFromCart = useCallback(
 		async (cartItemId: string) => {
 			try {
-				// API call needs to target item by cartItemId
-				// Example: DELETE /api/cart/{cartItemId} or pass in body/query
 				const response = await fetch(`/api/cart`, {
 					method: "DELETE",
 					headers: { "Content-Type": "application/json" },
-					// Send cartItemId in the body for DELETE
 					body: JSON.stringify({ cartItemId }),
 				});
 
 				if (response.ok) {
-					await fetchCart(); // Refetch cart
+					await fetchCart();
 				} else {
 					message.error("Failed to remove item from cart");
 				}
@@ -191,24 +183,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 			}
 		},
 		[fetchCart]
-	); // Added fetchCart dependency
+	);
 
-	// Update updateQuantity signature and logic
 	const updateQuantity = useCallback(
 		async (cartItemId: string, quantity: number) => {
 			try {
-				// API call needs to target item by cartItemId
 				const response = await fetch("/api/cart", {
 					method: "PATCH",
 					headers: {
 						"Content-Type": "application/json",
 					},
-					// Send cartItemId in the body for PATCH
 					body: JSON.stringify({ cartItemId, quantity }),
 				});
 
 				if (response.ok) {
-					await fetchCart(); // Refetch cart
+					await fetchCart();
 				} else {
 					message.error("Failed to update quantity");
 				}
@@ -217,13 +206,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 				message.error("Failed to update quantity");
 			}
 		},
-		[fetchCart] // Added fetchCart dependency
+		[fetchCart]
 	);
 
-	// Debounced update quantity function (needs update for variantId)
-	// const debouncedUpdateQuantity = useMemo(...);
-
-	// Memoize the clearCart function
 	const clearCart = useCallback(async () => {
 		try {
 			const response = await fetch("/api/cart", {
@@ -232,6 +217,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
 			if (response.ok) {
 				setItems([]);
+				setShippingFee(null);
 			} else {
 				message.error("Failed to clear cart");
 			}
@@ -241,7 +227,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 		}
 	}, []);
 
-	// Update getCartTotal to use the total from state
 	const getCartTotal = useCallback(() => {
 		return total;
 	}, [total]);
@@ -259,27 +244,46 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 			if (response.ok) {
 				setShippingAddress(address);
 			} else {
-				const errorData = await response.json();
-				message.error(errorData.error || "Failed to save shipping address");
-				throw new Error(errorData.error || "Failed to save shipping address");
+				message.error("Failed to update shipping address");
 			}
 		} catch (error) {
-			console.error("Error saving shipping address:", error);
-			message.error("Failed to save shipping address");
-			throw error;
+			console.error("Error updating shipping address:", error);
+			message.error("Failed to update shipping address");
 		}
 	}, []);
 
-	// Memoize the context value
-	const contextValue = useMemo(
+	const updateShippingFee = useCallback(async (fee: number) => {
+		try {
+			const response = await fetch("/api/cart/shipping-fee", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ fee }),
+			});
+
+			if (response.ok) {
+				setShippingFee(fee);
+			} else {
+				message.error("Failed to update shipping fee");
+			}
+		} catch (error) {
+			console.error("Error updating shipping fee:", error);
+			message.error("Failed to update shipping fee");
+		}
+	}, []);
+
+	const value = useMemo(
 		() => ({
 			cartId,
 			items,
 			shippingAddress,
+			shippingFee,
 			addToCart,
 			removeFromCart,
 			updateQuantity,
 			updateShippingAddress,
+			updateShippingFee,
 			clearCart,
 			getCartTotal,
 			isLoading,
@@ -289,10 +293,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 			cartId,
 			items,
 			shippingAddress,
+			shippingFee,
 			addToCart,
 			removeFromCart,
 			updateQuantity,
 			updateShippingAddress,
+			updateShippingFee,
 			clearCart,
 			getCartTotal,
 			isLoading,
@@ -300,9 +306,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 		]
 	);
 
-	return (
-		<CartContext.Provider value={contextValue}>{children}</CartContext.Provider>
-	);
+	return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCart() {

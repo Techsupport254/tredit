@@ -55,6 +55,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { UploadFile } from "antd/es/upload/interface";
 import { getSocket } from "@/lib/socket";
 import { Message as MessageComponent } from "@/components/Message";
+import { generateShareableLink } from "@/lib/utils/url";
 
 const { Text, Title } = Typography;
 const { Paragraph } = Typography;
@@ -145,7 +146,13 @@ export default function ChatClient({
 	const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 	const messagesEndRef = useRef<HTMLDivElement>(null);
 	const messagesContainerRef = useRef<HTMLDivElement>(null);
-	const { items, shippingAddress, total, updateShippingAddress } = useCart();
+	const {
+		items,
+		shippingAddress,
+		total,
+		updateShippingAddress,
+		updateShippingFee,
+	} = useCart();
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const [isLoadingAddress, setIsLoadingAddress] = useState(true);
@@ -159,6 +166,7 @@ export default function ChatClient({
 	const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
 	const [loadingMessages, setLoadingMessages] = useState(false);
 	const [selectedConversationId, setSelectedConversationId] = useState("");
+	const [shippingFee, setShippingFee] = useState<number | null>(null);
 
 	// Fetch team members
 	useEffect(() => {
@@ -889,10 +897,15 @@ export default function ChatClient({
 
 	const getContextButton = () => {
 		if (cartId) {
+			const businessUrl = generateShareableLink(
+				business.id,
+				business.name,
+				business.type
+			);
 			return (
 				<Button
 					type="primary"
-					onClick={() => router.push(`/${business.id}/checkout`)}
+					onClick={() => router.push(`${businessUrl}/checkout`)}
 					className="w-full bg-blue-600 hover:bg-blue-700 border-0"
 				>
 					Proceed to Checkout
@@ -900,10 +913,15 @@ export default function ChatClient({
 			);
 		}
 		if (orderId) {
+			const businessUrl = generateShareableLink(
+				business.id,
+				business.name,
+				business.type
+			);
 			return (
 				<Button
 					type="primary"
-					onClick={() => router.push(`/${business.id}/orders/${orderId}`)}
+					onClick={() => router.push(`${businessUrl}/orders/${orderId}`)}
 					className="w-full bg-blue-600 hover:bg-blue-700 border-0"
 				>
 					View Order
@@ -957,6 +975,17 @@ export default function ChatClient({
 	useEffect(() => {
 		fetchChatHistory();
 	}, [business.id]);
+
+	// Update shipping fee when received from business
+	useEffect(() => {
+		if (socket) {
+			socket.on("shipping_fee_update", (data: { fee: number }) => {
+				setShippingFee(data.fee);
+				// Update cart context with new shipping fee
+				updateShippingFee(data.fee);
+			});
+		}
+	}, [socket]);
 
 	const renderContent = () => {
 		return (
@@ -1458,12 +1487,16 @@ export default function ChatClient({
 										</div>
 										<div className="flex justify-between">
 											<Text>Shipping</Text>
-											<Text>{formatCurrency(0)}</Text>
+											<Text>{formatCurrency(shippingFee || 0)}</Text>
 										</div>
 										<Divider />
 										<div className="flex justify-between font-semibold">
 											<Text>Total</Text>
-											<Text>{formatCurrency(calculateCartTotal())}</Text>
+											<Text>
+												{formatCurrency(
+													calculateCartTotal() + (shippingFee || 0)
+												)}
+											</Text>
 										</div>
 									</div>
 									{isLoadingAddress ? (
@@ -1492,7 +1525,14 @@ export default function ChatClient({
 											type="primary"
 											block
 											icon={<ShoppingOutlined />}
-											onClick={() => router.push(`/${business.id}/checkout`)}
+											onClick={() => {
+												const businessUrl = generateShareableLink(
+													business.id,
+													business.name,
+													business.type
+												);
+												router.push(`${businessUrl}/checkout`);
+											}}
 											className="bg-blue-600 hover:bg-blue-700 border-0"
 										>
 											Proceed to Checkout
