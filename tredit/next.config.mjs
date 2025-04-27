@@ -73,6 +73,15 @@ const nextConfig = {
 						value:
 							"X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
 					},
+					{
+						key: "Access-Control-Allow-Headers",
+						value: "Upgrade, Connection",
+					},
+					{
+						key: "Access-Control-Allow-Headers",
+						value:
+							"Sec-WebSocket-Key, Sec-WebSocket-Version, Sec-WebSocket-Protocol",
+					},
 				],
 			},
 		];

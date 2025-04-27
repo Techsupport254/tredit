@@ -42,10 +42,8 @@ export function DashboardContent({
 			</header>
 
 			{/* Main Content */}
-			<main className="flex-1 overflow-auto bg-white">
-				<Container maxWidth="2xl" className="py-6">
-					{children}
-				</Container>
+			<main className="flex-1 w-full bg-white p-2 sm:p-2 h-full overflow-auto">
+				{children}
 			</main>
 		</div>
 	);

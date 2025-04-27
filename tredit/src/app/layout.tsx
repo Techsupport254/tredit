@@ -64,14 +64,14 @@ export default function RootLayout({
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<body className={inter.className} suppressHydrationWarning>
-				<CartProvider>
-					<Providers>
-						<AuthProvider>
+				<Providers>
+					<AuthProvider>
+						<CartProvider>
 							<Toaster position="top-center" />
 							{children}
-						</AuthProvider>
-					</Providers>
-				</CartProvider>
+						</CartProvider>
+					</AuthProvider>
+				</Providers>
 			</body>
 		</html>
 	);

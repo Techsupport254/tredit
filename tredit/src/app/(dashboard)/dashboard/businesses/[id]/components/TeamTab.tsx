@@ -37,6 +37,8 @@ interface TeamTabProps {
 	onAddMember: (member: TeamMember) => void;
 	onRemoveMember: (memberId: string) => void;
 	onUpdateMember: (memberId: string, data: Partial<TeamMember>) => void;
+	currentUserRole?: string;
+	businessId: string;
 }
 
 const TeamTab = ({
@@ -44,6 +46,8 @@ const TeamTab = ({
 	onAddMember,
 	onRemoveMember,
 	onUpdateMember,
+	currentUserRole,
+	businessId,
 }: TeamTabProps) => {
 	const [isModalVisible, setIsModalVisible] = useState(false);
 	const [form] = Form.useForm();
@@ -54,7 +58,7 @@ const TeamTab = ({
 		try {
 			setIsLoading(true);
 			const response = await axios.post(
-				`/api/business/${members[0]?.businessId}/team`,
+				`/api/business/${businessId}/team`,
 				values
 			);
 			message.success("Team member added successfully");
@@ -73,7 +77,7 @@ const TeamTab = ({
 		try {
 			setIsLoading(true);
 			const response = await axios.patch(
-				`/api/business/${members[0]?.businessId}/team/${editingMember.id}`,
+				`/api/business/${businessId}/team/${editingMember.id}`,
 				values
 			);
 			message.success("Team member updated successfully");
@@ -93,9 +97,7 @@ const TeamTab = ({
 	const handleDeleteMember = async (memberId: string) => {
 		try {
 			setIsLoading(true);
-			await axios.delete(
-				`/api/business/${members[0]?.businessId}/team/${memberId}`
-			);
+			await axios.delete(`/api/business/${businessId}/team/${memberId}`);
 			message.success("Team member removed successfully");
 			onRemoveMember(memberId);
 		} catch (error: any) {
@@ -157,12 +159,18 @@ const TeamTab = ({
 			title: "Responsibilities",
 			key: "responsibilities",
 			render: (_, record: TeamMember) => (
-				<div className="flex flex-wrap gap-1">
-					{record.responsibilities.map((resp, index) => (
-						<Tag key={index} color="green">
+				<div className="flex flex-col gap-2 items-start">
+					{record.responsibilities?.map((resp, index) => (
+						<Tag
+							key={index}
+							color="green"
+							className="!mb-0 !px-3 !py-1 text-sm font-normal"
+						>
 							{resp}
 						</Tag>
-					))}
+					)) || (
+						<span className="text-gray-400">No responsibilities assigned</span>
+					)}
 				</div>
 			),
 		},
@@ -172,7 +180,7 @@ const TeamTab = ({
 			key: "status",
 			render: (status: string) => (
 				<Tag color={status === "active" ? "green" : "red"}>
-					{status.toUpperCase()}
+					{status?.toUpperCase() || "INACTIVE"}
 				</Tag>
 			),
 		},
@@ -215,14 +223,16 @@ const TeamTab = ({
 		<div className="space-y-6">
 			<div className="flex justify-between items-center">
 				<h2 className="text-lg font-medium">Team Members</h2>
-				<Button
-					type="primary"
-					icon={<PlusOutlined />}
-					onClick={() => showModal()}
-					className="bg-blue-500"
-				>
-					Add Member
-				</Button>
+				{(currentUserRole === "OWNER" || currentUserRole === "ADMIN") && (
+					<Button
+						type="primary"
+						icon={<PlusOutlined />}
+						onClick={() => showModal()}
+						className="bg-blue-500"
+					>
+						Add Member
+					</Button>
+				)}
 			</div>
 
 			<Table
@@ -267,9 +277,32 @@ const TeamTab = ({
 						<Select
 							placeholder="Select role"
 							options={[
+								{ label: "Owner", value: "OWNER" },
 								{ label: "Admin", value: "ADMIN" },
-								{ label: "Manager", value: "MANAGER" },
-								{ label: "Member", value: "MEMBER" },
+								{ label: "Store Manager", value: "STORE_MANAGER" },
+								{ label: "Finance Manager", value: "FINANCE_MANAGER" },
+								{
+									label: "Customer Service Lead",
+									value: "CUSTOMER_SERVICE_LEAD",
+								},
+								{ label: "Marketing Manager", value: "MARKETING_MANAGER" },
+								{
+									label: "Logistics Coordinator",
+									value: "LOGISTICS_COORDINATOR",
+								},
+								{ label: "Inventory Manager", value: "INVENTORY_MANAGER" },
+								{ label: "Content Creator", value: "CONTENT_CREATOR" },
+								{
+									label: "Social Media Manager",
+									value: "SOCIAL_MEDIA_MANAGER",
+								},
+								{ label: "Quality Assurance", value: "QUALITY_ASSURANCE" },
+								{ label: "Technical Support", value: "TECHNICAL_SUPPORT" },
+								{
+									label: "Sales Representative",
+									value: "SALES_REPRESENTATIVE",
+								},
+								{ label: "Procurement Officer", value: "PROCUREMENT_OFFICER" },
 							]}
 						/>
 					</Form.Item>

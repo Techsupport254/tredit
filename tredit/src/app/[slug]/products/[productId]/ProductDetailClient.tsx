@@ -204,7 +204,7 @@ export default function ProductDetailClient({
 			};
 
 			// Type assertion needed as we manually reconstructed the type
-			await addToCart(productForContext as any, selectedVariantId);
+			await addToCart(productForContext as any, selectedVariantId, quantity);
 			message.success(
 				`${product.name} ${
 					selectedVariant ? `(${selectedVariant.value}) ` : ""

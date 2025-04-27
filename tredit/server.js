@@ -1,174 +1,334 @@
-import { createServer } from "node:http";
+import { createServer } from "http";
 import next from "next";
 import { Server } from "socket.io";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, Prisma } from "@prisma/client";
 
-const prisma = new PrismaClient();
 const dev = process.env.NODE_ENV !== "production";
-const hostname = "localhost";
-const port = 3000;
+const app = next({ dev });
+const handle = app.getRequestHandler();
+const prisma = new PrismaClient();
 
-// Initialize Next.js
-const app = next({ dev, hostname, port });
-const handler = app.getRequestHandler();
+// Store connected users
+const connectedUsers = new Map();
 
 app.prepare().then(() => {
-	// Create HTTP server
-	const httpServer = createServer(handler);
+	const server = createServer((req, res) => {
+		// Handle Socket.IO requests
+		if (req.url?.startsWith("/api/socket")) {
+			res.setHeader(
+				"Access-Control-Allow-Origin",
+				process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+			);
+			res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+			res.setHeader(
+				"Access-Control-Allow-Headers",
+				"Content-Type, Authorization"
+			);
+			res.setHeader("Access-Control-Allow-Credentials", "true");
 
-	// Initialize Socket.IO server
-	const io = new Server(httpServer, {
+			if (req.method === "OPTIONS") {
+				res.writeHead(200);
+				res.end();
+				return;
+			}
+		}
+
+		handle(req, res);
+	});
+
+	const io = new Server(server, {
 		path: "/api/socket",
 		addTrailingSlash: false,
 		cors: {
-			origin: "*",
+			origin: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
 			methods: ["GET", "POST", "OPTIONS"],
 			credentials: true,
+			allowedHeaders: ["Content-Type", "Authorization"],
 		},
-		transports: ["websocket", "polling"],
+		transports: ["polling"],
+		allowEIO3: true,
 		pingTimeout: 60000,
 		pingInterval: 25000,
-		connectTimeout: 45000,
-		allowUpgrades: true,
-		perMessageDeflate: {
+		upgradeTimeout: 30000,
+		allowUpgrades: false,
+		perMessageDeflate: false,
+		httpCompression: {
 			threshold: 2048,
 		},
-		cookie: {
-			name: "io",
-			path: "/",
-			httpOnly: true,
-			sameSite: "lax",
-		},
+		connectTimeout: 45000,
+		rememberUpgrade: true,
+		rejectUnauthorized: false,
 	});
 
-	// Store active chat rooms
-	const activeChats = new Map();
+	// Handle WebSocket upgrade
+	server.on("upgrade", (request, socket, head) => {
+		if (request.url?.startsWith("/api/socket")) {
+			io.engine.handleUpgrade(request, socket, head);
+		} else {
+			socket.destroy();
+		}
+	});
 
-	// Handle Socket.IO connections
-	io.on("connection", (socket) => {
-		console.log("[Socket Server] Client connected:", {
-			socketId: socket.id,
-			transport: socket.conn.transport.name,
-		});
+	// Socket connection handling
+	io.on("connection", async (socket) => {
+		console.log("[Socket Server] Client connected:", socket.id);
 
-		// Handle joining a chat room
-		socket.on("join_chat", async ({ chatSessionId, userId, businessId }) => {
+		// Handle user authentication
+		socket.on("authenticate", async (data) => {
 			try {
-				// Join the socket to the chat room
-				socket.join(chatSessionId);
-
-				// Store user info in the chat room
-				if (!activeChats.has(chatSessionId)) {
-					activeChats.set(chatSessionId, new Set());
+				if (!data.userId) {
+					socket.emit("error", { message: "User ID is required" });
+					return;
 				}
-				activeChats.get(chatSessionId).add(userId);
 
-				console.log("[Socket Server] User joined chat:", {
-					chatSessionId,
-					userId,
-					businessId,
-					activeUsers: activeChats.get(chatSessionId).size,
+				// Store user connection
+				connectedUsers.set(data.userId, {
+					socketId: socket.id,
+					connectedAt: new Date(),
+					businesses: [],
 				});
+
+				// Update user's online status
+				await prisma.user.update({
+					where: { id: data.userId },
+					data: { isOnline: true },
+				});
+
+				// Join user's business rooms
+				const userBusinesses = await prisma.businessTeamMember.findMany({
+					where: { userId: data.userId },
+					select: { businessId: true },
+				});
+
+				// Store user's businesses
+				connectedUsers.get(data.userId).businesses = userBusinesses.map(
+					(b) => b.businessId
+				);
+
+				userBusinesses.forEach((business) => {
+					socket.join(`business:${business.businessId}`);
+				});
+
+				// Broadcast user's online status to their businesses
+				userBusinesses.forEach((business) => {
+					io.to(`business:${business.businessId}`).emit("userStatus", {
+						userId: data.userId,
+						isOnline: true,
+					});
+				});
+
+				// Emit list of connected users to the newly connected user
+				socket.emit(
+					"connectedUsers",
+					Array.from(connectedUsers.entries()).map(([userId, data]) => ({
+						userId,
+						socketId: data.socketId,
+						connectedAt: data.connectedAt,
+						businesses: data.businesses,
+					}))
+				);
+
+				// Broadcast new user connection to all connected users
+				io.emit("userConnected", {
+					userId: data.userId,
+					socketId: socket.id,
+					connectedAt: new Date(),
+					businesses: userBusinesses.map((b) => b.businessId),
+				});
+
+				socket.emit("authenticated");
 			} catch (error) {
-				console.error("[Socket Server] Error joining chat:", error);
+				console.error("[Socket Server] Authentication error:", error);
+				socket.emit("error", { message: "Authentication failed" });
 			}
 		});
 
-		// Handle leaving a chat room
-		socket.on("leave_chat", ({ chatSessionId, userId, businessId }) => {
-			try {
-				// Leave the socket from the chat room
-				socket.leave(chatSessionId);
-
-				// Remove user from active users
-				if (activeChats.has(chatSessionId)) {
-					activeChats.get(chatSessionId).delete(userId);
-					if (activeChats.get(chatSessionId).size === 0) {
-						activeChats.delete(chatSessionId);
-					}
-				}
-
-				console.log("[Socket Server] User left chat:", {
-					chatSessionId,
+		// Handle get connected users request
+		socket.on("getConnectedUsers", () => {
+			const users = Array.from(connectedUsers.entries()).map(
+				([userId, data]) => ({
 					userId,
-					businessId,
-					activeUsers: activeChats.get(chatSessionId)?.size || 0,
-				});
-			} catch (error) {
-				console.error("[Socket Server] Error leaving chat:", error);
-			}
+					socketId: data.socketId,
+					connectedAt: data.connectedAt,
+					businesses: data.businesses,
+				})
+			);
+			socket.emit("connectedUsers", users);
 		});
 
-		// Handle sending messages
-		socket.on("send_message", async (messageData) => {
+		// Handle new messages
+		socket.on("send_message", async (data) => {
+			console.log("[Socket Server] Received message data:", data);
 			try {
-				// Save message to database
+				// Destructure attachment data from the payload
+				const { chatSessionId, senderId, content, type, attachment } = data;
+
+				// Prepare base message data
+				const messageCreateData = {
+					chatSession: { connect: { id: chatSessionId } },
+					sender: { connect: { id: senderId } },
+					type,
+					status: "SENT",
+					direction: "OUTGOING",
+					contentBlocks: {
+						create: [
+							{
+								type: type === "FILE" ? "TEXT" : type, // Store filename as text for FILE
+								content,
+								order: 0,
+							},
+						],
+					},
+					metadata: {},
+				};
+
+				// If it's a FILE message and attachment data exists, create the attachment record
+				if (type === "FILE" && attachment) {
+					messageCreateData.attachments = {
+						create: [
+							{
+								type: attachment.type,
+								url: attachment.url,
+								filename: attachment.filename,
+								size: attachment.size,
+								metadata: { ipfsHash: attachment.ipfsHash }, // Store IPFS hash in metadata
+							},
+						],
+					};
+				}
+
+				console.log(
+					"[Socket Server] Creating message with data:",
+					messageCreateData
+				);
+
+				// Create message in database
 				const message = await prisma.message.create({
-					data: {
-						content: messageData.content,
-						senderId: messageData.senderId,
-						receiverId: messageData.receiverId,
-						chatSessionId: messageData.chatSessionId,
-						type: messageData.type,
-						status: messageData.status,
+					data: messageCreateData,
+					// Include necessary relations for broadcasting
+					include: {
+						sender: {
+							select: {
+								id: true,
+								name: true,
+								profileImage: true,
+							},
+						},
+						contentBlocks: true,
+						attachments: true, // Ensure attachments are included in the returned object
 					},
 				});
 
-				// Broadcast message to all users in the chat room
-				io.to(messageData.chatSessionId).emit("new_message", message);
+				console.log("[Socket Server] Message created successfully:", message);
 
-				// Update message status to delivered
-				await prisma.message.update({
-					where: { id: message.id },
-					data: { status: "DELIVERED" },
-				});
-
-				// Notify sender about message status
-				socket.emit("message_status", message.id, "DELIVERED");
-
-				console.log("[Socket Server] Message sent:", {
+				// Emit message status update to sender
+				socket.emit("message_status", {
 					messageId: message.id,
-					chatSessionId: messageData.chatSessionId,
+					status: "SENT",
+				});
+
+				// Broadcast message to chat room
+				io.to(`chat:${chatSessionId}`).emit("new_message", message);
+				console.log(
+					"[Socket Server] Message broadcasted to room:",
+					`chat:${chatSessionId}`
+				);
+
+				// Update message status to DELIVERED after a short delay
+				setTimeout(async () => {
+					await prisma.message.update({
+						where: { id: message.id },
+						data: { status: "DELIVERED" },
+					});
+
+					io.to(`chat:${chatSessionId}`).emit("message_status", {
+						messageId: message.id,
+						status: "DELIVERED",
+					});
+					console.log("[Socket Server] Message status updated to DELIVERED");
+				}, 1000);
+			} catch (error) {
+				console.error("[Socket Server] Message handling error:", error);
+				console.error("[Socket Server] Error details:", {
+					name: error.name,
+					message: error.message,
+					stack: error.stack,
+				});
+				socket.emit("error", {
+					message: "Failed to send message",
+					error: error.message,
+				});
+			}
+		});
+
+		// Handle message read status
+		socket.on("message_read", async (data) => {
+			try {
+				const { messageId, chatSessionId } = data;
+
+				await prisma.message.update({
+					where: { id: messageId },
+					data: { status: "READ" },
+				});
+
+				io.to(`chat:${chatSessionId}`).emit("message_status", {
+					messageId,
+					status: "READ",
 				});
 			} catch (error) {
-				console.error("[Socket Server] Error sending message:", error);
-				socket.emit("error", "Failed to send message");
+				console.error("[Socket Server] Message read status error:", error);
 			}
 		});
 
-		// Handle typing indicators
-		socket.on("typing", ({ chatSessionId, userId, isTyping }) => {
-			try {
-				// Broadcast typing status to all users in the chat room except the sender
-				socket.to(chatSessionId).emit("typing", { userId, isTyping });
-			} catch (error) {
-				console.error("[Socket Server] Error handling typing:", error);
+		// Handle disconnection
+		socket.on("disconnect", async () => {
+			console.log("[Socket Server] Client disconnected:", socket.id);
+
+			// Find and remove disconnected user
+			for (const [userId, data] of connectedUsers.entries()) {
+				if (data.socketId === socket.id) {
+					// Update user's online status
+					await prisma.user.update({
+						where: { id: userId },
+						data: { isOnline: false },
+					});
+
+					// Broadcast user's offline status to their businesses
+					data.businesses.forEach((businessId) => {
+						io.to(`business:${businessId}`).emit("userStatus", {
+							userId,
+							isOnline: false,
+						});
+					});
+
+					// Remove user from connected users
+					connectedUsers.delete(userId);
+
+					// Broadcast user disconnection to all connected users
+					io.emit("userDisconnected", {
+						userId,
+						socketId: socket.id,
+					});
+
+					break;
+				}
 			}
 		});
 
-		socket.on("disconnect", (reason) => {
-			console.log("[Socket Server] Client disconnected:", {
-				socketId: socket.id,
-				reason,
-			});
-		});
-
+		// Handle errors
 		socket.on("error", (error) => {
-			console.error("[Socket Server] Socket error:", {
-				socketId: socket.id,
-				error: error instanceof Error ? error.message : "Unknown error",
-			});
+			console.error("[Socket Server] Socket error:", error);
 		});
 	});
 
 	// Handle server errors
-	httpServer.once("error", (err) => {
-		console.error("[Server] Error:", err);
-		process.exit(1);
+	server.on("error", (error) => {
+		console.error("[Socket Server] Server error:", error);
 	});
 
-	// Start the server
-	httpServer.listen(port, () => {
-		console.log(`> Ready on http://${hostname}:${port}`);
+	const PORT = process.env.PORT || 3000;
+	server.listen(PORT, (err) => {
+		if (err) throw err;
+		console.log(`> Ready on http://localhost:${PORT}`);
 	});
 });

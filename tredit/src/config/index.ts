@@ -104,7 +104,7 @@ interface Config {
 
 const development: Config = {
 	server: {
-		port: Number(process.env.PORT) || 8000,
+		port: Number(process.env.PORT) || 3000,
 		env: "development",
 		enableRateLimiting: false,
 	},
@@ -212,7 +212,7 @@ const development: Config = {
 const production: Config = {
 	...development,
 	server: {
-		port: Number(process.env.PORT) || 8000,
+		port: Number(process.env.PORT) || 3000,
 		env: "production",
 		enableRateLimiting: true,
 	},

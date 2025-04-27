@@ -26,7 +26,7 @@ export function Container({
 	return (
 		<div
 			className={cn(
-				"w-full mx-auto",
+				"w-full mx-auto h-full",
 				maxWidthClasses[maxWidth],
 				!noPadding && "px-4 sm:px-6 lg:px-8",
 				className

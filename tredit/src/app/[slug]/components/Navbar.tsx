@@ -29,6 +29,7 @@ import {
 import { useSession } from "next-auth/react";
 import { useState } from "react";
 import { useCart } from "@/lib/context/CartContext";
+import { useAuth } from "@/lib/auth/AuthContext";
 
 interface NavbarProps {
 	searchQuery: string;
@@ -37,6 +38,7 @@ interface NavbarProps {
 
 export default function Navbar({ searchQuery, setSearchQuery }: NavbarProps) {
 	const { data: session } = useSession();
+	const { logout } = useAuth();
 	const [showMobileSearch, setShowMobileSearch] = useState(false);
 	const pathname = usePathname();
 	const params = useParams();
@@ -229,7 +231,7 @@ export default function Navbar({ searchQuery, setSearchQuery }: NavbarProps) {
 
 						{/* Action Buttons */}
 						<Space size="large">
-							<Link href={{ pathname: `/${storeSlug}/cart` }}>
+							<Link href={`/${storeSlug}/cart`}>
 								<Badge
 									count={items.length}
 									size="default"
@@ -251,7 +253,7 @@ export default function Navbar({ searchQuery, setSearchQuery }: NavbarProps) {
 								</Badge>
 							</Link>
 
-							<Link href={{ pathname: `/${storeSlug}/profile#notifications` }}>
+							<Link href={`/${storeSlug}/profile#notifications`}>
 								<Badge dot color="#2563eb" offset={[-2, 5]}>
 									<Button
 										type="text"
@@ -287,7 +289,12 @@ export default function Navbar({ searchQuery, setSearchQuery }: NavbarProps) {
 										} else if (key === "settings") {
 											window.location.href = `/${storeSlug}/profile#settings`;
 										} else if (key === "logout") {
-											// Handle logout logic
+											try {
+												console.log("Logout clicked in Navbar");
+												logout();
+											} catch (error) {
+												console.error("Logout error in Navbar:", error);
+											}
 										}
 									},
 								}}

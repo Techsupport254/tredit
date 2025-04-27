@@ -446,15 +446,17 @@ export default function CartClient({ business }: CartClientProps) {
 	};
 
 	return (
-		<div className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-12">
-			<div className="mb-8">
-				<h1 className="text-3xl font-bold text-gray-900">Shopping Cart</h1>
-				<p className="text-lg text-gray-600 mt-2">
-					Review and manage your selected items
-				</p>
-			</div>
+		<div className="min-h-screen flex flex-col">
+			<div className="flex-grow max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-12">
+				<div className="mb-8">
+					<h1 className="text-3xl font-bold text-gray-900">Shopping Cart</h1>
+					<p className="text-lg text-gray-600 mt-2">
+						Review and manage your selected items
+					</p>
+				</div>
 
-			{renderCartContent()}
+				{renderCartContent()}
+			</div>
 		</div>
 	);
 }

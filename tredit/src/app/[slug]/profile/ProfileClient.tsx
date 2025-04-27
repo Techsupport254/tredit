@@ -33,7 +33,6 @@ import {
 	RocketOutlined,
 	CheckCircleOutlined,
 } from "@ant-design/icons";
-import Navbar from "../components/Navbar";
 import MessagesClient from "../messages/MessagesClient";
 
 const { Title, Text } = Typography;
@@ -64,19 +63,6 @@ interface Business {
 
 interface ProfileClientProps {
 	business: Business;
-}
-
-// Simple footer component to avoid the type error with the imported Footer
-function SimpleFooter() {
-	return (
-		<footer className="bg-white border-t border-gray-100 py-8">
-			<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-				<div className="text-center text-gray-500 text-sm">
-					© {new Date().getFullYear()} TredIt. All rights reserved.
-				</div>
-			</div>
-		</footer>
-	);
 }
 
 // Sample cart items for demonstration
@@ -567,91 +553,62 @@ export default function ProfileClient({ business }: ProfileClientProps) {
 	};
 
 	return (
-		<div className="min-h-screen bg-gray-50 flex flex-col">
-			{/* Navbar Component */}
-			<Navbar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
-
-			{/* Main Content */}
-			<main className="flex-grow flex flex-col h-[calc(100vh-64px)]">
-				<div className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-					{/* Header */}
-					<div className="mb-6">
-						<h1 className="text-3xl font-bold text-gray-900">My Account</h1>
-						<p className="text-lg text-gray-600 mt-2">
-							Manage your profile, orders, and preferences
-						</p>
-					</div>
-
-					{/* Content with sidebar navigation */}
-					<div className="flex bg-white rounded-xl shadow-sm border border-gray-100 h-[calc(100vh-180px)] overflow-hidden">
+		<div className="flex flex-col h-full min-h-screen">
+			<div className="flex-grow flex flex-col">
+				<div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 h-full w-full">
+					<div className="flex flex-col md:flex-row gap-8 h-full">
 						{/* Sidebar */}
-						<div className="w-64 border-r border-gray-100 overflow-y-auto">
-							<Menu
-								mode="inline"
-								selectedKeys={[sidebarTab]}
-								onClick={({ key }) => handleTabChange(key as string)}
-								className="border-0"
-								style={{ height: "100%" }}
-							>
-								<Menu.Item
-									key="profile"
-									icon={<UserOutlined style={{ fontSize: 18 }} />}
-								>
-									Profile
-								</Menu.Item>
-								<Menu.Item
-									key="cart"
-									icon={<ShoppingCartOutlined style={{ fontSize: 18 }} />}
-								>
-									<Badge count={mockCartItems.length} offset={[10, 0]}>
-										Cart
-									</Badge>
-								</Menu.Item>
-								<Menu.Item
-									key="orders"
-									icon={<ShoppingOutlined style={{ fontSize: 18 }} />}
-								>
-									Orders
-								</Menu.Item>
-								<Menu.Item
-									key="messages"
-									icon={<MessageOutlined style={{ fontSize: 18 }} />}
-								>
-									<Badge count={2} offset={[10, 0]}>
-										Messages
-									</Badge>
-								</Menu.Item>
-								<Menu.Item
-									key="notifications"
-									icon={<BellOutlined style={{ fontSize: 18 }} />}
-								>
-									Notifications
-								</Menu.Item>
-								<Menu.Item
-									key="payments"
-									icon={<CreditCardOutlined style={{ fontSize: 18 }} />}
-								>
-									Payments
-								</Menu.Item>
-								<Menu.Item
-									key="settings"
-									icon={<SettingOutlined style={{ fontSize: 18 }} />}
-								>
-									Settings
-								</Menu.Item>
-							</Menu>
+						<div className="w-full md:w-64 flex-shrink-0">
+							<Card className="shadow-sm h-full">
+								<Menu
+									mode="inline"
+									selectedKeys={[sidebarTab]}
+									onClick={({ key }) => handleTabChange(key)}
+									items={[
+										{
+											key: "profile",
+											icon: <UserOutlined />,
+											label: "My Profile",
+										},
+										{
+											key: "orders",
+											icon: <ShoppingOutlined />,
+											label: "My Orders",
+										},
+										{
+											key: "messages",
+											icon: <MessageOutlined />,
+											label: "Messages",
+										},
+										{
+											key: "notifications",
+											icon: <BellOutlined />,
+											label: "Notifications",
+										},
+										{
+											key: "payments",
+											icon: <CreditCardOutlined />,
+											label: "Payments",
+										},
+										{
+											key: "settings",
+											icon: <SettingOutlined />,
+											label: "Settings",
+										},
+									]}
+								/>
+							</Card>
 						</div>
 
-						{/* Content area */}
-						<div className="flex-grow p-6 overflow-y-auto">
-							{renderActiveTabContent()}
+						{/* Main Content */}
+						<div className="flex-grow">
+							<Card className="shadow-sm h-full">
+								{renderActiveTabContent()}
+							</Card>
 						</div>
 					</div>
 				</div>
-			</main>
-
-			{/* Simple Footer Component */}
-			<SimpleFooter />
+			</div>
 		</div>
 	);
 }

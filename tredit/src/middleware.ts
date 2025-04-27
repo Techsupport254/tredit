@@ -52,6 +52,14 @@ export async function middleware(request: NextRequest) {
 		);
 	}
 
+	// If trying to access protected pages while not logged in, redirect to login with callback
+	if (!token && (pathname.includes("/profile") || pathname.includes("/cart"))) {
+		const callbackUrl = encodeURIComponent(pathname + request.nextUrl.hash);
+		return NextResponse.redirect(
+			new URL(`/login?callbackUrl=${callbackUrl}`, request.url)
+		);
+	}
+
 	return NextResponse.next();
 }
 
@@ -66,5 +74,10 @@ export const config = {
 		 * 4. /favicon.ico, /robots.txt (static files)
 		 */
 		"/((?!api/auth|_next|static|favicon.ico|robots.txt).*)",
+		"/login",
+		"/register",
+		"/:path*/profile/:path*",
+		"/:path*/profile#:path*",
+		"/:path*/cart",
 	],
 };

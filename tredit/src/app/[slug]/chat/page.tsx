@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import ChatClient from "./ChatClient";
+import ChatClient, { Cart } from "./ChatClient";
 import NotFound from "@/app/not-found";
 
 interface ChatPageProps {
@@ -76,40 +76,88 @@ export default async function ChatPage({
 		return <NotFound />;
 	}
 
-	// Get or create chat session
-	let chatSession = await prisma.chatSession.findUnique({
-		where: {
-			userId_businessId: {
+	// Fetch cart data if cartId is provided
+	let cartData = null;
+	if (searchParams.cartId) {
+		cartData = await prisma.cart.findUnique({
+			where: {
+				id: searchParams.cartId,
+			},
+			include: {
+				items: {
+					include: {
+						product: {
+							include: {
+								media: true,
+							},
+						},
+						variant: true,
+						service: true,
+					},
+				},
+			},
+		});
+	}
+
+	let chatSession = null;
+	if (searchParams.cartId) {
+		// Use API to get or create chat session for cart
+		const res = await fetch(
+			`${
+				process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
+			}/api/chat/sessions`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					userId: session.user.id,
+					businessId: business.id,
+					cartId: searchParams.cartId,
+				}),
+			}
+		);
+		const data = await res.json();
+		if (data.chatSessionId) {
+			chatSession = await prisma.chatSession.findUnique({
+				where: { id: data.chatSessionId },
+				include: {
+					messages: {
+						orderBy: { createdAt: "asc" },
+						include: {
+							sender: { select: { id: true, name: true, profileImage: true } },
+							receiver: {
+								select: { id: true, name: true, profileImage: true },
+							},
+							contentBlocks: true,
+							attachments: true,
+						},
+					},
+				},
+			});
+		}
+	}
+
+	if (!chatSession) {
+		// Fallback to existing logic for orderId or general chat
+		chatSession = await prisma.chatSession.findFirst({
+			where: {
 				userId: session.user.id,
 				businessId: business.id,
 			},
-		},
-		include: {
-			messages: {
-				orderBy: {
-					createdAt: "asc",
-				},
-				include: {
-					sender: {
-						select: {
-							id: true,
-							name: true,
-							profileImage: true,
-						},
-					},
-					receiver: {
-						select: {
-							id: true,
-							name: true,
-							profileImage: true,
-						},
+			include: {
+				messages: {
+					orderBy: { createdAt: "asc" },
+					include: {
+						sender: { select: { id: true, name: true, profileImage: true } },
+						receiver: { select: { id: true, name: true, profileImage: true } },
+						contentBlocks: true,
+						attachments: true,
 					},
 				},
 			},
-		},
-	});
+		});
+	}
 
-	// If no chat session exists, create one
 	if (!chatSession) {
 		// Create a conversation first
 		const conversation = await prisma.conversation.create({
@@ -118,20 +166,12 @@ export default async function ChatPage({
 				title: `Chat with ${business.name}`,
 				participants: {
 					create: [
-						{
-							userId: session.user.id,
-							role: "MEMBER",
-						},
-						{
-							userId: business.userId,
-							role: "MEMBER",
-						},
+						{ userId: session.user.id, role: "MEMBER" },
+						{ userId: business.userId, role: "MEMBER" },
 					],
 				},
 			},
 		});
-
-		// Create chat session
 		chatSession = await prisma.chatSession.create({
 			data: {
 				userId: session.user.id,
@@ -140,86 +180,16 @@ export default async function ChatPage({
 			},
 			include: {
 				messages: {
-					orderBy: {
-						createdAt: "asc",
-					},
+					orderBy: { createdAt: "asc" },
 					include: {
-						sender: {
-							select: {
-								id: true,
-								name: true,
-								profileImage: true,
-							},
-						},
-						receiver: {
-							select: {
-								id: true,
-								name: true,
-								profileImage: true,
-							},
-						},
+						sender: { select: { id: true, name: true, profileImage: true } },
+						receiver: { select: { id: true, name: true, profileImage: true } },
+						contentBlocks: true,
+						attachments: true,
 					},
 				},
 			},
 		});
-
-		// Create initial system message
-		let initialMessage = "Hello! How can I help you today?";
-		if (searchParams.cartId) {
-			initialMessage = "Hello! I have some questions about my cart.";
-		} else if (searchParams.orderId) {
-			initialMessage = "Hello! I have some questions about my order.";
-		}
-
-		// Create the initial message
-		await prisma.message.create({
-			data: {
-				senderId: session.user.id,
-				receiverId: business.userId,
-				type: "TEXT",
-				direction: "OUTGOING",
-				chatSessionId: chatSession.id,
-				conversationId: conversation.id,
-				content: initialMessage,
-				metadata: {
-					cartId: searchParams.cartId,
-					orderId: searchParams.orderId,
-				},
-			},
-		});
-	} else {
-		// Update cart/order reference if provided
-		if (searchParams.cartId || searchParams.orderId) {
-			// Get the conversation for this chat session
-			const conversation = await prisma.conversation.findFirst({
-				where: {
-					participants: {
-						some: {
-							userId: session.user.id,
-						},
-					},
-				},
-			});
-
-			if (conversation) {
-				// Create a new message with the updated context
-				await prisma.message.create({
-					data: {
-						senderId: session.user.id,
-						receiverId: business.userId,
-						type: "TEXT",
-						direction: "OUTGOING",
-						chatSessionId: chatSession.id,
-						conversationId: conversation.id,
-						content: "Chat session updated with new context",
-						metadata: {
-							cartId: searchParams.cartId,
-							orderId: searchParams.orderId,
-						},
-					},
-				});
-			}
-		}
 	}
 
 	return (
@@ -229,6 +199,7 @@ export default async function ChatPage({
 				initialChatSession={chatSession}
 				cartId={searchParams.cartId}
 				orderId={searchParams.orderId}
+				cartData={cartData as Cart | null}
 			/>
 		</Suspense>
 	);

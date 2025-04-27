@@ -63,14 +63,32 @@ export default async function SlugLayout({
 
 	const logoUrl = getIpfsUrl(business.logo);
 
+	// Get the current path from the child segment
+	// This is a workaround: check if the child is a profile page by inspecting the child's type/name
+	// But a more robust way is to use parallel routes or pass a flag from the profile layout
+	// For now, let's use a regex on the child's props if available
+	const isProfilePage =
+		(children as any)?.props?.childPropSegment === "profile";
+
+	// Fallback: check if the child has a key or segment that includes 'profile'
+	const childKey = (children as any)?.key || "";
+	const childTypeName = (children as any)?.type?.name || "";
+	const isProfile =
+		childKey.includes("profile") ||
+		childTypeName.toLowerCase().includes("profile");
+
+	const shouldShowBusinessHeader = !(isProfilePage || isProfile);
+
 	return (
 		<div className="min-h-screen bg-gray-50 flex flex-col">
-			<NavbarWrapper />
-			<BusinessHeader
-				name={business.name}
-				description={business.description}
-				logoUrl={logoUrl}
-			/>
+			{shouldShowBusinessHeader && <NavbarWrapper />}
+			{shouldShowBusinessHeader && (
+				<BusinessHeader
+					name={business.name}
+					description={business.description}
+					logoUrl={logoUrl}
+				/>
+			)}
 			<main className="flex-grow">{children}</main>
 			<Footer business={business} logoUrl={logoUrl} />
 		</div>

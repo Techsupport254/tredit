@@ -16,7 +16,11 @@ interface User {
 interface AuthContextType {
 	user: User | null;
 	isLoading: boolean;
-	login: (email: string, password: string) => Promise<{ success: boolean }>;
+	login: (
+		email: string,
+		password: string,
+		callbackUrl?: string
+	) => Promise<{ success: boolean }>;
 	logout: () => void;
 }
 
@@ -27,7 +31,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	const { data: session, status } = useSession();
 	const isLoading = status === "loading";
 
-	const login = async (email: string, password: string) => {
+	const login = async (
+		email: string,
+		password: string,
+		callbackUrl?: string
+	) => {
 		try {
 			const result = await signIn("credentials", {
 				email,
@@ -42,7 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 			if (result?.ok) {
 				toast.success("Login successful!");
-				router.push("/dashboard");
+				if (callbackUrl) {
+					router.push(callbackUrl as any);
+				} else {
+					router.push("/dashboard");
+				}
 				return { success: true };
 			}
 
@@ -54,8 +66,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	};
 
 	const logout = async () => {
-		await signOut({ redirect: false });
-		router.push("/login");
+		try {
+			console.log("Logout initiated...");
+			await signOut({ redirect: false });
+			console.log("Session terminated successfully");
+			const callbackUrl = encodeURIComponent(window.location.pathname);
+			router.push(`/login?callbackUrl=${callbackUrl}`);
+			console.log("Redirecting to login page with callback");
+		} catch (error) {
+			console.error("Logout error:", error);
+			toast.error("Failed to logout. Please try again.");
+		}
 	};
 
 	return (

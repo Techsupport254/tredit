@@ -673,10 +673,7 @@ export default function ProfilePage() {
 	const handleDigitChange = (index: number, value: string) => {
 		// Handle pasting
 		if (value.length > 1) {
-			const digits = value
-				.slice(0, 6)
-				.split("")
-				.map((char) => char.toUpperCase());
+			const digits = value.slice(0, 6).split("");
 			const newDigits = [...verificationDigits];
 			digits.forEach((digit, i) => {
 				if (i < 6) newDigits[i] = digit;
@@ -695,11 +692,9 @@ export default function ProfilePage() {
 			return;
 		}
 
-		// Handle single digit input
-		if (!/^\d*$/.test(value)) return;
-
+		// Handle single character input
 		const newDigits = [...verificationDigits];
-		newDigits[index] = value.toUpperCase();
+		newDigits[index] = value;
 		setVerificationDigits(newDigits);
 
 		// Move to next input if value is entered
@@ -707,35 +702,9 @@ export default function ProfilePage() {
 			inputRefs[index + 1]?.current?.focus();
 		}
 
-		// Auto verify when all digits are filled
+		// Auto verify when all inputs are filled
 		if (newDigits.every((digit) => digit) && value) {
 			handleVerifyEmail(newDigits.join(""));
-		}
-	};
-
-	const handleKeyDown = (
-		index: number,
-		e: React.KeyboardEvent<HTMLInputElement>
-	) => {
-		if (e.key === "Backspace") {
-			if (!verificationDigits[index]) {
-				// If current input is empty, move to previous input and clear it
-				if (index > 0) {
-					const newDigits = [...verificationDigits];
-					newDigits[index - 1] = "";
-					setVerificationDigits(newDigits);
-					inputRefs[index - 1]?.current?.focus();
-				}
-			} else {
-				// Clear current input
-				const newDigits = [...verificationDigits];
-				newDigits[index] = "";
-				setVerificationDigits(newDigits);
-			}
-		} else if (e.key === "ArrowLeft" && index > 0) {
-			inputRefs[index - 1]?.current?.focus();
-		} else if (e.key === "ArrowRight" && index < 5) {
-			inputRefs[index + 1]?.current?.focus();
 		}
 	};
 
@@ -1091,32 +1060,76 @@ export default function ProfilePage() {
 													your email.
 												</p>
 
-												<div className="flex justify-center gap-4">
-													{verificationDigits.map((digit, index) => (
-														<div key={index} className="relative w-14 h-14">
-															<input
-																ref={inputRefs[index]}
-																type="text"
-																maxLength={6}
-																value={digit}
-																onChange={(e) =>
-																	handleDigitChange(index, e.target.value)
-																}
-																onKeyDown={(e) => handleKeyDown(index, e)}
-																onPaste={(e) => {
-																	e.preventDefault();
-																	const pastedData = e.clipboardData
-																		.getData("text")
-																		.trim();
-																	handleDigitChange(index, pastedData);
-																}}
-																className="absolute inset-0 w-full h-full text-center border-2 border-yellow-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:ring-0 text-xl font-semibold bg-white disabled:opacity-50"
-																style={{ aspectRatio: "1/1" }}
-																disabled={isVerifying}
-																inputMode="numeric"
-															/>
+												{/* Verification Code Input */}
+												<div className="flex flex-col items-center gap-4">
+													<div className="flex justify-center gap-4">
+														{verificationDigits.map((digit, index) => (
+															<div key={index} className="relative w-14 h-14">
+																<input
+																	ref={inputRefs[index]}
+																	type="text"
+																	maxLength={1}
+																	value={digit}
+																	onChange={(e) =>
+																		handleDigitChange(index, e.target.value)
+																	}
+																	onKeyDown={(e) => {
+																		if (e.key === "Backspace") {
+																			if (!verificationDigits[index]) {
+																				// If current input is empty, move to previous input and clear it
+																				if (index > 0) {
+																					const newDigits = [
+																						...verificationDigits,
+																					];
+																					newDigits[index - 1] = "";
+																					setVerificationDigits(newDigits);
+																					inputRefs[
+																						index - 1
+																					]?.current?.focus();
+																				}
+																			} else {
+																				// Clear current input
+																				const newDigits = [
+																					...verificationDigits,
+																				];
+																				newDigits[index] = "";
+																				setVerificationDigits(newDigits);
+																			}
+																		} else if (
+																			e.key === "ArrowLeft" &&
+																			index > 0
+																		) {
+																			inputRefs[index - 1]?.current?.focus();
+																		} else if (
+																			e.key === "ArrowRight" &&
+																			index < 5
+																		) {
+																			inputRefs[index + 1]?.current?.focus();
+																		}
+																	}}
+																	onPaste={(e) => {
+																		e.preventDefault();
+																		const pastedData = e.clipboardData
+																			.getData("text")
+																			.trim();
+																		handleDigitChange(index, pastedData);
+																	}}
+																	className="absolute inset-0 w-full h-full text-center border-2 border-yellow-300 rounded-lg focus:outline-none focus:border-yellow-500 focus:ring-0 text-xl font-semibold bg-white disabled:opacity-50"
+																	style={{ aspectRatio: "1/1" }}
+																	disabled={isVerifying}
+																	autoComplete="one-time-code"
+																/>
+															</div>
+														))}
+													</div>
+
+													{/* Verification Status */}
+													{isVerifying && (
+														<div className="flex items-center gap-2 text-yellow-700">
+															<div className="animate-spin rounded-full h-4 w-4 border-2 border-yellow-500 border-t-transparent"></div>
+															<span className="text-sm">Verifying...</span>
 														</div>
-													))}
+													)}
 												</div>
 
 												{/* Resend Code */}
@@ -1130,11 +1143,16 @@ export default function ProfilePage() {
 														disabled={isResending || resendTimer > 0}
 														className="text-sm text-yellow-800 hover:text-yellow-900 font-medium underline disabled:opacity-50 disabled:no-underline"
 													>
-														{isResending
-															? "Sending..."
-															: resendTimer > 0
-															? `Resend in ${resendTimer}s`
-															: "Resend verification email"}
+														{isResending ? (
+															<div className="flex items-center gap-2">
+																<div className="animate-spin rounded-full h-3 w-3 border-2 border-yellow-500 border-t-transparent"></div>
+																<span>Sending...</span>
+															</div>
+														) : resendTimer > 0 ? (
+															`Resend in ${resendTimer}s`
+														) : (
+															"Resend verification email"
+														)}
 													</button>
 												</div>
 											</div>

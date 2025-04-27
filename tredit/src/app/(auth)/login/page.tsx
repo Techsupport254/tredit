@@ -61,14 +61,13 @@ export default function Login() {
 
 		try {
 			setIsLoading(true);
-			const response = await login(data.email, data.password);
+			const response = await login(data.email, data.password, callbackUrl);
 			console.log("Login response:", response);
 
 			if (response.success) {
 				console.log("Login successful, preparing navigation");
 				toast.success("Login successful!");
-				// Force a hard navigation to dashboard
-				window.location.assign("/dashboard");
+				// Navigation handled by login function (router.push)
 			} else {
 				console.log("Login failed");
 				toast.error("Invalid email or password");

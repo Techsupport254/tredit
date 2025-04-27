@@ -11,6 +11,8 @@ import React, {
 import { message } from "antd";
 import debounce from "lodash/debounce";
 import { Product, ProductVariant } from "@prisma/client";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 
 // Export the CartItem interface
 export interface CartItem {
@@ -29,7 +31,11 @@ interface CartContextType {
 	cartId: string | null;
 	items: CartItem[];
 	shippingAddress: string | null;
-	addToCart: (product: Product, variantId?: string) => Promise<void>;
+	addToCart: (
+		product: Product,
+		variantId?: string,
+		quantity?: number
+	) => Promise<void>;
 	removeFromCart: (cartItemId: string) => void;
 	updateQuantity: (cartItemId: string, quantity: number) => void;
 	updateShippingAddress: (address: string) => void;
@@ -42,6 +48,8 @@ interface CartContextType {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+	const { data: session } = useSession();
+	const router = useRouter();
 	const [cartId, setCartId] = useState<string | null>(null);
 	const [items, setItems] = useState<CartItem[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
@@ -119,8 +127,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 	}, []);
 
 	const addToCart = useCallback(
-		async (product: Product, variantId?: string) => {
+		async (product: Product, variantId?: string, quantity: number = 1) => {
 			try {
+				if (!session) {
+					const callbackUrl = encodeURIComponent(window.location.pathname);
+					router.push(`/login?callbackUrl=${callbackUrl}`);
+					return;
+				}
+
 				const response = await fetch("/api/cart", {
 					method: "POST",
 					headers: {
@@ -128,7 +142,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 					},
 					body: JSON.stringify({
 						productId: product.id,
-						quantity: 1,
+						quantity,
 						variantId,
 					}),
 				});
@@ -150,7 +164,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 				throw error;
 			}
 		},
-		[fetchCart]
+		[fetchCart, session, router]
 	);
 
 	// Update removeFromCart signature and logic

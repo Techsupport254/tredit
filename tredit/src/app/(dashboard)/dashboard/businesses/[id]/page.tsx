@@ -57,6 +57,7 @@ import { TabsProps } from "antd";
 import OverviewTab from "./components/OverviewTab";
 import TeamTab from "./components/TeamTab";
 import SocialMediaTab from "./components/SocialMediaTab";
+import { useSession } from "next-auth/react";
 
 const { Title, Text, Paragraph } = Typography;
 const { TabPane } = Tabs;
@@ -148,6 +149,7 @@ export default function BusinessDetailsPage({
 }) {
 	const router = useRouter();
 	const { token } = theme.useToken();
+	const { data: session } = useSession();
 	const [business, setBusiness] = useState<Business>({
 		id: params.id,
 		name: "Loading...",
@@ -171,6 +173,11 @@ export default function BusinessDetailsPage({
 	const [channelData, setChannelData] = useState<
 		Record<string, ChannelData | null>
 	>({});
+
+	// Find the current user's team member record
+	const currentUserId = session?.user?.id;
+	const currentTeamMember = teamMembers.find((m) => m.id === currentUserId);
+	const currentUserRole = currentTeamMember?.role;
 
 	useEffect(() => {
 		fetchBusinessDetails();
@@ -402,6 +409,8 @@ export default function BusinessDetailsPage({
 					members={teamMembers}
 					onAddMember={handleAddTeamMember}
 					onRemoveMember={handleRemoveTeamMember}
+					currentUserRole={currentUserRole}
+					businessId={business.id}
 				/>
 			),
 		},

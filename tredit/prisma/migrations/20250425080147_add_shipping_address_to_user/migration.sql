@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE "User" ADD COLUMN "shippingAddress" TEXT; 
+-- ALTER TABLE "User" ADD COLUMN "shippingAddress" TEXT; 

@@ -103,6 +103,27 @@ export class OrderService {
 								price: Number(item.variant?.price || item.product?.price || 0),
 							})),
 						},
+						metadata: {
+							cartId: cart.id,
+							shippingFee: cart.shippingFee,
+							shippingAddress: cart.shippingAddress,
+							items: cart.items.map((item) => ({
+								id: item.id,
+								quantity: item.quantity,
+								product: item.product
+									? {
+											name: item.product.name,
+											price: item.product.price,
+									  }
+									: undefined,
+								variant: item.variant
+									? {
+											name: item.variant.name,
+											price: item.variant.price,
+									  }
+									: undefined,
+							})),
+						},
 					},
 					include: {
 						items: true, // Include items in the response
