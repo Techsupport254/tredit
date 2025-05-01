@@ -49,6 +49,7 @@ async function getBusinessFromSlug(slug: string) {
 			type: true,
 			status: true,
 			paymentMethods: true,
+			userId: true,
 		},
 	});
 

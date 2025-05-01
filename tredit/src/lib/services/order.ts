@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { Prisma, CartItem as PrismaCartItem } from "@prisma/client"; // Import Prisma types
+import {
+	Prisma,
+	CartItem as PrismaCartItem,
+	ShippingMethod,
+} from "@prisma/client";
 // Remove CartService import if it's not used for persistent cart
 // import { CartService, CartItem } from "./cart";
 
@@ -10,6 +14,16 @@ export interface OrderInput {
 	businessId: string; // Need businessId to group order items
 	shippingAddress: string;
 	paymentMethod: string;
+	shippingMethod?: ShippingMethod;
+	paystackRef?: string;
+	paystackId?: string;
+	blockchainTxHash?: string;
+}
+
+export interface OrderStatusUpdate {
+	status: string;
+	note: string;
+	updatedBy: string;
 }
 
 export class OrderService {
@@ -85,6 +99,7 @@ export class OrderService {
 				}, 0);
 
 				// 4. Create the Order
+				const now = new Date().toISOString();
 				const order = await tx.order.create({
 					data: {
 						userId: input.userId,
@@ -92,7 +107,18 @@ export class OrderService {
 						totalAmount: totalAmount,
 						shippingAddress: input.shippingAddress,
 						paymentMethod: input.paymentMethod,
-						status: "PENDING", // Or determine based on payment success?
+						shippingMethod: input.shippingMethod,
+						paystackRef: input.paystackRef,
+						paystackId: input.paystackId,
+						blockchainTxHash: input.blockchainTxHash,
+						status: [
+							{
+								status: "PENDING",
+								note: "Order placed",
+								updatedBy: input.userId,
+								updatedAt: now,
+							},
+						],
 						paymentStatus: "PENDING", // Or determine based on payment success?
 						items: {
 							create: itemsForOrder.map((item) => ({
@@ -126,7 +152,12 @@ export class OrderService {
 						},
 					},
 					include: {
-						items: true, // Include items in the response
+						items: {
+							include: {
+								product: true,
+								variant: true,
+							},
+						},
 					},
 				});
 
@@ -171,8 +202,11 @@ export class OrderService {
 					items: {
 						include: {
 							product: true,
+							variant: true,
 						},
 					},
+					business: true,
+					user: true,
 				},
 			});
 			return order;
@@ -190,8 +224,10 @@ export class OrderService {
 					items: {
 						include: {
 							product: true,
+							variant: true,
 						},
 					},
+					business: true,
 				},
 				orderBy: {
 					createdAt: "desc",
@@ -204,23 +240,153 @@ export class OrderService {
 		}
 	}
 
-	async updateOrderStatus(orderId: string, status: string) {
+	async updateOrderStatus(
+		orderId: string,
+		status: string,
+		note: string,
+		updatedBy: string
+	) {
 		try {
-			const order = await prisma.order.update({
+			const order = await prisma.order.findUnique({ where: { id: orderId } });
+			if (!order) throw new Error("Order not found");
+
+			// Get current status history and ensure it's properly parsed
+			let statusHistory = [];
+			try {
+				if (typeof order.statusHistory === "string") {
+					statusHistory = JSON.parse(order.statusHistory);
+				} else if (Array.isArray(order.statusHistory)) {
+					statusHistory = order.statusHistory;
+				} else if (
+					typeof order.statusHistory === "object" &&
+					order.statusHistory !== null
+				) {
+					// Handle case where statusHistory is an object with push property
+					if (
+						order.statusHistory &&
+						typeof order.statusHistory.push === "object"
+					) {
+						statusHistory = [order.statusHistory.push];
+					} else {
+						statusHistory = [];
+					}
+				}
+			} catch (e) {
+				console.error("Error parsing status history:", e);
+			}
+
+			// Create new status entry
+			const newStatusEntry = {
+				status: status.replace(/^"|"$/g, ""), // Remove any surrounding quotes
+				note,
+				updatedBy,
+				timestamp: new Date().toISOString(),
+			};
+
+			// Add new status to the array
+			const updatedStatusHistory = [...statusHistory, newStatusEntry];
+
+			// Prepare update data
+			const updateData: any = {
+				currentStatus: status.replace(/^"|"$/g, ""),
+				statusHistory: updatedStatusHistory,
+			};
+
+			// If marking as delivered, set actualDeliveryDate
+			if (status.replace(/^"|"$/g, "") === "DELIVERED") {
+				updateData.actualDeliveryDate = new Date();
+			}
+
+			await prisma.order.update({
 				where: { id: orderId },
-				data: { status },
+				data: updateData,
+			});
+
+			// Fetch and return the full order with items, business, and user
+			const updatedOrder = await prisma.order.findUnique({
+				where: { id: orderId },
 				include: {
 					items: {
 						include: {
 							product: true,
 						},
 					},
+					business: true,
+					user: true,
 				},
 			});
-			return order;
+
+			return updatedOrder;
 		} catch (error) {
 			console.error("Error updating order status:", error);
 			throw new Error("Failed to update order status");
+		}
+	}
+
+	async updateOrderShipping(
+		orderId: string,
+		data: {
+			trackingNumber?: string;
+			shippingMethod?: ShippingMethod;
+			estimatedDeliveryDate?: Date;
+		}
+	) {
+		try {
+			const order = await prisma.order.findUnique({ where: { id: orderId } });
+			if (!order) throw new Error("Order not found");
+
+			const updatedOrder = await prisma.order.update({
+				where: { id: orderId },
+				data: {
+					trackingNumber: data.trackingNumber,
+					shippingMethod: data.shippingMethod,
+					estimatedDeliveryDate: data.estimatedDeliveryDate,
+				},
+				include: {
+					items: {
+						include: {
+							product: true,
+						},
+					},
+					business: true,
+					user: true,
+				},
+			});
+
+			return updatedOrder;
+		} catch (error) {
+			console.error("Error updating order shipping:", error);
+			throw new Error("Failed to update order shipping");
+		}
+	}
+
+	async confirmOrder(orderId: string) {
+		try {
+			const order = await prisma.order.findUnique({ where: { id: orderId } });
+			if (!order) throw new Error("Order not found");
+
+			const updatedOrder = await prisma.order.update({
+				where: { id: orderId },
+				data: {
+					isConfirmed: true,
+					confirmationDate: new Date(),
+				},
+				include: {
+					items: {
+						include: {
+							product: true,
+							variant: true,
+						},
+					},
+					business: true,
+					user: true,
+				},
+			});
+
+			return updatedOrder;
+		} catch (error) {
+			console.error("Error confirming order:", error);
+			throw new Error("Failed to confirm order");
 		}
 	}
 }

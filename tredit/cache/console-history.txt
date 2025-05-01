@@ -1,0 +1,8 @@
+npx hardhat run scripts/deploy.js --network polygonAmoy
+q
+npx hardhat verify --network polygonAmoy 0x30cF00DE133e707e5b4d6947cacB05A448A64d34 "0xb8CE9ab6943e0eCED004cDe8e3bBed6568B2Fa01" --force
+q
+npx hardhat verify --network polygonAmoy 0x30cF00DE133e707e5b4d6947cacB05A448A64d34 "0xb8CE9ab6943e0eCED004cDe8e3bBed6568B2Fa01"
+q
+npx hardhat verify --network polygonAmoy 0x30cF00DE133e707e5b4d6947cacB05A448A64d34
+q

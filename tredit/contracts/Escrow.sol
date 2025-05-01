@@ -1,136 +1,106 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.0;
 
-import "./Payment.sol";
-
-contract GoodsEscrow {
-    enum State { AWAITING_PAYMENT, AWAITING_DELIVERY, COMPLETE, REFUNDED, DISPUTE }
-    State public state;
-
-    address public immutable buyer;
-    address public immutable seller;
-    address public immutable arbitrator;
-    uint256 public amount;
-    uint256 public immutable disputeTimeLimit;
-    uint256 public deliveryDeadline;
-    uint256 public lastInteraction;
-    bytes32 public paymentId;
-    bool public isFiatPayment;
-
-    Payment public paymentContract;
-
-    event PaymentDeposited(address indexed buyer, uint256 amount, bool isFiat);
-    event DeliveryConfirmed(address indexed buyer);
-    event PaymentReleased(address indexed seller, uint256 amount);
-    event RefundIssued(address indexed buyer, uint256 amount);
-    event DisputeRaised(address indexed party);
-    event DisputeResolved(address indexed arbitrator, address winner);
-
-    modifier onlyBuyer() {
-        require(msg.sender == buyer, "Only buyer can call this function");
-        _;
+contract Escrow {
+    struct EscrowTransaction {
+        string id;
+        uint256 amount;
+        string status;
+        address buyer;
+        address seller;
+        uint256 createdAt;
+        uint256 updatedAt;
+        string conditions;
     }
 
-    modifier onlySeller() {
-        require(msg.sender == seller, "Only seller can call this function");
-        _;
+    EscrowTransaction[] public transactions;
+    mapping(string => uint256) private transactionIndexById;
+
+    event EscrowCreated(string id, address buyer, address seller, uint256 amount);
+    event EscrowReleased(string id);
+    event EscrowRefunded(string id);
+    event EscrowDisputed(string id);
+
+    function createEscrow(
+        string memory id,
+        address seller,
+        string memory conditions
+    ) external payable {
+        require(msg.value > 0, "Amount must be greater than 0");
+        require(transactionIndexById[id] == 0, "Transaction ID already exists");
+
+        EscrowTransaction memory newTx = EscrowTransaction({
+            id: id,
+            amount: msg.value,
+            status: "PENDING",
+            buyer: msg.sender,
+            seller: seller,
+            createdAt: block.timestamp,
+            updatedAt: block.timestamp,
+            conditions: conditions
+        });
+
+        transactions.push(newTx);
+        transactionIndexById[id] = transactions.length;
+
+        emit EscrowCreated(id, msg.sender, seller, msg.value);
     }
 
-    modifier onlyArbitrator() {
-        require(msg.sender == arbitrator, "Only arbitrator can call this function");
-        _;
+    function releaseEscrow(string memory id) external {
+        uint256 index = transactionIndexById[id] - 1;
+        require(index < transactions.length, "Transaction not found");
+        EscrowTransaction storage tx = transactions[index];
+        
+        require(msg.sender == tx.buyer, "Only buyer can release");
+        require(keccak256(bytes(tx.status)) == keccak256(bytes("PENDING")), "Invalid status");
+
+        tx.status = "RELEASED";
+        tx.updatedAt = block.timestamp;
+        
+        (bool success, ) = tx.seller.call{value: tx.amount}("");
+        require(success, "Transfer failed");
+
+        emit EscrowReleased(id);
     }
 
-    modifier inState(State expectedState) {
-        require(state == expectedState, "Invalid state");
-        _;
+    function refundEscrow(string memory id) external {
+        uint256 index = transactionIndexById[id] - 1;
+        require(index < transactions.length, "Transaction not found");
+        EscrowTransaction storage tx = transactions[index];
+        
+        require(msg.sender == tx.buyer, "Only buyer can refund");
+        require(keccak256(bytes(tx.status)) == keccak256(bytes("PENDING")), "Invalid status");
+
+        tx.status = "REFUNDED";
+        tx.updatedAt = block.timestamp;
+        
+        (bool success, ) = tx.buyer.call{value: tx.amount}("");
+        require(success, "Transfer failed");
+
+        emit EscrowRefunded(id);
     }
 
-    constructor(
-        address _seller,
-        address _arbitrator,
-        uint256 _deliveryTimeframe,
-        uint256 _disputeTimeLimit,
-        address _paymentContract
-    ) {
-        buyer = msg.sender;
-        seller = _seller;
-        arbitrator = _arbitrator;
-        disputeTimeLimit = _disputeTimeLimit;
-        deliveryDeadline = block.timestamp + _deliveryTimeframe;
-        lastInteraction = block.timestamp;
-        state = State.AWAITING_PAYMENT;
-        paymentContract = Payment(_paymentContract);
+    function disputeEscrow(string memory id) external {
+        uint256 index = transactionIndexById[id] - 1;
+        require(index < transactions.length, "Transaction not found");
+        EscrowTransaction storage tx = transactions[index];
+        
+        require(msg.sender == tx.buyer || msg.sender == tx.seller, "Only buyer or seller can dispute");
+        require(keccak256(bytes(tx.status)) == keccak256(bytes("PENDING")), "Invalid status");
+
+        tx.status = "DISPUTED";
+        tx.updatedAt = block.timestamp;
+
+        emit EscrowDisputed(id);
     }
 
-    function initiatePayment(
-        uint256 _amount,
-        address token,
-        bool _isFiat
-    ) external onlyBuyer inState(State.AWAITING_PAYMENT) {
-        amount = _amount;
-        isFiatPayment = _isFiat;
-
-        if (_isFiat) {
-            // For fiat payments, the backend will call recordFiatPayment
-            // after Paystack verification
-            state = State.AWAITING_DELIVERY;
-            emit PaymentDeposited(buyer, amount, true);
-        } else {
-            // For blockchain payments, initiate through Payment contract
-            paymentId = paymentContract.initiateBlockchainPayment(
-                address(this),
-                amount,
-                token
-            );
-            state = State.AWAITING_DELIVERY;
-            emit PaymentDeposited(buyer, amount, false);
-        }
+    function getEscrowTransactions() external view returns (EscrowTransaction[] memory) {
+        return transactions;
     }
 
-    function confirmDelivery() external onlyBuyer inState(State.AWAITING_DELIVERY) {
-        require(block.timestamp <= deliveryDeadline, "Delivery confirmation period expired");
-
-        state = State.COMPLETE;
-        paymentContract.completePayment(paymentId);
-
-        emit DeliveryConfirmed(buyer);
-        emit PaymentReleased(seller, amount);
-    }
-
-    function requestRefund() external onlyBuyer inState(State.AWAITING_DELIVERY) {
-        require(block.timestamp > deliveryDeadline, "Delivery period has not expired");
-
-        state = State.REFUNDED;
-        if (!isFiatPayment) {
-            paymentContract.completePayment(paymentId);
-        }
-
-        emit RefundIssued(buyer, amount);
-    }
-
-    function raiseDispute() external {
-        require(msg.sender == buyer || msg.sender == seller, "Only buyer or seller can raise a dispute");
-        require(state == State.AWAITING_DELIVERY, "No active transaction to dispute");
-        require(block.timestamp <= deliveryDeadline + disputeTimeLimit, "Dispute period expired");
-
-        state = State.DISPUTE;
-        emit DisputeRaised(msg.sender);
-    }
-
-    function resolveDispute(address winner) external onlyArbitrator inState(State.DISPUTE) {
-        require(winner == buyer || winner == seller, "Winner must be buyer or seller");
-
-        state = (winner == buyer) ? State.REFUNDED : State.COMPLETE;
-        if (!isFiatPayment) {
-            paymentContract.completePayment(paymentId);
-        }
-
-        emit DisputeResolved(arbitrator, winner);
-        if (winner == buyer) {
-            emit RefundIssued(buyer, amount);
-        } else {
-            emit PaymentReleased(seller, amount);
-        }
+    function getEscrowTransaction(string memory id) external view returns (EscrowTransaction memory) {
+        uint256 index = transactionIndexById[id] - 1;
+        require(index < transactions.length, "Transaction not found");
+        return transactions[index];
     }
 }

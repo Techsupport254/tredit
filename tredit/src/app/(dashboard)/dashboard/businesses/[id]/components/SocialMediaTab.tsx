@@ -98,6 +98,12 @@ export default function SocialMediaTab({
 					const channelInfo = channelData[item.platform];
 					const isLoading = loadingPlatform === item.platform;
 
+					// Debug: Log the connection and channelInfo for each platform
+					console.log(`[SocialMediaTab]`, item.platform, {
+						connection,
+						channelInfo,
+					});
+
 					return (
 						<List.Item
 							className="flex items-center justify-between p-4 bg-white rounded-lg shadow-sm mb-4"
@@ -110,11 +116,39 @@ export default function SocialMediaTab({
 							<div className="flex items-center space-x-4">
 								{connection?.connected && channelInfo ? (
 									<div className="relative">
-										<Avatar
-											size={48}
-											src={channelInfo.accountImage}
-											alt={channelInfo.channelName}
-										/>
+										{channelInfo.accountImage &&
+										channelInfo.accountImage.trim() !== "" ? (
+											<img
+												src={channelInfo.accountImage}
+												alt={channelInfo.channelName}
+												style={{
+													width: 48,
+													height: 48,
+													borderRadius: "50%",
+													objectFit: "cover",
+													background: "#d1d5db",
+												}}
+											/>
+										) : (
+											<div
+												style={{
+													width: 48,
+													height: 48,
+													borderRadius: "50%",
+													background: "#d1d5db",
+													color: "#374151",
+													fontWeight: 700,
+													display: "flex",
+													alignItems: "center",
+													justifyContent: "center",
+													fontSize: 24,
+												}}
+											>
+												{channelInfo.channelName
+													? channelInfo.channelName[0].toUpperCase()
+													: "?"}
+											</div>
+										)}
 										<div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white" />
 									</div>
 								) : (

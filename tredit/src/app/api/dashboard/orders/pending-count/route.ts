@@ -20,13 +20,24 @@ export async function GET() {
 			return NextResponse.json({ count: 0 });
 		}
 
-		// Count all PENDING orders for those businesses
-		const count = await prisma.order.count({
+		// Get all orders for those businesses
+		const orders = await prisma.order.findMany({
 			where: {
 				businessId: { in: businessIds },
-				status: "PENDING",
+			},
+			select: {
+				currentStatus: true,
+				statusHistory: true,
 			},
 		});
+
+		console.log("Total orders found:", orders.length);
+		console.log("Sample order status:", orders[0]?.currentStatus);
+
+		// Count orders with PENDING status
+		const count = orders.filter(
+			(order) => order.currentStatus === "PENDING"
+		).length;
 
 		return NextResponse.json({ count });
 	} catch (error) {

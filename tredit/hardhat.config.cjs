@@ -3,10 +3,10 @@ require("@nomicfoundation/hardhat-verify");
 require("dotenv").config();
 
 // Use existing environment variables
-const { PRIVATE_KEY, RPC_URL } = process.env;
+const { NEXT_PUBLIC_PRIVATE_KEY, RPC_URL } = process.env;
 
-if (!PRIVATE_KEY) {
-	throw new Error("Please set your PRIVATE_KEY in the .env file");
+if (!NEXT_PUBLIC_PRIVATE_KEY) {
+	throw new Error("Please set your NEXT_PUBLIC_PRIVATE_KEY in the .env file");
 }
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -34,7 +34,7 @@ module.exports = {
 			url:
 				RPC_URL ||
 				"https://polygon-amoy.infura.io/v3/58c6d521bff64b6fbb0ca83aba68e550",
-			accounts: [PRIVATE_KEY],
+			accounts: [NEXT_PUBLIC_PRIVATE_KEY],
 			chainId: 80002,
 			gasPrice: "auto",
 			gas: 2100000,

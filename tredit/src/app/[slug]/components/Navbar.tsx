@@ -281,7 +281,7 @@ export default function Navbar({ searchQuery, setSearchQuery }: NavbarProps) {
 										if (key === "profile") {
 											window.location.href = `/${storeSlug}/profile`;
 										} else if (key === "orders") {
-											window.location.href = `/${storeSlug}/profile#orders`;
+											window.location.href = `/${storeSlug}/orders`;
 										} else if (key === "messages") {
 											window.location.href = `/${storeSlug}/profile#messages`;
 										} else if (key === "payments") {

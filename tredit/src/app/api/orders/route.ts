@@ -44,7 +44,23 @@ export async function GET(req: Request) {
 				userId: session.user.id,
 			},
 			include: {
-				items: true,
+				items: {
+					include: {
+						product: {
+							select: {
+								name: true,
+								price: true,
+								media: true,
+							},
+						},
+						service: {
+							select: {
+								name: true,
+								price: true,
+							},
+						},
+					},
+				},
 			},
 			orderBy: {
 				createdAt: "desc",
@@ -69,7 +85,8 @@ export async function POST(request: Request) {
 			return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
 		}
 
-		const { businessId, items, totalAmount } = await request.json();
+		const { businessId, items, totalAmount, cartMetadata } =
+			await request.json();
 
 		if (!businessId || !items || !totalAmount) {
 			return NextResponse.json(
@@ -78,25 +95,84 @@ export async function POST(request: Request) {
 			);
 		}
 
-		// Create order
-		const order = await prisma.order.create({
+		// Create initial status array
+		const initialStatus = [
+			{
+				status: "PENDING",
+				note: "Order placed",
+				timestamp: new Date().toISOString(),
+			},
+		];
+
+		// Create service agreement first
+		const serviceAgreement = await prisma.serviceAgreement.create({
 			data: {
 				businessId,
-				userId: session.user.id,
-				totalAmount,
-				status: "PENDING",
-				items: {
-					create: items.map((item: any) => ({
-						productId: item.id,
-						quantity: item.quantity,
-						price: item.price,
-					})),
+				clientId: session.user.id,
+				serviceCategoryId: "default", // You might want to make this dynamic based on the order type
+				title: `Order Agreement for ${businessId}`,
+				description: "Standard order agreement",
+				startDate: new Date(),
+				paymentModel: "ONE_TIME",
+				totalAmount: totalAmount,
+				currency: "KES",
+				terms: {
+					deliveryConfirmed: false,
+					disputePeriod: 7, // 7 days dispute period
+					autoReleaseAfter: 14, // Auto-release after 14 days if no dispute
 				},
 			},
-			include: {
-				items: true,
-			},
 		});
+
+		// Create order with cart metadata and proper status structure
+		const order = await prisma.$transaction(
+			async (tx) => {
+				// Create the order
+				const newOrder = await tx.order.create({
+					data: {
+						businessId,
+						userId: session.user.id,
+						totalAmount,
+						currentStatus: "PENDING",
+						statusHistory: [
+							{
+								status: "PENDING",
+								note: "Order placed",
+								updatedBy: session.user.id,
+								timestamp: new Date().toISOString(),
+							},
+						],
+						metadata: {
+							...cartMetadata,
+							agreementId: serviceAgreement.id,
+						},
+						items: {
+							create: items.map((item: any) => ({
+								productId: item.id,
+								quantity: item.quantity,
+								price: item.price,
+							})),
+						},
+					},
+					include: {
+						items: true,
+					},
+				});
+
+				// Delete the user's cart after successful order creation
+				await tx.cart.delete({
+					where: {
+						userId: session.user.id,
+					},
+				});
+
+				return newOrder;
+			},
+			{
+				maxWait: 10000, // 10 seconds to wait for a connection from the pool
+				timeout: 15000, // 15 seconds for the transaction itself
+			}
+		);
 
 		return NextResponse.json(order);
 	} catch (error) {
@@ -108,23 +184,32 @@ export async function POST(request: Request) {
 	}
 }
 
-export async function PATCH(request: Request) {
+export async function PATCH(
+	req: Request,
+	{ params }: { params: { id: string } }
+) {
 	try {
 		const session = await getServerSession(authOptions);
 		if (!session) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+			return new Response("Unauthorized", { status: 401 });
 		}
 
-		const { orderId, status } = await request.json();
-		const orderService = OrderService.getInstance();
+		const { status, note } = await req.json();
+		if (!status) {
+			return new Response("Status is required", { status: 400 });
+		}
 
-		const order = await orderService.updateOrderStatus(orderId, status);
-		return NextResponse.json(order);
-	} catch (error) {
-		console.error("Error updating order:", error);
-		return NextResponse.json(
-			{ error: "Failed to update order" },
-			{ status: 500 }
+		const orderService = OrderService.getInstance();
+		const updatedOrder = await orderService.updateOrderStatus(
+			params.id,
+			status,
+			note || `Status updated to ${status}`,
+			session.user.id
 		);
+
+		return Response.json(updatedOrder);
+	} catch (error) {
+		console.error("Error updating order status:", error);
+		return new Response("Internal Server Error", { status: 500 });
 	}
 }

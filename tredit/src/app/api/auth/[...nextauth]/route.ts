@@ -26,30 +26,26 @@ const handler = NextAuth({
 			async authorize(credentials) {
 				try {
 					if (!credentials?.email || !credentials?.password) {
-						console.error("Missing credentials");
 						throw new Error("Email and password required");
 					}
 
-					console.log("Looking for user with email:", credentials.email);
-					const user = await User.findByEmail(credentials.email);
+					const user = await prisma.user.findUnique({
+						where: { email: credentials.email },
+					});
 
 					if (!user) {
-						console.error("No user found with email:", credentials.email);
 						throw new Error("No user found with this email");
 					}
 
-					console.log("User found, verifying password");
 					const isPasswordValid = await bcrypt.compare(
 						credentials.password,
 						user.password
 					);
 
 					if (!isPasswordValid) {
-						console.error("Invalid password for user:", credentials.email);
 						throw new Error("Invalid password");
 					}
 
-					console.log("Password verified, returning user");
 					return {
 						id: user.id,
 						email: user.email,

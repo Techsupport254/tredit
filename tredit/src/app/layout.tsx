@@ -15,7 +15,6 @@ export const viewport: Viewport = {
 	userScalable: false,
 	viewportFit: "cover",
 	"mobile-web-app-capable": "yes",
-	"apple-mobile-web-app-capable": "yes",
 };
 
 export const metadata: Metadata = {

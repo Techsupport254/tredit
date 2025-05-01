@@ -1,15 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PaymentService } from "@/lib/services/payment.service";
 import { PaystackService } from "@/lib/services/paystack.service";
-import { PaymentMethod } from "@prisma/client";
+import { EscrowService } from "@/lib/services/escrow.service";
+import { TokenEscrowService } from "@/lib/services/token-escrow.service";
+import { PaymentMethod, OrderStatus } from "@prisma/client";
 import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
 import Decimal from "decimal.js";
 import { generateShareableLink } from "@/lib/utils/url";
 import { verifyPayment } from "@/lib/paystack";
+import config from "@/config";
 
 // Input validation schema
 const paymentRequestSchema = z.object({
@@ -39,215 +42,312 @@ const limiter = rateLimit({
 	uniqueTokenPerInterval: 500,
 });
 
-export async function POST(req: Request) {
+type OrderMetadata = {
+	cart: any;
+	payment: {
+		method: string;
+		reference: string;
+		amount: number;
+		currency: string;
+		status: string;
+		timestamp: string;
+	};
+	shipping: {
+		method: string;
+		fee: number;
+		address: string;
+		status: string;
+	};
+	tax: number;
+	subtotal: number;
+	business: any;
+	agreementId?: string;
+};
+
+export async function POST(req: NextRequest) {
+	let requestBody: any;
 	try {
-		// Rate limiting
-		try {
-			await limiter.check(5); // 5 requests per minute
-		} catch {
-			return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-		}
+		// Read request body once
+		requestBody = await req.json();
+		console.log("[Payment Init] Step 1: Request received", {
+			body: requestBody,
+			headers: req.headers,
+		});
 
 		const session = await getServerSession(authOptions);
 		if (!session?.user) {
+			console.error("[Payment Init] Step 1: Unauthorized", { session });
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 		}
 
-		// Validate input
-		const body = await req.json();
-		const validationResult = paymentRequestSchema.safeParse(body);
-		if (!validationResult.success) {
-			return NextResponse.json(
-				{ error: "Invalid input", details: validationResult.error },
-				{ status: 400 }
-			);
-		}
-
-		const {
-			businessId,
-			items,
-			totalAmount,
-			shippingAddress,
+		const { amount, email, paymentMethod, metadata } = requestBody;
+		console.log("[Payment Init] Step 2: Request data extracted", {
+			amount,
+			email,
 			paymentMethod,
-			shippingMethod,
-			shippingFee,
-			subtotal,
-			tax,
 			metadata,
-		} = validationResult.data;
-
-		// Extra check for paymentMethod
-		if (
-			!paymentMethod ||
-			!["MPESA", "CARD", "BANK_TRANSFER", "CRYPTO"].includes(paymentMethod)
-		) {
-			return NextResponse.json(
-				{
-					error: "Invalid payment method",
-					details: {
-						received: paymentMethod,
-						options: ["MPESA", "CARD", "BANK_TRANSFER", "CRYPTO"],
-					},
-				},
-				{ status: 400 }
-			);
-		}
-
-		// Log the incoming payment request for debugging
-		console.log("Payment request received:", validationResult.data);
-
-		// Fetch the business by businessId
-		const business = await prisma.business.findUnique({
-			where: { id: businessId },
+			userId: session.user.id,
 		});
-		if (!business) {
-			console.error("Business not found for id:", businessId);
-			return NextResponse.json(
-				{ error: "Business not found" },
-				{ status: 404 }
-			);
-		}
 
-		// Log the fetched business and session user
-		console.log("Fetched business:", business);
-		console.log("Session user:", session.user);
+		// Step 1: Get or create default product category
+		console.log(
+			"[Payment Init] Step 3: Getting or creating default product category",
+			{
+				businessId: metadata.businessId,
+				userId: session.user.id,
+			}
+		);
 
-		const paymentService = PaymentService.getInstance();
-		const paystackService = PaystackService.getInstance();
-
-		// Find or create a default service category for the business
-		let serviceCategory = await prisma.serviceCategory.findFirst({
+		let productCategory = await prisma.productCategory.findFirst({
 			where: {
-				businessId: business.id,
+				businessId: metadata.businessId,
 				name: "Default",
 			},
 		});
-		if (!serviceCategory) {
-			serviceCategory = await prisma.serviceCategory.create({
+
+		if (!productCategory) {
+			console.log("[Payment Init] Step 3: Creating default product category", {
+				businessId: metadata.businessId,
+				userId: session.user.id,
+			});
+			productCategory = await prisma.productCategory.create({
 				data: {
-					businessId: business.id,
+					businessId: metadata.businessId,
 					name: "Default",
-					description: "Default service category for agreements",
-					type: "CUSTOM",
-					basePrice: new Decimal(0),
-					duration: 0,
+					description: "Default product category for orders",
+					type: "PHYSICAL",
+					basePrice: 0,
+					stockLevel: 0,
+					isAvailable: true,
+					requiresApproval: false,
 				},
 			});
 		}
 
-		// Create service agreement for the payment
-		const serviceAgreement = await prisma.serviceAgreement.create({
+		console.log("[Payment Init] Step 3: Product category ready", {
+			productCategory: {
+				id: productCategory.id,
+				name: productCategory.name,
+				businessId: productCategory.businessId,
+				type: productCategory.type,
+				basePrice: productCategory.basePrice,
+				stockLevel: productCategory.stockLevel,
+				isAvailable: productCategory.isAvailable,
+				requiresApproval: productCategory.requiresApproval,
+			},
+		});
+
+		// Step 2: Create order
+		console.log("[Payment Init] Step 4: Creating order", {
+			businessId: metadata.businessId,
+			userId: session.user.id,
+			amount,
+			productCategoryId: productCategory.id,
+			paymentMethod,
+			shippingAddress: metadata.shippingAddress,
+			shippingMethod: metadata.shippingMethod,
+		});
+
+		const order = await prisma.order.create({
 			data: {
-				businessId: business.id,
-				clientId: session.user.id,
-				serviceCategoryId: serviceCategory.id,
-				title: `Order Payment - ${business.id}`,
-				description: `Payment for business ${business.id}`,
-				startDate: new Date(),
-				paymentModel: "ONE_TIME",
-				totalAmount: new Decimal(totalAmount),
-				currency: "KES",
-				terms: {
-					items: items,
+				businessId: metadata.businessId,
+				userId: session.user.id,
+				totalAmount: amount,
+				shippingAddress: metadata.shippingAddress,
+				shippingMethod: metadata.shippingMethod,
+				currentStatus: OrderStatus.PENDING,
+				paymentStatus: "PENDING",
+				statusHistory: [
+					{
+						status: "PENDING",
+						note: "Order placed and payment pending",
+						timestamp: new Date().toISOString(),
+					},
+				],
+				metadata: {
+					cart: metadata.cart,
+					payment: {
+						method: paymentMethod,
+						amount: amount,
+						currency: "KES",
+						status: "PENDING",
+						timestamp: new Date().toISOString(),
+					},
+					shipping: {
+						method: metadata.shippingMethod,
+						fee: metadata.shippingFee,
+						address: metadata.shippingAddress,
+						status: "PENDING",
+					},
+					tax: metadata.tax,
+					subtotal: metadata.subtotal,
+					business: metadata.business,
+					productCategoryId: productCategory.id,
+				} as OrderMetadata,
+				items: {
+					create: metadata.items.map((item: any) => ({
+						quantity: item.quantity,
+						price: item.price,
+						product: { connect: { id: item.id } },
+					})),
 				},
 			},
 		});
 
-		let paymentResult;
-		let paymentRecord;
+		console.log("[Payment Init] Step 4: Order created", {
+			order: {
+				id: order.id,
+				businessId: order.businessId,
+				userId: order.userId,
+				totalAmount: order.totalAmount,
+				status: order.currentStatus,
+				paymentStatus: order.paymentStatus,
+				metadata: order.metadata,
+				items: order.items,
+			},
+		});
 
-		try {
-			if (paymentMethod === "CRYPTO") {
-				const buyerWallet = session.user.walletAddress || "";
-				if (!buyerWallet) {
-					throw new Error(
-						"User wallet address is required for crypto payments"
-					);
-				}
-				// Handle crypto payment
-				paymentResult = await paymentService.initiatePayment(
-					totalAmount,
-					"KES",
-					paymentMethod,
-					serviceAgreement.id,
-					buyerWallet,
-					"" // No seller wallet address available, pass empty string or update as needed
-				);
-
-				// Only create payment record if blockchain payment was initiated
-				paymentRecord = await prisma.payment.create({
-					data: {
-						agreementId: serviceAgreement.id,
-						amount: new Decimal(totalAmount),
-						paymentMethod,
-						status: "PENDING",
-						...(paymentResult && paymentResult.paymentId
-							? { blockchainPaymentId: paymentResult.paymentId }
-							: {}),
-						...(paymentResult && paymentResult.transactionHash
-							? { blockchainTxHash: paymentResult.transactionHash }
-							: {}),
-					},
-				});
-
-				return NextResponse.json({
-					paymentId: paymentResult.paymentId,
-					type: "crypto",
-					status: "pending",
-				});
-			} else {
-				// Handle fiat payment through Paystack
-				const paystackResponse = await paystackService.initializePayment(
-					totalAmount,
-					session.user.email!,
-					paymentMethod,
+		// Step 3: Initialize Paystack payment
+		console.log("[Payment Init] Step 5: Initializing Paystack payment", {
+			amount,
+			email,
+			paymentMethod,
+			orderId: order.id,
+			metadata: {
+				...metadata,
+				orderId: order.id,
+				paymentMethod,
+				custom_fields: [
 					{
-						businessId,
-						userId: session.user.id,
-						items,
-						totalAmount,
-						shippingAddress,
-						paymentMethod,
-						shippingMethod,
-						shippingFee,
-						subtotal,
-						tax,
-						paymentAgreementId: serviceAgreement.id,
-						businessName: business.name,
-						businessType: business.type,
-						...metadata,
-					}
-				);
-
-				// Only create payment record if Paystack payment was initialized
-				paymentRecord = await prisma.payment.create({
-					data: {
-						agreementId: serviceAgreement.id,
-						amount: new Decimal(totalAmount),
-						paymentMethod,
-						status: "PENDING",
-						...(paystackResponse && paystackResponse.data.reference
-							? { paystackRef: paystackResponse.data.reference }
-							: {}),
+						display_name: "Order ID",
+						variable_name: "orderId",
+						value: order.id,
 					},
-				});
+					{
+						display_name: "Payment Method",
+						variable_name: "paymentMethod",
+						value: paymentMethod,
+					},
+					{
+						display_name: "Business ID",
+						variable_name: "businessId",
+						value: metadata.businessId,
+					},
+					{
+						display_name: "User ID",
+						variable_name: "userId",
+						value: session.user.id,
+					},
+				],
+			},
+		});
 
-				return NextResponse.json({
-					authorizationUrl: paystackResponse.data.authorization_url,
-					type: "fiat",
-					status: "pending",
-				});
+		const paystackService = PaystackService.getInstance();
+		const response = await paystackService.initializePayment(
+			amount,
+			email,
+			paymentMethod,
+			{
+				...metadata,
+				orderId: order.id,
+				paymentMethod,
+				custom_fields: [
+					{
+						display_name: "Order ID",
+						variable_name: "orderId",
+						value: order.id,
+					},
+					{
+						display_name: "Payment Method",
+						variable_name: "paymentMethod",
+						value: paymentMethod,
+					},
+					{
+						display_name: "Business ID",
+						variable_name: "businessId",
+						value: metadata.businessId,
+					},
+					{
+						display_name: "User ID",
+						variable_name: "userId",
+						value: session.user.id,
+					},
+				],
 			}
-		} catch (error) {
-			// If payment initialization fails, delete the service agreement
-			await prisma.serviceAgreement.delete({
-				where: { id: serviceAgreement.id },
-			});
-			console.error("Payment initialization failed:", error);
-			throw error;
-		}
+		);
+
+		console.log("[Payment Init] Step 5: Paystack payment initialized", {
+			response,
+			orderId: order.id,
+			paymentMethod,
+			metadata: {
+				...metadata,
+				orderId: order.id,
+				paymentMethod,
+				custom_fields: [
+					{
+						display_name: "Order ID",
+						variable_name: "orderId",
+						value: order.id,
+					},
+					{
+						display_name: "Payment Method",
+						variable_name: "paymentMethod",
+						value: paymentMethod,
+					},
+					{
+						display_name: "Business ID",
+						variable_name: "businessId",
+						value: metadata.businessId,
+					},
+					{
+						display_name: "User ID",
+						variable_name: "userId",
+						value: session.user.id,
+					},
+				],
+			},
+		});
+
+		return NextResponse.json({
+			authorization_url: response.data.authorization_url,
+			reference: response.data.reference,
+			orderId: order.id,
+			paymentMethod,
+			metadata: {
+				...metadata,
+				orderId: order.id,
+				paymentMethod,
+				custom_fields: [
+					{
+						display_name: "Order ID",
+						variable_name: "orderId",
+						value: order.id,
+					},
+					{
+						display_name: "Payment Method",
+						variable_name: "paymentMethod",
+						value: paymentMethod,
+					},
+					{
+						display_name: "Business ID",
+						variable_name: "businessId",
+						value: metadata.businessId,
+					},
+					{
+						display_name: "User ID",
+						variable_name: "userId",
+						value: session.user.id,
+					},
+				],
+			},
+		});
 	} catch (error) {
-		console.error("Payment initialization error:", error);
+		console.error("[Payment Init] Error:", {
+			error,
+			requestBody: requestBody || "Not available",
+			stack: error instanceof Error ? error.stack : undefined,
+		});
 		return NextResponse.json(
 			{ error: "Failed to initialize payment" },
 			{ status: 500 }
@@ -255,123 +355,172 @@ export async function POST(req: Request) {
 	}
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
 	try {
-		// Rate limiting
-		try {
-			await limiter.check(10); // 10 requests per minute
-		} catch {
-			return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+		const searchParams = req.nextUrl.searchParams;
+		const reference = searchParams.get("reference");
+
+		if (!reference) {
+			return NextResponse.json(
+				{ error: "Payment reference is required" },
+				{ status: 400 }
+			);
 		}
 
-		const { searchParams } = new URL(req.url);
-		let reference = searchParams.get("reference");
+		console.log("[Step 1] Request received and reference extracted", {
+			reference,
+		});
 
-		const paymentService = PaymentService.getInstance();
+		const paystackService = PaystackService.getInstance();
+		const response = await paystackService.verifyPayment(reference);
 
-		// Start a transaction
-		const result = await prisma.$transaction(
-			async (tx) => {
-				try {
-					// Verify payment with Paystack
-					const verificationRaw = await verifyPayment(reference || "");
-					// The real Paystack verify endpoint returns a nested data object
-					const verification = verificationRaw as any;
-					const metadata = verification.metadata;
+		console.log("[Step 2] Payment verification response", {
+			status: response.data.status,
+			reference: response.data.reference,
+			metadata: response.data.metadata,
+		});
 
-					// Fallback: get reference from verification response if not present
-					if (!reference && verification.reference) {
-						reference = verification.reference;
-					}
+		if (response.data.status === "success") {
+			// Extract orderId from metadata
+			const orderId = response.data.metadata?.custom_fields?.find(
+				(field: any) => field.variable_name === "orderId"
+			)?.value;
 
-					if (!reference) {
-						return {
-							status: "failed",
-							error: "Missing payment reference for update",
-						};
-					}
+			if (!orderId) {
+				console.error("[Step 3] Order ID not found in metadata", {
+					metadata: response.data.metadata,
+				});
+				return NextResponse.json(
+					{ error: "Order ID not found in payment metadata" },
+					{ status: 400 }
+				);
+			}
 
-					if (verification.status === "success") {
-						// Update payment status by paystackRef
-						await tx.payment.update({
-							where: { paystackRef: reference },
-							data: { status: "PAID" },
-						});
+			console.log("[Step 3] Found order ID in metadata", { orderId });
 
-						// Complete payment in blockchain (if needed)
-						if (metadata && metadata.paymentId) {
-							await paymentService.completePayment(metadata.paymentId);
-						}
+			// Find the order
+			const order = await prisma.order.findUnique({
+				where: { id: orderId },
+			});
 
-						// Create order after payment is successful
-						const order = await tx.order.create({
-							data: {
-								businessId: metadata.businessId,
-								userId: metadata.userId,
-								totalAmount: new Decimal(metadata.totalAmount),
-								shippingAddress: metadata.shippingAddress,
-								shippingMethod: metadata.shippingMethod,
-								status: "PROCESSING",
-								paymentStatus: "PAID",
-								items: {
-									create: Array.isArray(metadata.items)
-										? metadata.items.map((item: any) => {
-												const base = {
-													quantity:
-														typeof item.quantity === "string"
-															? parseInt(item.quantity, 10)
-															: item.quantity,
-													price: new Decimal(item.price),
-												};
-												if (item.id && !item.serviceId) {
-													return {
-														...base,
-														product: { connect: { id: item.id } },
-													};
-												} else if (item.serviceId) {
-													return {
-														...base,
-														service: { connect: { id: item.serviceId } },
-													};
-												}
-												return base;
-										  })
-										: [],
-								},
-								// Add any other fields as needed
-							},
-						});
+			if (!order) {
+				console.error("[Step 4] Order not found", { orderId });
+				return NextResponse.json({ error: "Order not found" }, { status: 404 });
+			}
 
-						// Generate slug URL for redirect or response
-						const slugUrl = generateShareableLink(
-							metadata.businessId,
-							metadata.businessName || "business",
-							metadata.businessType || "business"
-						);
+			console.log("[Step 4] Order found", {
+				orderId: order.id,
+				status: order.currentStatus,
+				paymentStatus: order.paymentStatus,
+				totalAmount: order.totalAmount,
+				businessId: order.businessId,
+				userId: order.userId,
+			});
 
-						// Build the orders page URL for redirect
-						const ordersUrl = `${slugUrl}/orders`;
+			// Create escrow payment
+			console.log("[Step 5] Creating escrow payment", {
+				orderId: order.id,
+				amount: order.totalAmount,
+				buyerId: order.userId,
+				sellerId: order.businessId,
+				paymentMethod: response.data.channel.toUpperCase(),
+				paymentReference: reference,
+			});
 
-						return { status: "success", orderId: order.id, ordersUrl };
-					} else {
-						return { status: "failed", error: "Payment not successful" };
-					}
-				} catch (error: any) {
-					console.error("Payment verification error:", error);
-					return {
-						status: "failed",
-						error: error.message || "Verification failed",
-					};
-				}
-			},
-			{ timeout: 20000 }
-		); // Increased timeout to 20 seconds
+			const escrow = await prisma.escrowPayment.create({
+				data: {
+					orderId: order.id,
+					amount: order.totalAmount,
+					currency: "KES",
+					status: "ACTIVE",
+					buyerId: order.userId,
+					sellerId: order.businessId,
+					paymentMethod: response.data.channel.toUpperCase(),
+					paymentReference: reference,
+					conditions: {
+						deliveryConfirmed: false,
+						disputePeriod: 7,
+						autoReleaseAfter: 14,
+					},
+					metadata: {
+						paymentId: response.data.id,
+						paymentChannel: response.data.channel,
+						paymentDate: response.data.paid_at,
+						transactionFee: response.data.fees,
+						gatewayResponse: response.data.gateway_response,
+						paymentConfirmedAt: new Date(),
+					},
+				},
+			});
 
-		return NextResponse.json(result);
-	} catch (error) {
-		console.error("Payment verification error:", error);
+			console.log("[Step 6] Escrow payment created", {
+				escrowId: escrow.id,
+				status: escrow.status,
+				amount: escrow.amount,
+				currency: escrow.currency,
+				buyerId: escrow.buyerId,
+				sellerId: escrow.sellerId,
+				paymentMethod: escrow.paymentMethod,
+				paymentReference: escrow.paymentReference,
+				metadata: escrow.metadata,
+			});
+
+			// Update order status
+			console.log("[Step 7] Updating order status", {
+				orderId: order.id,
+				status: "PAYMENT_HELD",
+				paymentStatus: "HELD_IN_ESCROW",
+			});
+
+			const updatedOrder = await prisma.order.update({
+				where: { id: order.id },
+				data: {
+					paymentStatus: "HELD_IN_ESCROW",
+					currentStatus: "PAYMENT_HELD",
+					statusHistory: {
+						push: {
+							status: "PAYMENT_HELD",
+							note: "Payment received and held in escrow",
+							timestamp: new Date().toISOString(),
+						},
+					},
+				},
+			});
+
+			console.log("[Step 8] Order status updated", {
+				orderId: updatedOrder.id,
+				status: updatedOrder.currentStatus,
+				paymentStatus: updatedOrder.paymentStatus,
+				statusHistory: updatedOrder.statusHistory,
+			});
+
+			return NextResponse.json({
+				status: "success",
+				message: "Payment verified and escrow created",
+				data: {
+					order: {
+						id: updatedOrder.id,
+						status: updatedOrder.currentStatus,
+						paymentStatus: updatedOrder.paymentStatus,
+					},
+					escrow: {
+						id: escrow.id,
+						status: escrow.status,
+						amount: escrow.amount,
+					},
+				},
+			});
+		}
+
+		return NextResponse.json(response.data);
+	} catch (error: any) {
+		console.error("[Payment Verification] Error:", {
+			error,
+			message: error.message,
+			stack: error.stack,
+		});
 		return NextResponse.json(
-			{ status: "failed", error: "Failed to verify payment" },
+			{ error: error.message || "Failed to verify payment" },
 			{ status: 500 }
 		);
 	}

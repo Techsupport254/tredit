@@ -10,6 +10,10 @@ import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
 import { useCart } from "@/lib/context/CartContext";
 import { Route } from "next";
+import { PaymentClient } from "@/lib/services/payment.client";
+import config from "@/config";
+import { Business as BusinessType } from "@prisma/client";
+import { useSession } from "next-auth/react";
 
 // Helper function to format currency
 function formatCurrency(amount: number): string {
@@ -42,6 +46,7 @@ interface Business {
 	status: string;
 	paymentMethods: string[];
 	shippingPolicy?: string;
+	userId: string;
 }
 
 interface CheckoutClientProps {
@@ -49,6 +54,7 @@ interface CheckoutClientProps {
 }
 
 export default function CheckoutClient({ business }: CheckoutClientProps) {
+	const { data: session } = useSession();
 	const router = useRouter();
 	const [form] = Form.useForm();
 	const [loading, setLoading] = useState(false);
@@ -58,6 +64,7 @@ export default function CheckoutClient({ business }: CheckoutClientProps) {
 	const [selectedMethod, setSelectedMethod] = useState<string>("DISCUSSED");
 	const [selectedPaymentMethod, setSelectedPaymentMethod] =
 		useState<string>("");
+	const [error, setError] = useState<string | null>(null);
 
 	// Initialize form with default values
 	useEffect(() => {
@@ -181,10 +188,24 @@ export default function CheckoutClient({ business }: CheckoutClientProps) {
 	const handleSubmit = async (values: any) => {
 		try {
 			setLoading(true);
+			setError(null);
 
-			// Prepare payment data (do NOT create order yet)
+			console.log("[Checkout] Step 1: Starting payment process", {
+				businessId: business?.id,
+				items: items.map((item) => ({
+					id: item.product.id,
+					variantId: item.variant?.id,
+					quantity: item.quantity,
+					price: Number(item.product.price),
+				})),
+				totalAmount: cartTotal,
+				shippingAddress: shippingAddress || values.shippingAddress,
+				paymentMethod: selectedPaymentMethod || values.paymentMethod,
+				shippingMethod: values.shippingMethod,
+			});
+
 			const paymentData = {
-				businessId: business.id,
+				businessId: business?.id,
 				items: items.map((item) => ({
 					id: item.product.id,
 					variantId: item.variant?.id,
@@ -199,82 +220,240 @@ export default function CheckoutClient({ business }: CheckoutClientProps) {
 						: null,
 				})),
 				totalAmount: cartTotal,
-				shippingAddress: shippingAddress,
-				paymentMethod: selectedPaymentMethod,
-				shippingMethod: selectedMethod,
+				shippingAddress: shippingAddress || values.shippingAddress,
+				paymentMethod: selectedPaymentMethod || values.paymentMethod,
+				shippingMethod: values.shippingMethod,
 				shippingFee: shippingFee,
 				subtotal: cartSubtotal,
 				tax: tax,
-				metadata: {
-					cart: {
-						items: items.map((item) => ({
-							product: {
-								id: item.product.id,
-								name: item.product.name,
-								price: Number(item.product.price),
-								media: (item.product as any).media,
-							},
-							variant: item.variant
-								? {
-										id: item.variant.id,
-										name: item.variant.name,
-										price: Number(item.variant.price),
-								  }
-								: null,
-							quantity: item.quantity,
-						})),
-						subtotal: cartSubtotal,
-						shippingFee: shippingFee,
-						tax: tax,
-						total: cartTotal,
-					},
+				cart: {
+					items: items.map((item) => ({
+						product: {
+							id: item.product.id,
+							name: item.product.name,
+							price: Number(item.product.price),
+							media: (item.product as any).media,
+						},
+						variant: item.variant
+							? {
+									id: item.variant.id,
+									name: item.variant.name,
+									price: Number(item.variant.price),
+							  }
+							: null,
+						quantity: item.quantity,
+					})),
+					subtotal: cartSubtotal,
+					shippingFee: shippingFee,
+					tax: tax,
+					total: cartTotal,
+				},
+				business: {
+					id: business.id,
+					name: business.name,
+					type: business.type,
 				},
 			};
 
-			// Log payment data
-			console.log(
-				"Payment data being sent:",
-				JSON.stringify(paymentData, null, 2)
-			);
-
-			// Initialize payment
-			const paymentResponse = await fetch("/api/payment", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(paymentData),
+			console.log("[Checkout] Step 2: Payment data prepared", {
+				paymentData,
+				selectedPaymentMethod,
+				userEmail: session?.user?.email,
 			});
 
-			if (!paymentResponse.ok) {
-				const errorData = await paymentResponse.json();
-				console.error("Payment initialization failed:", errorData);
-				throw new Error(errorData.message || "Failed to initialize payment");
+			if (
+				selectedPaymentMethod === "CRYPTO" ||
+				values.paymentMethod === "CRYPTO"
+			) {
+				try {
+					console.log("[Checkout] Step 3: Initializing crypto payment", {
+						businessId: business.id,
+						userId: business.userId,
+						totalAmount: paymentData.totalAmount,
+					});
+
+					const paymentClient = PaymentClient.getInstance();
+
+					if (!business.userId) {
+						console.error("[Checkout] Step 3: Business missing userId", {
+							business,
+							error: "Business owner information not found",
+						});
+						throw new Error(
+							"Business owner information not found. Please contact support."
+						);
+					}
+
+					console.log("[Checkout] Step 3.1: Fetching user data", {
+						userId: business.userId,
+						endpoint: `/api/users/${business.userId}`,
+					});
+
+					const userResponse = await fetch(`/api/users/${business.userId}`);
+
+					if (!userResponse.ok) {
+						const errorText = await userResponse.text();
+						console.error("[Checkout] Step 3.1: Failed to fetch user data", {
+							status: userResponse.status,
+							statusText: userResponse.statusText,
+							error: errorText,
+							userId: business.userId,
+						});
+						throw new Error(
+							`Failed to fetch user data: ${userResponse.statusText}`
+						);
+					}
+
+					const userData = await userResponse.json();
+					console.log("[Checkout] Step 3.2: User data received", {
+						userData,
+						tokenAddress: config.blockchain.tokenAddress,
+					});
+
+					if (!userData.data?.walletAddress) {
+						console.error("[Checkout] Step 3.2: User missing wallet address", {
+							userData,
+							error: "Business owner wallet address not found",
+						});
+						throw new Error(
+							"Business owner wallet address not found. Please contact the business owner."
+						);
+					}
+
+					console.log("[Checkout] Step 3.3: Initiating crypto payment", {
+						walletAddress: userData.data.walletAddress,
+						amount: paymentData.totalAmount.toString(),
+						tokenAddress: config.blockchain.tokenAddress,
+					});
+
+					const result = await paymentClient.initiatePayment(
+						userData.data.walletAddress,
+						paymentData.totalAmount.toString(),
+						config.blockchain.tokenAddress
+					);
+
+					console.log("[Checkout] Step 3.4: Crypto payment initialized", {
+						result,
+						paymentId: result.paymentId,
+					});
+
+					console.log("[Checkout] Step 3.5: Creating order", {
+						paymentData,
+						paymentId: result.paymentId,
+						paymentStatus: "PENDING",
+					});
+
+					const orderResponse = await fetch("/api/orders", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							...paymentData,
+							paymentId: result.paymentId,
+							paymentStatus: "PENDING",
+						}),
+					});
+
+					if (!orderResponse.ok) {
+						const errorData = await orderResponse.json();
+						console.error("[Checkout] Step 3.5: Failed to create order", {
+							error: errorData,
+							status: orderResponse.status,
+						});
+						throw new Error("Failed to create order");
+					}
+
+					const order = await orderResponse.json();
+					console.log("[Checkout] Step 3.6: Order created successfully", {
+						order,
+						orderId: order.id,
+					});
+
+					router.push(`/orders/${order.id}` as Route);
+				} catch (error) {
+					console.error("[Checkout] Step 3: Crypto payment failed", {
+						error,
+						businessId: business.id,
+						amount: paymentData.totalAmount,
+					});
+					throw new Error(
+						error instanceof Error
+							? error.message
+							: "Failed to initialize crypto payment. Please try again or use a different payment method."
+					);
+				}
+			} else {
+				try {
+					console.log("[Checkout] Step 3: Initializing Paystack payment", {
+						amount: paymentData.totalAmount,
+						email: session?.user?.email || "customer@example.com",
+						paymentMethod: selectedPaymentMethod,
+						metadata: paymentData,
+					});
+
+					const response = await fetch("/api/payment", {
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							amount: paymentData.totalAmount,
+							email: session?.user?.email || "customer@example.com",
+							paymentMethod: selectedPaymentMethod,
+							metadata: paymentData,
+						}),
+					});
+
+					if (!response.ok) {
+						const errorData = await response.json();
+						console.error(
+							"[Checkout] Step 3: Paystack payment initialization failed",
+							{
+								error: errorData,
+								status: response.status,
+								requestData: {
+									amount: paymentData.totalAmount,
+									email: session?.user?.email,
+									paymentMethod: selectedPaymentMethod,
+								},
+							}
+						);
+						throw new Error(errorData.error || "Failed to initialize payment");
+					}
+
+					const data = await response.json();
+					console.log(
+						"[Checkout] Step 3: Paystack payment initialized successfully",
+						{
+							data,
+							authorizationUrl: data.authorization_url,
+						}
+					);
+
+					if (data.authorization_url) {
+						window.location.href = data.authorization_url;
+					}
+				} catch (error) {
+					console.error("[Checkout] Step 3: Paystack payment failed", {
+						error,
+						amount: paymentData.totalAmount,
+						paymentMethod: selectedPaymentMethod,
+					});
+					throw error;
+				}
 			}
-
-			const payment = await paymentResponse.json();
-			console.log("Payment initialized successfully:", payment);
-
-			// Handle payment based on type
-			if (payment.type === "fiat") {
-				// Redirect to Paystack payment page
-				window.location.href = payment.authorizationUrl;
-			} else if (payment.type === "crypto") {
-				// Show crypto payment instructions
-				message.info(
-					"Please complete the crypto payment to finalize your order"
-				);
-				// TODO: Implement crypto payment UI
-			}
-
-			// Do NOT show order success message here
-			// Do NOT redirect to order confirmation page here
 		} catch (error) {
-			console.error("Error placing order:", error);
-			message.error(
+			console.error("[Checkout] Payment process failed", {
+				error,
+				businessId: business?.id,
+				amount: cartTotal,
+				paymentMethod: selectedPaymentMethod,
+			});
+			setError(
 				error instanceof Error
 					? error.message
-					: "Failed to place order. Please try again."
+					: "An error occurred during payment"
 			);
 		} finally {
 			setLoading(false);

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
 	HomeIcon,
@@ -118,7 +119,15 @@ export default function DashboardSidebar() {
 			{/* Logo Section */}
 			<div className="flex flex-col items-center justify-center p-6">
 				<Link href="/dashboard" className="flex flex-col items-center">
-					<img src="/logo.svg" alt="Tredit" className="h-12 w-auto" />
+					<div className="relative w-12 h-12">
+						<Image
+							src="/logo.svg"
+							alt="Tredit"
+							fill
+							sizes="48px"
+							className="object-contain"
+						/>
+					</div>
 					<span className="mt-2 text-gray-500 dark:text-gray-400 text-lg font-bold">
 						TredIT
 					</span>

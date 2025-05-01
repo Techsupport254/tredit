@@ -1,10 +1,15 @@
-import { Config } from "./types";
+import { config as dotenvConfig } from "dotenv";
+
+dotenvConfig();
 
 interface Config {
 	server: {
 		port: number;
 		env: string;
 		enableRateLimiting: boolean;
+		frontendUrl: string;
+		backendUrl: string;
+		appUrl: string;
 	};
 	urls: {
 		frontend: string;
@@ -35,12 +40,15 @@ interface Config {
 		paymentAbi: any[];
 		escrowContract: string;
 		escrowAbi: any[];
+		tokenAddress: string;
+		tokenAbi: any[];
 		biconomyForwarder: string;
 		rpcUrl: string;
 		chainId: number;
 		mnemonic: string;
 		privateKey: string;
 		polygonscanApiKey: string;
+		usdcToken: string;
 	};
 	jwt: {
 		secret: string;
@@ -110,11 +118,25 @@ interface Config {
 	appUrl: string;
 }
 
+// Helper function to safely parse JSON
+function safeJsonParse<T>(value: string | undefined, defaultValue: T): T {
+	if (!value) return defaultValue;
+	try {
+		return JSON.parse(value) as T;
+	} catch (error) {
+		console.error("Error parsing JSON:", error);
+		return defaultValue;
+	}
+}
+
 const development: Config = {
 	server: {
 		port: Number(process.env.PORT) || 3000,
 		env: "development",
 		enableRateLimiting: false,
+		frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+		backendUrl: process.env.BACKEND_URL || "http://localhost:8000",
+		appUrl: process.env.APP_URL || "http://localhost:3000",
 	},
 	urls: {
 		frontend: process.env.FRONTEND_URL || "http://localhost:5173",
@@ -138,20 +160,88 @@ const development: Config = {
 			process.env.PINATA_GATEWAY_URL || "https://gateway.pinata.cloud",
 	},
 	blockchain: {
-		userProfileContract: process.env.USER_PROFILE_CONTRACT_ADDRESS || "",
-		userProfileAbi: JSON.parse(process.env.USER_PROFILE_ABI || "[]"),
-		businessContract: process.env.BUSINESS_CONTRACT_ADDRESS || "",
-		businessAbi: JSON.parse(process.env.BUSINESS_ABI || "[]"),
-		paymentContract: process.env.PAYMENT_CONTRACT_ADDRESS || "",
-		paymentAbi: JSON.parse(process.env.PAYMENT_ABI || "[]"),
-		escrowContract: process.env.ESCROW_CONTRACT_ADDRESS || "",
-		escrowAbi: JSON.parse(process.env.ESCROW_ABI || "[]"),
-		biconomyForwarder: process.env.BICONOMY_FORWARDER || "",
-		rpcUrl: process.env.RPC_URL || "",
-		chainId: Number(process.env.CHAIN_ID) || 80002,
-		mnemonic: process.env.MNEMONIC || "",
-		privateKey: process.env.PRIVATE_KEY || "",
-		polygonscanApiKey: process.env.POLYGONSCAN_API_KEY || "",
+		userProfileContract: (() => {
+			const value = process.env.NEXT_PUBLIC_USER_PROFILE_CONTRACT_ADDRESS;
+			if (!value)
+				throw new Error("NEXT_PUBLIC_USER_PROFILE_CONTRACT_ADDRESS is not set");
+			return value;
+		})(),
+		userProfileAbi: safeJsonParse(process.env.NEXT_PUBLIC_USER_PROFILE_ABI, []),
+		businessContract: (() => {
+			const value = process.env.NEXT_PUBLIC_BUSINESS_CONTRACT_ADDRESS;
+			if (!value)
+				throw new Error("NEXT_PUBLIC_BUSINESS_CONTRACT_ADDRESS is not set");
+			return value;
+		})(),
+		businessAbi: safeJsonParse(process.env.NEXT_PUBLIC_BUSINESS_ABI, []),
+		paymentContract: (() => {
+			const value = process.env.NEXT_PUBLIC_PAYMENT_CONTRACT_ADDRESS;
+			if (!value)
+				throw new Error("NEXT_PUBLIC_PAYMENT_CONTRACT_ADDRESS is not set");
+			return value;
+		})(),
+		paymentAbi: safeJsonParse(process.env.NEXT_PUBLIC_PAYMENT_ABI, []),
+		escrowContract: (() => {
+			const value = process.env.NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS;
+			if (!value)
+				throw new Error("NEXT_PUBLIC_ESCROW_CONTRACT_ADDRESS is not set");
+			return value;
+		})(),
+		escrowAbi: safeJsonParse(process.env.NEXT_PUBLIC_ESCROW_ABI, []),
+		tokenAddress: (() => {
+			const value = process.env.NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS;
+			if (!value)
+				throw new Error("NEXT_PUBLIC_TOKEN_CONTRACT_ADDRESS is not set");
+			return value;
+		})(),
+		tokenAbi: safeJsonParse(process.env.NEXT_PUBLIC_TOKEN_ABI, []),
+		biconomyForwarder: (() => {
+			const value = process.env.NEXT_PUBLIC_BICONOMY_FORWARDER;
+			if (!value) throw new Error("NEXT_PUBLIC_BICONOMY_FORWARDER is not set");
+			return value;
+		})(),
+		rpcUrl: (() => {
+			const value = process.env.NEXT_PUBLIC_RPC_URL;
+			if (!value) throw new Error("NEXT_PUBLIC_RPC_URL is not set");
+			return value;
+		})(),
+		chainId: (() => {
+			const value = process.env.NEXT_PUBLIC_CHAIN_ID;
+			if (!value) throw new Error("NEXT_PUBLIC_CHAIN_ID is not set");
+			return Number(value);
+		})(),
+		mnemonic: (() => {
+			const value = process.env.NEXT_PUBLIC_MNEMONIC;
+			if (!value) throw new Error("NEXT_PUBLIC_MNEMONIC is not set");
+			return value;
+		})(),
+		privateKey: (() => {
+			const key = process.env.NEXT_PUBLIC_PRIVATE_KEY;
+			if (!key) {
+				throw new Error(
+					"NEXT_PUBLIC_PRIVATE_KEY environment variable is not set"
+				);
+			}
+			if (!key.startsWith("0x")) {
+				throw new Error("NEXT_PUBLIC_PRIVATE_KEY must start with '0x'");
+			}
+			if (key.length !== 66) {
+				throw new Error(
+					"NEXT_PUBLIC_PRIVATE_KEY must be 64 hexadecimal characters (32 bytes)"
+				);
+			}
+			return key;
+		})(),
+		polygonscanApiKey: (() => {
+			const value = process.env.NEXT_PUBLIC_POLYGONSCAN_API_KEY;
+			if (!value) throw new Error("NEXT_PUBLIC_POLYGONSCAN_API_KEY is not set");
+			return value;
+		})(),
+		usdcToken: (() => {
+			const value = process.env.NEXT_PUBLIC_USDC_TOKEN_ADDRESS;
+			if (!value) throw new Error("NEXT_PUBLIC_USDC_TOKEN_ADDRESS is not set");
+			return value;
+		})(),
 	},
 	jwt: {
 		secret: process.env.JWT_SECRET || "development_secret",
@@ -208,22 +298,21 @@ const development: Config = {
 		appId: process.env.FIREBASE_APP_ID || "",
 	},
 	security: {
-		corsOrigin: process.env.CORS_ORIGIN || "http://localhost:5173",
-		rateLimitWindow: Number(process.env.RATE_LIMIT_WINDOW) || 15,
+		corsOrigin: process.env.CORS_ORIGIN || "*",
+		rateLimitWindow: Number(process.env.RATE_LIMIT_WINDOW) || 15 * 60 * 1000,
 		rateLimitMax: Number(process.env.RATE_LIMIT_MAX) || 100,
 		requireAuth: process.env.REQUIRE_AUTH === "true",
 	},
 	youtube: {
-		clientId: process.env.YOUTUBE_CLIENT_ID!,
-		clientSecret: process.env.YOUTUBE_CLIENT_SECRET!,
-		redirectUri: process.env.YOUTUBE_REDIRECT_URI!,
-		refreshToken: process.env.YOUTUBE_REFRESH_TOKEN!,
+		clientId: process.env.YOUTUBE_CLIENT_ID || "",
+		clientSecret: process.env.YOUTUBE_CLIENT_SECRET || "",
+		redirectUri:
+			process.env.YOUTUBE_REDIRECT_URI ||
+			"http://localhost:8000/api/youtube/callback",
+		refreshToken: process.env.YOUTUBE_REFRESH_TOKEN || "",
 	},
 	paystack: {
-		secretKey:
-			process.env.PAYSTACK_SECRET_KEY ||
-			process.env.PAYSTACK_TEST_SECRET_KEY ||
-			"",
+		secretKey: process.env.PAYSTACK_SECRET_KEY || "",
 	},
 	appUrl: process.env.APP_URL || "http://localhost:3000",
 };
@@ -234,6 +323,9 @@ const production: Config = {
 		port: Number(process.env.PORT) || 3000,
 		env: "production",
 		enableRateLimiting: true,
+		frontendUrl: process.env.FRONTEND_URL || "https://tredit.com",
+		backendUrl: process.env.BACKEND_URL || "https://api.tredit.com",
+		appUrl: process.env.APP_URL || "https://tredit.com",
 	},
 	urls: {
 		frontend: process.env.FRONTEND_URL || "https://tredit.com",

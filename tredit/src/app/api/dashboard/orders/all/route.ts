@@ -20,13 +20,19 @@ export async function GET() {
 			return NextResponse.json({ orders: [] });
 		}
 
-		// Get all orders for those businesses, include business relation
+		// Get all orders for those businesses, include business relation and items
 		const orders = await prisma.order.findMany({
 			where: {
 				businessId: { in: businessIds },
 			},
 			include: {
 				business: { select: { name: true } },
+				items: {
+					include: {
+						product: { include: { media: true } },
+						service: true,
+					},
+				},
 			},
 			orderBy: {
 				createdAt: "desc",

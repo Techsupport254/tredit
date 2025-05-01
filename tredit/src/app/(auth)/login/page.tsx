@@ -14,7 +14,7 @@ import { useAuth } from "@/lib/auth/AuthContext";
 // --- Zod Schema ---
 const formSchema = z.object({
 	email: z.string().email("Invalid email address"),
-	password: z.string().min(1, "Password is required"), // Simple check for login
+	password: z.string().min(1, "Password is required"),
 	rememberMe: z.boolean().optional(),
 });
 
@@ -37,7 +37,14 @@ export default function Login() {
 	// If user is already logged in, redirect to callback URL or dashboard
 	useEffect(() => {
 		if (user) {
-			router.replace(callbackUrl);
+			// Check for stored return URL
+			const returnTo = sessionStorage.getItem("returnTo");
+			if (returnTo) {
+				sessionStorage.removeItem("returnTo"); // Clear the stored URL
+				router.replace(returnTo);
+			} else {
+				router.replace(callbackUrl);
+			}
 		}
 	}, [user, callbackUrl, router]);
 
@@ -53,38 +60,40 @@ export default function Login() {
 	});
 
 	const onSubmit = async (data: FormData) => {
-		console.log("=== LOGIN SUBMIT START ===");
-		console.log("Form data:", {
-			email: data.email,
-			passwordLength: data.password?.length,
-		});
-
 		try {
 			setIsLoading(true);
-			const response = await login(data.email, data.password, callbackUrl);
-			console.log("Login response:", response);
+			// Check for stored return URL
+			const returnTo = sessionStorage.getItem("returnTo");
+			const redirectUrl = returnTo || callbackUrl;
 
-			if (response.success) {
-				console.log("Login successful, preparing navigation");
-				toast.success("Login successful!");
-				// Navigation handled by login function (router.push)
-			} else {
-				console.log("Login failed");
+			const result = await login(data.email, data.password, redirectUrl);
+
+			if (!result.success) {
 				toast.error("Invalid email or password");
 			}
 		} catch (err) {
 			const error = err as Error;
-			console.error("=== LOGIN ERROR ===", error);
+			console.error("Login error:", error);
 			toast.error(error.message || "Login failed");
 		} finally {
 			setIsLoading(false);
-			console.log("=== LOGIN SUBMIT END ===");
 		}
 	};
 
 	const handleGoogleSignIn = async () => {
-		// TODO: Implement Google OAuth flow
-		toast.error("Google Sign-In not implemented yet.");
+		try {
+			setIsLoading(true);
+			// Check for stored return URL
+			const returnTo = sessionStorage.getItem("returnTo");
+			const redirectUrl = returnTo || callbackUrl;
+
+			await signIn("google", { callbackUrl: redirectUrl });
+		} catch (error) {
+			console.error("Google sign-in error:", error);
+			toast.error("Google sign-in failed");
+		} finally {
+			setIsLoading(false);
+		}
 	};
 
 	return (
@@ -239,7 +248,7 @@ export default function Login() {
 							</div>
 							<div className="text-sm">
 								<Link
-									href="/forgot-password" // Link to forgot password page
+									href="/forgot-password"
 									className="font-medium text-blue-500 hover:text-blue-600 hover:underline"
 								>
 									Forgot your password?

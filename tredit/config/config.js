@@ -99,25 +99,33 @@ const sessionConfig = {
 
 // Blockchain Configuration
 const blockchainConfig = {
-	USER_PROFILE_CONTRACT_ADDRESS:
+	userProfileContract:
 		process.env.USER_PROFILE_CONTRACT_ADDRESS ||
 		"0x1E8C8a7ff284a97f3B131661Ea6548DFBfb21366",
-	BUSINESS_CONTRACT_ADDRESS:
+	businessContract:
 		process.env.BUSINESS_CONTRACT_ADDRESS ||
 		"0xaBF8E588Ea9A791ec4b861Ba80688d817c658A62",
-	DISPUTE_CONTRACT_ADDRESS:
+	disputeContract:
 		process.env.DISPUTE_CONTRACT_ADDRESS ||
 		"0x6b403f5B5726C79B8b5e144ff9979F6feB9E1884",
-	USER_PROFILE_ABI: process.env.USER_PROFILE_ABI,
-	BUSINESS_ABI: process.env.BUSINESS_ABI,
-	DISPUTE_ABI: process.env.DISPUTE_ABI,
-	PRIVATE_KEY: process.env.PRIVATE_KEY,
-	RPC_URL: process.env.RPC_URL || "https://rpc-amoy.polygon.technology",
-	CHAIN_ID: process.env.CHAIN_ID,
-	PINATA_API_KEY: process.env.PINATA_API_KEY,
-	PINATA_API_SECRET: process.env.PINATA_API_SECRET,
-	PINATA_BASE_URL: process.env.PINATA_BASE_URL || "https://api.pinata.cloud",
-	PINATA_GATEWAY_URL:
+	paymentContract:
+		process.env.PAYMENT_CONTRACT_ADDRESS ||
+		"0x383970b2416b4d9a5c02dfcfc261a48b39b2bce9",
+	escrowContract:
+		process.env.ESCROW_CONTRACT_ADDRESS ||
+		"0x6b403f5B5726C79B8b5e144ff9979F6feB9E1884",
+	userProfileAbi: process.env.USER_PROFILE_ABI,
+	businessAbi: process.env.BUSINESS_ABI,
+	disputeAbi: process.env.DISPUTE_ABI,
+	paymentAbi: require("../artifacts/contracts/Payment.sol/Payment.json").abi,
+	escrowAbi: process.env.ESCROW_ABI,
+	privateKey: process.env.PRIVATE_KEY,
+	rpcUrl: process.env.RPC_URL || "https://rpc-amoy.polygon.technology",
+	chainId: process.env.CHAIN_ID,
+	pinataApiKey: process.env.PINATA_API_KEY,
+	pinataApiSecret: process.env.PINATA_API_SECRET,
+	pinataBaseUrl: process.env.PINATA_BASE_URL || "https://api.pinata.cloud",
+	pinataGatewayUrl:
 		process.env.PINATA_GATEWAY_URL || "https://gateway.pinata.cloud",
 };
 

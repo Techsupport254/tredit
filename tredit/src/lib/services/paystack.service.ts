@@ -1,7 +1,5 @@
 import axios from "axios";
-import config from "@/config";
 import { PaymentMethod } from "@prisma/client";
-import { generateShareableLink } from "@/lib/utils/url";
 
 export class PaystackService {
 	private static instance: PaystackService;
@@ -9,7 +7,7 @@ export class PaystackService {
 	private readonly secretKey: string;
 
 	private constructor() {
-		this.secretKey = config.paystack.secretKey;
+		this.secretKey = getPaystackSecretKey();
 	}
 
 	public static getInstance(): PaystackService {
@@ -34,8 +32,6 @@ export class PaystackService {
 				return ["card"];
 			case "BANK_TRANSFER":
 				return ["bank"];
-			case "CRYPTO":
-				return ["crypto"];
 			default:
 				return ["card", "bank", "mobile_money"];
 		}
@@ -48,34 +44,13 @@ export class PaystackService {
 		metadata: any
 	) {
 		try {
-			// Extract businessName and businessType from metadata
-			const businessName = metadata.businessName || "business";
-			const businessType = metadata.businessType || "business";
-			const businessId = metadata.businessId;
-			// Use generateShareableLink to get the full base (including protocol/host)
-			const slugUrl = generateShareableLink(
-				businessId,
-				businessName,
-				businessType
-			);
-			const normalizedSlugUrl = slugUrl.endsWith("/") ? slugUrl : slugUrl + "/";
-			const callbackUrl = `${normalizedSlugUrl}payment/verify`;
-			console.log("Paystack callback URL:", callbackUrl);
-
-			// Throw if callbackUrl is not a full absolute URL
-			if (!/^https?:\/\//.test(callbackUrl)) {
-				throw new Error(
-					`Paystack callbackUrl is not a full absolute URL: ${callbackUrl}`
-				);
-			}
-
 			const response = await axios.post(
 				`${this.baseUrl}/transaction/initialize`,
 				{
-					amount: amount * 100, // Convert to kobo/cents
+					amount: Math.round(amount * 100), // Convert to kobo/cents
 					email,
 					currency: "KES",
-					callback_url: callbackUrl,
+					callback_url: `${process.env.FRONTEND_URL}/payment/verify`,
 					metadata,
 					channels: this.getPaymentChannels(paymentMethod),
 				},
@@ -88,4 +63,58 @@ export class PaystackService {
 			throw error;
 		}
 	}
+
+	async verifyPayment(reference: string) {
+		try {
+			const response = await axios.get(
+				`${this.baseUrl}/transaction/verify/${reference}`,
+				{ headers: this.getHeaders() }
+			);
+			return response.data;
+		} catch (error) {
+			console.error("Error verifying payment:", error);
+			throw error;
+		}
+	}
+}
+
+function getPaystackSecretKey() {
+	const key =
+		process.env.NODE_ENV === "production"
+			? process.env.PAYSTACK_LIVE_SECRET_KEY
+			: process.env.PAYSTACK_TEST_SECRET_KEY;
+	if (!key) {
+		console.error(
+			"[Paystack] Secret key is undefined! Check your .env configuration."
+		);
+	} else {
+		console.log(
+			`[Paystack] Using secret key: ${key.slice(0, 8)}...${key.slice(-4)}`
+		);
+	}
+	return key;
+}
+
+export async function verifyPayment(reference: string) {
+	const secretKey = getPaystackSecretKey();
+	if (!secretKey) {
+		throw new Error("Paystack secret key is not set in environment variables");
+	}
+	const headers = {
+		Authorization: `Bearer ${secretKey}`,
+		"Content-Type": "application/json",
+	};
+	console.log("[Paystack] Verifying payment with headers:", headers);
+	const response = await fetch(
+		`https://api.paystack.co/transaction/verify/${reference}`,
+		{
+			headers,
+		}
+	);
+	if (!response.ok) {
+		const error = await response.json();
+		console.error("[Paystack] Verification failed:", error);
+		throw new Error(error.message || "Failed to verify payment");
+	}
+	return response.json();
 }

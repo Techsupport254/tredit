@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/AuthContext";
 import {
@@ -75,7 +76,15 @@ export default function AdminSidebar() {
 						href="/admin"
 						className="flex items-center space-x-3 px-2 py-3 rounded-lg hover:bg-gray-800 transition-all duration-200"
 					>
-						<img className="h-8 w-auto" src="/logo.svg" alt="Tredit Admin" />
+						<div className="relative w-8 h-8">
+							<Image
+								src="/logo.svg"
+								alt="Tredit Admin"
+								fill
+								sizes="32px"
+								className="object-contain"
+							/>
+						</div>
 						<span className="text-lg font-semibold text-white">
 							Tredit Admin
 						</span>

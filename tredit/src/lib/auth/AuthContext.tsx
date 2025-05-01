@@ -1,8 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, ReactNode } from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import toast from "react-hot-toast";
 
 interface User {
@@ -15,21 +15,40 @@ interface User {
 
 interface AuthContextType {
 	user: User | null;
-	isLoading: boolean;
+	loading: boolean;
 	login: (
 		email: string,
 		password: string,
 		callbackUrl?: string
 	) => Promise<{ success: boolean }>;
-	logout: () => void;
+	logout: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+	user: null,
+	loading: true,
+	login: async () => ({ success: false }),
+	logout: async () => {},
+});
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-	const router = useRouter();
+export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const { data: session, status } = useSession();
-	const isLoading = status === "loading";
+	const [user, setUser] = useState<User | null>(null);
+	const router = useRouter();
+	const pathname = usePathname();
+
+	useEffect(() => {
+		if (status === "authenticated" && session?.user) {
+			setUser({
+				id: session.user.id as string,
+				name: session.user.name as string,
+				email: session.user.email as string,
+				role: session.user.role as string,
+			});
+		} else if (status === "unauthenticated") {
+			setUser(null);
+		}
+	}, [session, status]);
 
 	const login = async (
 		email: string,
@@ -38,9 +57,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	) => {
 		try {
 			const result = await signIn("credentials", {
+				redirect: false,
 				email,
 				password,
-				redirect: false,
 			});
 
 			if (result?.error) {
@@ -48,42 +67,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				return { success: false };
 			}
 
-			if (result?.ok) {
-				toast.success("Login successful!");
-				if (callbackUrl) {
-					router.push(callbackUrl as any);
-				} else {
-					router.push("/dashboard");
-				}
-				return { success: true };
+			if (callbackUrl) {
+				router.push(callbackUrl);
+			} else {
+				router.push("/dashboard");
 			}
 
-			return { success: false };
+			return { success: true };
 		} catch (error) {
 			console.error("Login error:", error);
+			toast.error("An error occurred during login");
 			return { success: false };
 		}
 	};
 
 	const logout = async () => {
 		try {
-			console.log("Logout initiated...");
+			// Store the current path before logging out
+			const currentPath = pathname;
+			// Only store the path if it's not an auth-related path
+			if (
+				!currentPath.startsWith("/login") &&
+				!currentPath.startsWith("/register")
+			) {
+				sessionStorage.setItem("returnTo", currentPath);
+			}
+
 			await signOut({ redirect: false });
-			console.log("Session terminated successfully");
-			const callbackUrl = encodeURIComponent(window.location.pathname);
-			router.push(`/login?callbackUrl=${callbackUrl}`);
-			console.log("Redirecting to login page with callback");
+			router.push("/login");
 		} catch (error) {
 			console.error("Logout error:", error);
-			toast.error("Failed to logout. Please try again.");
+			toast.error("An error occurred during logout");
 		}
 	};
 
 	return (
 		<AuthContext.Provider
 			value={{
-				user: session?.user as User | null,
-				isLoading,
+				user,
+				loading: status === "loading",
 				login,
 				logout,
 			}}
@@ -93,10 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 	);
 }
 
-export function useAuth() {
+export const useAuth = () => {
 	const context = useContext(AuthContext);
-	if (context === undefined) {
+	if (!context) {
 		throw new Error("useAuth must be used within an AuthProvider");
 	}
 	return context;
-}
+};
